@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check Session Status</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 10px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>Session Status Check</h1>
+    
+    <button onclick="checkSession()">Check Current Session</button>
+    <button onclick="testUploadAuth()">Test Upload Authentication</button>
+    <button onclick="window.location.href='/login'">Go to Login Page</button>
+    
+    <div id="results"></div>
+    
+    <script>
+        async function checkSession() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="status">Checking session...</div>';
+            
+            try {
+                // Check /api/auth/me endpoint
+                const meResponse = await fetch('/api/auth/me', {
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                const contentType = meResponse.headers.get('content-type');
+                
+                if (meResponse.ok) {
+                    const userData = await meResponse.json();
+                    results.innerHTML = `
+                        <div class="status success">
+                            <h3>✅ Session Active</h3>
+                            <pre>${JSON.stringify(userData, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    results.innerHTML = `
+                        <div class="status error">
+                            <h3>❌ No Active Session</h3>
+                            <p>Status: ${meResponse.status}</p>
+                            <p>Content-Type: ${contentType}</p>
+                            <p>You need to log in.</p>
+                        </div>
+                    `;
+                }
+                
+                // Also check Supabase session
+                const sessionResponse = await fetch('/api/auth/check-session', {
+                    credentials: 'include'
+                });
+                
+                if (sessionResponse.ok) {
+                    const sessionData = await sessionResponse.json();
+                    results.innerHTML += `
+                        <div class="status success">
+                            <h3>Supabase Session</h3>
+                            <pre>${JSON.stringify(sessionData, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <h3>Error checking session</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function testUploadAuth() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="status">Testing upload authentication...</div>';
+            
+            try {
+                // Create a small test file
+                const blob = new Blob(['test content'], { type: 'text/plain' });
+                const formData = new FormData();
+                formData.append('file', blob, 'test.txt');
+                formData.append('category', 'travel');
+                
+                const response = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                const contentType = response.headers.get('content-type');
+                
+                if (contentType && contentType.includes('text/html')) {
+                    // Getting HTML redirect - session expired
+                    const text = await response.text();
+                    const isLoginRedirect = text.includes('login') || text.includes('DOCTYPE');
+                    
+                    results.innerHTML = `
+                        <div class="status error">
+                            <h3>❌ Authentication Failed</h3>
+                            <p>The server returned HTML (likely a login redirect)</p>
+                            <p>Status: ${response.status}</p>
+                            <p>Redirect detected: ${isLoginRedirect ? 'Yes' : 'No'}</p>
+                            <p><strong>Solution: Please log out and log back in</strong></p>
+                        </div>
+                    `;
+                } else if (response.ok) {
+                    const data = await response.json();
+                    results.innerHTML = `
+                        <div class="status success">
+                            <h3>✅ Upload Authentication Working</h3>
+                            <p>Document uploaded successfully</p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    const error = await response.json();
+                    results.innerHTML = `
+                        <div class="status error">
+                            <h3>Upload Failed</h3>
+                            <pre>${JSON.stringify(error, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <h3>Test Failed</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Check on load
+        window.onload = checkSession;
+    </script>
+</body>
+</html>

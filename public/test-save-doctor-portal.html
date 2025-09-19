@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Doctor Portal Sync</title>
+  <style>
+    body {
+      font-family: system-ui;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+    button {
+      background: #4a9eff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #357abd;
+    }
+    .section {
+      background: #2a2a2a;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 8px;
+      border: 1px solid #444;
+    }
+    pre {
+      background: #111;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .warning { color: #facc15; }
+    h2 { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <h1>Test Doctor Portal Sync</h1>
+  
+  <div class="section">
+    <h2>1. Create Test Doctor with Portal</h2>
+    <button onclick="createTestDoctor()">Create Doctor with Portal Credentials</button>
+    <pre id="create-result"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>2. Check Medical Portals</h2>
+    <button onclick="checkPortals()">Check Portals Table</button>
+    <pre id="portals-result"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>3. Check Passwords</h2>
+    <button onclick="checkPasswords()">Check Passwords Table</button>
+    <pre id="passwords-result"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>4. Update Doctor Portal</h2>
+    <button onclick="updateTestDoctor()">Update Doctor Portal Credentials</button>
+    <pre id="update-result"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>5. Cleanup</h2>
+    <button onclick="cleanupTest()">Delete Test Doctor</button>
+    <pre id="cleanup-result"></pre>
+  </div>
+
+  <script>
+    let testDoctorId = null;
+    
+    async function createTestDoctor() {
+      const resultEl = document.getElementById('create-result');
+      resultEl.textContent = 'Creating test doctor...';
+      
+      try {
+        const response = await fetch('/api/doctors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Test Doctor Portal Sync',
+            specialty: 'General Practice',
+            phone: '555-0123',
+            email: 'test.doctor@example.com',
+            portal_url: 'https://portal.testdoctor.com',
+            portal_username: 'testpatient123',
+            portal_password: 'TestPassword123!',
+            patients: [], // Will use current user as owner
+            notes: 'Test doctor for portal sync verification'
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          testDoctorId = data.doctor.id;
+          resultEl.innerHTML = `<span class="success">✅ Doctor created successfully!</span>\n` +
+            `Doctor ID: ${data.doctor.id}\n` +
+            `Name: ${data.doctor.name}\n` +
+            `Portal URL: ${data.doctor.portal_url}\n` +
+            `Portal Username: ${data.doctor.portal_username}`;
+        } else {
+          resultEl.innerHTML = `<span class="error">❌ Failed to create doctor: ${data.error || response.statusText}</span>`;
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+    
+    async function checkPortals() {
+      const resultEl = document.getElementById('portals-result');
+      resultEl.textContent = 'Checking portals...';
+      
+      try {
+        const response = await fetch('/api/medical-portals');
+        const data = await response.json();
+        
+        if (response.ok) {
+          const testPortal = data.portals?.find(p => 
+            p.provider_name === 'Test Doctor Portal Sync' ||
+            p.portal_name?.includes('Test Doctor')
+          );
+          
+          if (testPortal) {
+            resultEl.innerHTML = `<span class="success">✅ Portal found in portals table!</span>\n` +
+              `Portal ID: ${testPortal.id}\n` +
+              `Portal Name: ${testPortal.portal_name}\n` +
+              `Portal Type: ${testPortal.portal_type}\n` +
+              `Portal URL: ${testPortal.portal_url}\n` +
+              `Username: ${testPortal.username}\n` +
+              `Password ID: ${testPortal.password_id || '<span class="warning">Not linked</span>'}`;
+          } else {
+            resultEl.innerHTML = `<span class="warning">⚠️ Test portal not found</span>\n` +
+              `Total medical portals: ${data.portals?.length || 0}`;
+          }
+        } else {
+          resultEl.innerHTML = `<span class="error">❌ Failed to fetch portals: ${data.error}</span>`;
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+    
+    async function checkPasswords() {
+      const resultEl = document.getElementById('passwords-result');
+      resultEl.textContent = 'Checking passwords...';
+      
+      try {
+        const response = await fetch('/api/passwords');
+        const data = await response.json();
+        
+        if (response.ok) {
+          const testPassword = data.passwords?.find(p => 
+            p.service_name === 'Test Doctor Portal Sync' ||
+            p.title?.includes('Test Doctor')
+          );
+          
+          if (testPassword) {
+            resultEl.innerHTML = `<span class="success">✅ Password found in passwords table!</span>\n` +
+              `Password ID: ${testPassword.id}\n` +
+              `Service Name: ${testPassword.service_name}\n` +
+              `Title: ${testPassword.title}\n` +
+              `Category: ${testPassword.category}\n` +
+              `URL: ${testPassword.website_url || testPassword.url}\n` +
+              `Username: ${testPassword.username}\n` +
+              `Source: ${testPassword.source || 'Unknown'}`;
+          } else {
+            resultEl.innerHTML = `<span class="warning">⚠️ Test password not found</span>\n` +
+              `Total passwords: ${data.passwords?.length || 0}\n` +
+              `Medical passwords: ${data.passwords?.filter(p => p.category === 'medical').length || 0}`;
+          }
+        } else {
+          resultEl.innerHTML = `<span class="error">❌ Failed to fetch passwords: ${data.error}</span>`;
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+    
+    async function updateTestDoctor() {
+      const resultEl = document.getElementById('update-result');
+      
+      if (!testDoctorId) {
+        resultEl.innerHTML = `<span class="error">❌ No test doctor ID. Create a doctor first.</span>`;
+        return;
+      }
+      
+      resultEl.textContent = 'Updating doctor portal credentials...';
+      
+      try {
+        const response = await fetch(`/api/doctors/${testDoctorId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Test Doctor Portal Sync',
+            specialty: 'General Practice',
+            portal_url: 'https://portal.updated.com',
+            portal_username: 'updateduser456',
+            portal_password: 'UpdatedPassword456!',
+            notes: 'Updated portal credentials'
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          resultEl.innerHTML = `<span class="success">✅ Doctor updated successfully!</span>\n` +
+            `New Portal URL: ${data.doctor.portal_url}\n` +
+            `New Username: ${data.doctor.portal_username}\n` +
+            'Now check portals and passwords again to verify sync.';
+        } else {
+          resultEl.innerHTML = `<span class="error">❌ Failed to update doctor: ${data.error}</span>`;
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+    
+    async function cleanupTest() {
+      const resultEl = document.getElementById('cleanup-result');
+      
+      if (!testDoctorId) {
+        resultEl.innerHTML = `<span class="warning">⚠️ No test doctor to cleanup</span>`;
+        return;
+      }
+      
+      resultEl.textContent = 'Deleting test doctor...';
+      
+      try {
+        const response = await fetch(`/api/doctors/${testDoctorId}`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          resultEl.innerHTML = `<span class="success">✅ Test doctor deleted successfully!</span>\n` +
+            'Portal and password records should also be cleaned up.';
+          testDoctorId = null;
+        } else {
+          const data = await response.json();
+          resultEl.innerHTML = `<span class="error">❌ Failed to delete doctor: ${data.error}</span>`;
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>

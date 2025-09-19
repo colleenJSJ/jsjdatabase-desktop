@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Doctor Cascade Delete</title>
+  <style>
+    body {
+      font-family: system-ui;
+      max-width: 900px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+    button {
+      background: #4a9eff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #357abd;
+    }
+    button.danger {
+      background: #ef4444;
+    }
+    button.danger:hover {
+      background: #dc2626;
+    }
+    .section {
+      background: #2a2a2a;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 8px;
+      border: 1px solid #444;
+    }
+    pre {
+      background: #111;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .warning { color: #facc15; }
+    h2 { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <h1>Test Doctor Cascade Delete</h1>
+  <p>This test will create a doctor with portal/password, then delete it to verify cascade deletion works.</p>
+  
+  <div class="section">
+    <h2>1. Create Test Doctor with Portal</h2>
+    <button onclick="createTestDoctor()">Create Doctor with Portal</button>
+    <pre id="create-result"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>2. Verify Creation</h2>
+    <button onclick="verifyCreation()">Check Portal & Password</button>
+    <pre id="verify-result"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>3. Delete Doctor</h2>
+    <button onclick="deleteTestDoctor()" class="danger">Delete Doctor</button>
+    <pre id="delete-result"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>4. Verify Cascade Deletion</h2>
+    <button onclick="verifyDeletion()">Check Cleanup</button>
+    <pre id="cleanup-result"></pre>
+  </div>
+
+  <script>
+    let testDoctorId = null;
+    let testPortalId = null;
+    let testPasswordId = null;
+    
+    async function createTestDoctor() {
+      const resultEl = document.getElementById('create-result');
+      resultEl.textContent = 'Creating test doctor...';
+      
+      try {
+        const response = await fetch('/api/doctors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Test Cascade Delete Doctor',
+            specialty: 'Testing',
+            phone: '555-TEST',
+            email: 'cascade.test@example.com',
+            portal_url: 'https://cascade-test-portal.com',
+            portal_username: 'cascadetest',
+            portal_password: 'CascadeTest123!',
+            patients: [], // Will use current user as owner
+            notes: 'Test doctor for cascade deletion verification'
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          testDoctorId = data.doctor.id;
+          resultEl.innerHTML = `<span class="success">✅ Doctor created successfully!</span>\n` +
+            `Doctor ID: ${data.doctor.id}\n` +
+            `Name: ${data.doctor.name}\n` +
+            `Portal URL: ${data.doctor.portal_url}\n` +
+            `Portal Username: ${data.doctor.portal_username}\n\n` +
+            `Now check if portal and password were created...`;
+        } else {
+          resultEl.innerHTML = `<span class="error">❌ Failed to create doctor: ${data.error || response.statusText}</span>`;
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+    
+    async function verifyCreation() {
+      const resultEl = document.getElementById('verify-result');
+      
+      if (!testDoctorId) {
+        resultEl.innerHTML = `<span class="warning">⚠️ Create a doctor first</span>`;
+        return;
+      }
+      
+      resultEl.textContent = 'Verifying portal and password creation...';
+      
+      try {
+        // Check portals
+        const portalsResponse = await fetch('/api/medical-portals');
+        const portalsData = await portalsResponse.json();
+        
+        const testPortal = portalsData.portals?.find(p => 
+          p.entity_id === testDoctorId || 
+          p.portal_name?.includes('Test Cascade Delete')
+        );
+        
+        if (testPortal) {
+          testPortalId = testPortal.id;
+          resultEl.innerHTML = `<span class="success">✅ Portal found!</span>\n` +
+            `Portal ID: ${testPortal.id}\n` +
+            `Portal Name: ${testPortal.portal_name}\n` +
+            `Password ID: ${testPortal.password_id || 'Not linked'}\n`;
+        } else {
+          resultEl.innerHTML = `<span class="warning">⚠️ Portal not found</span>\n`;
+        }
+        
+        // Check passwords
+        const passwordsResponse = await fetch('/api/passwords');
+        const passwordsData = await passwordsResponse.json();
+        
+        const testPassword = passwordsData.passwords?.find(p => 
+          p.service_name === 'Test Cascade Delete Doctor' ||
+          p.title?.includes('Test Cascade Delete')
+        );
+        
+        if (testPassword) {
+          testPasswordId = testPassword.id;
+          resultEl.innerHTML += `\n<span class="success">✅ Password found!</span>\n` +
+            `Password ID: ${testPassword.id}\n` +
+            `Service: ${testPassword.service_name}\n` +
+            `Category: ${testPassword.category}`;
+        } else {
+          resultEl.innerHTML += `\n<span class="warning">⚠️ Password not found</span>`;
+        }
+        
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+    
+    async function deleteTestDoctor() {
+      const resultEl = document.getElementById('delete-result');
+      
+      if (!testDoctorId) {
+        resultEl.innerHTML = `<span class="warning">⚠️ No test doctor to delete</span>`;
+        return;
+      }
+      
+      resultEl.textContent = 'Deleting doctor...';
+      
+      try {
+        const response = await fetch(`/api/doctors/${testDoctorId}`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          resultEl.innerHTML = `<span class="success">✅ Doctor deleted successfully!</span>\n` +
+            `Doctor ID: ${testDoctorId}\n\n` +
+            `Now verify that portal and password were also deleted...`;
+        } else {
+          const data = await response.json();
+          resultEl.innerHTML = `<span class="error">❌ Failed to delete doctor: ${data.error}</span>`;
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+    
+    async function verifyDeletion() {
+      const resultEl = document.getElementById('cleanup-result');
+      resultEl.textContent = 'Verifying cascade deletion...';
+      
+      let allClean = true;
+      let results = [];
+      
+      try {
+        // Check if portal was deleted
+        if (testPortalId) {
+          const portalsResponse = await fetch('/api/medical-portals');
+          const portalsData = await portalsResponse.json();
+          
+          const portalStillExists = portalsData.portals?.find(p => p.id === testPortalId);
+          
+          if (portalStillExists) {
+            results.push('<span class="error">❌ Portal still exists!</span>');
+            allClean = false;
+          } else {
+            results.push('<span class="success">✅ Portal was deleted</span>');
+          }
+        }
+        
+        // Check if password was deleted
+        if (testPasswordId) {
+          const passwordsResponse = await fetch('/api/passwords');
+          const passwordsData = await passwordsResponse.json();
+          
+          const passwordStillExists = passwordsData.passwords?.find(p => p.id === testPasswordId);
+          
+          if (passwordStillExists) {
+            results.push('<span class="error">❌ Password still exists!</span>');
+            allClean = false;
+          } else {
+            results.push('<span class="success">✅ Password was deleted</span>');
+          }
+        }
+        
+        // Check if doctor was deleted
+        if (testDoctorId) {
+          const doctorsResponse = await fetch('/api/doctors');
+          const doctorsData = await doctorsResponse.json();
+          
+          const doctorStillExists = doctorsData.doctors?.find(d => d.id === testDoctorId);
+          
+          if (doctorStillExists) {
+            results.push('<span class="error">❌ Doctor still exists!</span>');
+            allClean = false;
+          } else {
+            results.push('<span class="success">✅ Doctor was deleted</span>');
+          }
+        }
+        
+        resultEl.innerHTML = results.join('\n') + '\n\n' +
+          (allClean 
+            ? '<span class="success">✅ CASCADE DELETE WORKS CORRECTLY!</span>'
+            : '<span class="error">❌ CASCADE DELETE HAS ISSUES</span>');
+        
+        // Reset IDs
+        testDoctorId = null;
+        testPortalId = null;
+        testPasswordId = null;
+        
+      } catch (error) {
+        resultEl.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>

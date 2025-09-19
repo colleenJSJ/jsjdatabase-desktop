@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Multipart Authentication</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        .success { background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin: 10px 0; }
+        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin: 10px 0; }
+        .warning { background: #fff3cd; color: #856404; padding: 15px; border-radius: 4px; margin: 10px 0; }
+        pre { background: #f4f4f4; padding: 10px; overflow: auto; border-radius: 4px; max-height: 400px; }
+        input[type="file"] { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Multipart Authentication Test</h1>
+        <p>This tests if authentication works properly with multipart/form-data requests</p>
+        
+        <div class="test-section">
+            <h2>Step 1: Check Regular Auth</h2>
+            <button onclick="checkRegularAuth()">Test Regular JSON Auth</button>
+            <div id="regular-auth-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 2: Test Multipart Auth</h2>
+            <input type="file" id="testFile" accept=".txt,.pdf,.png">
+            <br>
+            <button onclick="testMultipartAuth()">Test Multipart Auth</button>
+            <div id="multipart-auth-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 3: Test V2 Endpoint</h2>
+            <button onclick="testV2Endpoint()">Test Travel Extract V2</button>
+            <div id="v2-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Debug Info</h2>
+            <button onclick="showCookies()">Show Cookies</button>
+            <button onclick="showHeaders()">Show Request Headers</button>
+            <div id="debug-info"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Test regular JSON authentication
+        async function checkRegularAuth() {
+            const resultDiv = document.getElementById('regular-auth-result');
+            resultDiv.innerHTML = '<div class="warning">Testing...</div>';
+            
+            try {
+                const response = await fetch('/api/auth/me', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                const contentType = response.headers.get('content-type');
+                console.log('Regular auth response content-type:', contentType);
+                
+                if (contentType && contentType.includes('text/html')) {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Getting HTML redirect (not authenticated)</strong>
+                            <p>Status: ${response.status}</p>
+                            <p>You need to log in first</p>
+                        </div>
+                    `;
+                } else if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Authenticated via JSON</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Not Authenticated</strong>
+                            <p>Status: ${response.status}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // Test multipart authentication
+        async function testMultipartAuth() {
+            const resultDiv = document.getElementById('multipart-auth-result');
+            const fileInput = document.getElementById('testFile');
+            
+            resultDiv.innerHTML = '<div class="warning">Testing multipart auth...</div>';
+            
+            try {
+                const formData = new FormData();
+                
+                // Add a file if selected, otherwise add dummy data
+                if (fileInput.files[0]) {
+                    formData.append('file', fileInput.files[0]);
+                } else {
+                    // Create a dummy file
+                    const blob = new Blob(['test content'], { type: 'text/plain' });
+                    formData.append('file', blob, 'test.txt');
+                }
+                
+                console.log('Sending multipart request...');
+                
+                const response = await fetch('/api/test-multipart-auth', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                    // Note: Don't set Content-Type header - browser will set it with boundary
+                });
+                
+                const contentType = response.headers.get('content-type');
+                console.log('Multipart auth response content-type:', contentType);
+                console.log('Response status:', response.status);
+                
+                if (contentType && contentType.includes('text/html')) {
+                    const text = await response.text();
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Getting HTML redirect (session issue)</strong>
+                            <p>Status: ${response.status}</p>
+                            <p>Response preview: ${text.substring(0, 200)}...</p>
+                            <p><strong>This is the issue!</strong> Multipart requests are being redirected to login.</p>
+                        </div>
+                    `;
+                } else if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Multipart Authentication Working!</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Authentication Failed</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Multipart test error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}
+                        <pre>${error.stack}</pre>
+                    </div>
+                `;
+            }
+        }
+        
+        // Test V2 endpoint
+        async function testV2Endpoint() {
+            const resultDiv = document.getElementById('v2-result');
+            const fileInput = document.getElementById('testFile');
+            
+            resultDiv.innerHTML = '<div class="warning">Testing V2 endpoint...</div>';
+            
+            try {
+                const formData = new FormData();
+                
+                if (fileInput.files[0]) {
+                    formData.append('file', fileInput.files[0]);
+                } else {
+                    const blob = new Blob(['Test flight document'], { type: 'text/plain' });
+                    formData.append('file', blob, 'test-flight.txt');
+                }
+                formData.append('storeDocument', 'false');
+                
+                const response = await fetch('/api/ai/travel-extract-v2', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                const contentType = response.headers.get('content-type');
+                console.log('V2 endpoint content-type:', contentType);
+                
+                if (contentType && contentType.includes('text/html')) {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ V2 Endpoint returning HTML (auth issue)</strong>
+                            <p>This confirms the multipart auth problem</p>
+                        </div>
+                    `;
+                } else {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="${data.success ? 'success' : 'error'}">
+                            <strong>${data.success ? '✅' : '❌'} V2 Endpoint Response</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // Show cookies
+        function showCookies() {
+            const debugDiv = document.getElementById('debug-info');
+            const cookies = document.cookie;
+            
+            debugDiv.innerHTML = `
+                <div class="warning">
+                    <strong>Browser Cookies:</strong>
+                    <pre>${cookies || '(no cookies found)'}</pre>
+                    <p>Supabase auth cookies present: ${cookies.includes('sb-') ? 'Yes ✅' : 'No ❌'}</p>
+                </div>
+            `;
+        }
+        
+        // Show headers (simulated)
+        async function showHeaders() {
+            const debugDiv = document.getElementById('debug-info');
+            
+            // Make a request to see what headers are being sent
+            const response = await fetch('/api/auth/me', {
+                credentials: 'include'
+            });
+            
+            debugDiv.innerHTML = `
+                <div class="warning">
+                    <strong>Response Headers from /api/auth/me:</strong>
+                    <pre>${Array.from(response.headers.entries()).map(([k,v]) => `${k}: ${v}`).join('\n')}</pre>
+                </div>
+            `;
+        }
+        
+        // Run tests on load
+        window.onload = () => {
+            checkRegularAuth();
+        };
+    </script>
+</body>
+</html>

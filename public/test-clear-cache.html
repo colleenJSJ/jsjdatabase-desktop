@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Extraction Cache</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #e5e5e5;
+        }
+        .container {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 30px;
+        }
+        h1 {
+            margin-top: 0;
+            color: #fafafa;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .status.success {
+            background: #065f46;
+            border: 1px solid #10b981;
+            color: #a7f3d0;
+            display: block;
+        }
+        .status.error {
+            background: #7f1d1d;
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            display: block;
+        }
+        .status.info {
+            background: #1e40af;
+            border: 1px solid #3b82f6;
+            color: #bfdbfe;
+            display: block;
+        }
+        .cache-info {
+            background: #262626;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            border: 1px solid #404040;
+        }
+        .cache-info h3 {
+            margin-top: 0;
+            color: #a3a3a3;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .cache-count {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fafafa;
+        }
+        .cache-details {
+            margin-top: 10px;
+            color: #a3a3a3;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Clear Extraction Cache</h1>
+        <p>Use this tool to clear the AI extraction cache so you can re-test document uploads with the new arrival time extraction.</p>
+        
+        <div class="cache-info">
+            <h3>Current Cache Status</h3>
+            <div class="cache-count" id="cacheCount">Loading...</div>
+            <div class="cache-details" id="cacheDetails"></div>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <button id="checkBtn" onclick="checkCache()">Check Cache</button>
+            <button id="clearBtn" onclick="clearCache()">Clear My Cache</button>
+        </div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        // Check cache on load
+        window.addEventListener('DOMContentLoaded', checkCache);
+
+        async function checkCache() {
+            const statusDiv = document.getElementById('status');
+            const countDiv = document.getElementById('cacheCount');
+            const detailsDiv = document.getElementById('cacheDetails');
+            
+            try {
+                const response = await fetch('/api/admin/clear-extraction-cache', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to check cache');
+                }
+
+                const data = await response.json();
+                
+                countDiv.textContent = `${data.total} cached entries`;
+                detailsDiv.innerHTML = `
+                    extraction_cache_v2: ${data.extraction_cache_v2} entries<br>
+                    extraction_cache (legacy): ${data.extraction_cache} entries
+                `;
+
+                statusDiv.textContent = 'Cache status refreshed';
+                statusDiv.className = 'status info';
+                setTimeout(() => {
+                    statusDiv.className = 'status';
+                }, 3000);
+            } catch (error) {
+                countDiv.textContent = 'Error';
+                detailsDiv.textContent = 'Could not load cache status';
+                
+                statusDiv.textContent = `Error: ${error.message}`;
+                statusDiv.className = 'status error';
+            }
+        }
+
+        async function clearCache() {
+            const statusDiv = document.getElementById('status');
+            const clearBtn = document.getElementById('clearBtn');
+            
+            if (!confirm('This will clear all your cached extraction data. Continue?')) {
+                return;
+            }
+
+            clearBtn.disabled = true;
+            statusDiv.textContent = 'Clearing cache...';
+            statusDiv.className = 'status info';
+
+            try {
+                const response = await fetch('/api/admin/clear-extraction-cache', {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to clear cache');
+                }
+
+                const data = await response.json();
+                
+                statusDiv.innerHTML = `
+                    ✅ Cache cleared successfully!<br>
+                    Removed ${data.cleared.extraction_cache_v2} entries from v2 cache<br>
+                    Removed ${data.cleared.extraction_cache} entries from legacy cache<br>
+                    <br>
+                    You can now re-upload documents to test the new extraction.
+                `;
+                statusDiv.className = 'status success';
+                
+                // Refresh cache count
+                setTimeout(checkCache, 1000);
+            } catch (error) {
+                statusDiv.textContent = `Error: ${error.message}`;
+                statusDiv.className = 'status error';
+            } finally {
+                clearBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

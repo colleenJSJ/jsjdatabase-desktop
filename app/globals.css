@@ -1,0 +1,277 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Claude Interface Colors */
+    --background-primary: #262625;      /* Main app background */
+    --background-secondary: #30302E;    /* Cards/sections background */
+    --background-tertiary: #201E1D;     /* Sidebar/header background */
+    
+    /* Text Colors */
+    --text-primary: #FFFFFF;            /* Primary text color */
+    --text-muted: #C2C0B6;             /* Muted/secondary text */
+    
+    /* Accent Colors - Muted category colors for dark theme */
+    --medical: #5B7CA3;
+    --travel: #6B8A6B;
+    --household: #8C7348;
+    --personal: #7A6A8A;
+    --pets: #8A7A6A;
+    --urgent: #9A5D5D;
+    
+    /* Border and Input Colors */
+    --border-color: #3A3A38;
+    --input-background: #1A1A19;
+    --input-border: #3A3A38;
+    
+    /* Tailwind compatibility - mapped to Claude system */
+    --background: #262625;
+    --foreground: #FFFFFF;
+    --card: #30302E;
+    --card-foreground: #FFFFFF;
+    --popover: #30302E;
+    --popover-foreground: #FFFFFF;
+    --primary: #FFFFFF;
+    --primary-foreground: #262625;
+    --secondary: #30302E;
+    --secondary-foreground: #FFFFFF;
+    --muted: #30302E;
+    --muted-foreground: #C2C0B6;
+    --accent: #3A3A38;
+    --accent-foreground: #FFFFFF;
+    --destructive: #D39B9B;
+    --destructive-foreground: #FFFFFF;
+    --border: #3A3A38;
+    --input: #1A1A19;
+    --ring: #C2C0B6;
+    --radius: 0.5rem;
+  }
+
+  .light {
+    /* Light Mode Colors - warm off-whites like Claude's light theme */
+    --background-primary: #FAFAF9;      /* Slightly off-white background */
+    --background-secondary: #F5F5F4;    /* Light grey for cards */
+    --background-tertiary: #F5F5F4;     /* Light grey for sidebar/header */
+    
+    /* Text Colors */
+    --text-primary: #2D2D2D;            /* Dark grey text */
+    --text-muted: #6B6B6B;              /* Medium grey for muted text */
+    
+    /* Accent Colors - Muted category colors for light theme */
+    --medical: #5B7CA3;
+    --travel: #6B8A6B;
+    --household: #8C7348;
+    --personal: #7A6A8A;
+    --pets: #8A7A6A;
+    --urgent: #9A5D5D;
+    
+    /* Border and Input Colors */
+    --border-color: #E5E5E5;            /* Light grey borders */
+    --input-background: #FFFFFF;
+    --input-border: #E5E5E5;
+    
+    /* Tailwind compatibility - mapped to light theme */
+    --background: #FAFAF9;
+    --foreground: #2D2D2D;
+    --card: #F5F5F4;
+    --card-foreground: #2D2D2D;
+    --popover: #F5F5F4;
+    --popover-foreground: #2D2D2D;
+    --primary: #2D2D2D;
+    --primary-foreground: #FAFAF9;
+    --secondary: #F5F5F4;
+    --secondary-foreground: #2D2D2D;
+    --muted: #F5F5F4;
+    --muted-foreground: #6B6B6B;
+    --accent: #E5E5E5;
+    --accent-foreground: #2D2D2D;
+    --destructive: #C17171;
+    --destructive-foreground: #FFFFFF;
+    --border: #E5E5E5;
+    --input: #FFFFFF;
+    --ring: #6B6B6B;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    background-color: var(--background-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .glassmorphism {
+    @apply backdrop-blur-xl bg-white/5 border border-white/10;
+  }
+
+  /* App chrome hide (calendar expanded) */
+  html[data-chrome-hidden='true'] .app-sidebar,
+  html[data-chrome-hidden='true'] .app-header,
+  html[data-chrome-hidden='true'] .app-mobile-nav {
+    display: none !important;
+  }
+  html[data-chrome-hidden='true'] .app-content-main {
+    /* Keep a bit of edge padding while expanded */
+    padding: 12px !important;
+  }
+  html[data-chrome-hidden='true'] .app-content-col {
+    margin-left: 0 !important;
+  }
+  
+  .gradient-border {
+    @apply relative;
+    background-clip: padding-box;
+  }
+  
+  .gradient-border::before {
+    @apply absolute inset-0 rounded-xl;
+    background: linear-gradient(135deg, #B0A695 0%, #776B5D 100%);
+    content: '';
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    padding: 1px;
+  }
+  
+  /* Style date/time input picker icons for dark theme */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+  }
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+  }
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+  }
+  
+  /* Calendar container responsive heights */
+  .calendar-container {
+    @apply h-full;
+  }
+  
+  /* Calendar today indicator styling - more subtle */
+  .calendar-day.is-today {
+    position: relative;
+    border: 2px solid rgba(59, 130, 246, 0.3);
+  }
+  
+  /* Today's date number */
+  .calendar-day.is-today .date-number {
+    position: relative;
+    font-weight: 600;
+    color: rgb(59, 130, 246);
+  }
+  
+  
+  /* Smooth transitions for week changes */
+  .calendar-transition {
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+  }
+  
+  .calendar-transition.transitioning {
+    opacity: 0.8;
+    transform: translateY(-2px);
+  }
+  
+  /* Container query support for calendar */
+  @supports (container-type: inline-size) {
+    .calendar-day {
+      container-type: inline-size;
+    }
+  }
+  
+  /* Event display modes based on container size */
+  .event-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin: 1px;
+  }
+  
+  /* Progressive event display based on available space */
+  .event-container[data-event-count="0"] {
+    display: none;
+  }
+  
+  /* Calendar height-responsive styles */
+  /* Normal screens - show all events */
+  @media (min-height: 800px) {
+    .calendar-day {
+      padding: 0.5rem;
+    }
+  }
+  
+  /* Medium height - show up to 3 events */
+  @media (max-height: 800px) {
+    .calendar-day {
+      padding: 0.25rem;
+    }
+    
+    .calendar-day .overflow-hidden > div:nth-child(n+4) {
+      display: none;
+    }
+  }
+  
+  /* Small height - show up to 2 events */
+  @media (max-height: 600px) {
+    .calendar-day {
+      padding: 2px !important;
+    }
+    
+    .date-number {
+      font-size: 0.6rem !important;
+    }
+    
+    .calendar-day .overflow-hidden > div:nth-child(n+3) {
+      display: none;
+    }
+  }
+  
+  /* Very small height - show only 1 event or dots */
+  @media (max-height: 400px) {
+    .calendar-day {
+      padding: 1px !important;
+    }
+    
+    .date-number {
+      font-size: 0.5rem !important;
+    }
+    
+    .calendar-day .overflow-hidden > div:nth-child(n+2) {
+      display: none;
+    }
+    
+    /* Hide the +N more text */
+    .calendar-day .text-gray-400 {
+      display: none;
+    }
+  }
+}
+
+/* Time selector fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-in;
+}
