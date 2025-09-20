@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     let query = supabase
       .from('documents')
-      .select('id,file_name,file_url,uploaded_by,related_to,assigned_to,source_page,source_id');
+      .select('id,file_name,file_url,file_type,uploaded_by,related_to,assigned_to,source_page,source_id');
 
     if (documentId) {
       query = query.eq('id', documentId).limit(1);
@@ -99,6 +99,15 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ error: 'Unable to resolve document file path' }, { status: 400 });
     }
+
+    logger.info(`${requestLabel} resolved metadata`, {
+      userId: user.id,
+      documentId: document.id,
+      fileType: document.file_type,
+      fileName: document.file_name,
+      fileUrl: document.file_url,
+      resolvedFilePath,
+    });
 
     const keyId = process.env.BACKBLAZE_KEY_ID;
     const applicationKey = process.env.BACKBLAZE_APPLICATION_KEY;
