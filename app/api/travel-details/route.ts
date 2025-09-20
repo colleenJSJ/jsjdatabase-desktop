@@ -29,16 +29,18 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    let query = supabase
+    let baseQuery = supabase
       .from('travel_details')
-      .select('*');
+      .select('*')
+      .order('travel_date', { ascending: true })
+      .order('departure_time', { ascending: true });
 
     if (tripId && tripId !== 'all') {
-      query = query.eq('trip_id', tripId);
+      baseQuery = baseQuery.eq('trip_id', tripId);
     }
 
-    query = await applyPersonFilter({
-      query,
+    let query = await applyPersonFilter({
+      query: baseQuery,
       selectedPerson: selectedParam,
       userId: user.id,
       module: 'travel_details',
@@ -46,9 +48,12 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    const { data: details, error } = await query
-      .order('travel_date', { ascending: true })
-      .order('departure_time', { ascending: true });
+    if (!query || typeof (query as any)?.order !== 'function') {
+      console.warn('[Travel Details API] Filtered query lost builder methods. Falling back to base query.');
+      query = baseQuery;
+    }
+
+    const { data: details, error } = await query;
 
     if (error) {
       return NextResponse.json(
