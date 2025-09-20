@@ -79,8 +79,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ details: enhancedDetails });
   } catch (error) {
     console.error('[Travel Details API] Error handling request:', error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: message },
       { status: 500 }
     );
   }
