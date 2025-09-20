@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Calendar, MapPin, Users, BookOpen, Edit2, Trash2, GraduationCap, Mail } from 'lucide-react';
+import { X, Calendar, MapPin, Users, BookOpen, GraduationCap, Mail } from 'lucide-react';
 import { useUser } from '@/contexts/user-context';
 import { usePreferences } from '@/contexts/preferences-context';
 import { toInstantFromNaive, formatInstantInTimeZone } from '@/lib/utils/date-utils';
@@ -30,7 +29,6 @@ export function ViewEventModal({
 }: ViewEventModalProps) {
   const { user } = useUser();
   const { preferences } = usePreferences();
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!isOpen || !event) return null;
 
@@ -51,17 +49,6 @@ export function ViewEventModal({
       case 'Test': return 'bg-red-600/20 text-red-400';
       case 'Deadline': return 'bg-yellow-600/20 text-yellow-400';
       default: return 'bg-gray-600/20 text-gray-400';
-    }
-  };
-
-  const handleDelete = () => {
-    if (showDeleteConfirm) {
-      onDelete();
-      onClose();
-      setShowDeleteConfirm(false);
-    } else {
-      setShowDeleteConfirm(true);
-      setTimeout(() => setShowDeleteConfirm(false), 3000);
     }
   };
 
@@ -188,19 +175,18 @@ export function ViewEventModal({
                 }}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-button-create text-white text-sm font-medium hover:bg-button-create/90 transition-colors"
               >
-                <Edit2 className="h-4 w-4" />
                 Edit Event
               </button>
               <button
-                onClick={handleDelete}
-                className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  showDeleteConfirm
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-background-primary border border-gray-600/40 text-text-primary hover:bg-background-primary/70'
-                }`}
+                onClick={() => {
+                  if (confirm('Delete this event?')) {
+                    onDelete();
+                    onClose();
+                  }
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-urgent text-white text-sm font-medium hover:bg-urgent/90 transition-colors"
               >
-                <Trash2 className="h-4 w-4" />
-                {showDeleteConfirm ? 'Confirm Delete' : 'Delete'}
+                Delete Event
               </button>
             </div>
           ) : (

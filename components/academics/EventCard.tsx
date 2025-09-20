@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { usePreferences } from '@/contexts/preferences-context';
 import { toInstantFromNaive, formatInstantInTimeZone } from '@/lib/utils/date-utils';
-import { Edit2, Trash2, Calendar, MapPin } from 'lucide-react';
+import { Edit2, Trash2, Calendar } from 'lucide-react';
 
 interface EventCardProps {
   event: any;
@@ -104,62 +103,74 @@ export function EventCard({
 }: EventCardProps) {
   const { preferences } = usePreferences();
   const eventDate = event.event_date ? toInstantFromNaive(event.event_date, preferences.timezone) : null;
+  const summary = generateEventSummary(event, children);
 
   return (
-    <div 
-      className="bg-background-secondary border border-gray-600/30 rounded-xl p-4 cursor-pointer hover:border-gray-500 transition-colors"
+    <div
+      className="bg-background-secondary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 cursor-pointer transition-colors"
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
     >
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 flex-1">
-          <Calendar className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
-          <div className="flex-1">
-            {/* Simple Title with Date/Time */}
-            <div className="flex items-start justify-between mb-2">
-              <h3 className="text-sm font-medium text-text-primary">
-                {generateEventTitle(event)}
-              </h3>
+          <div className="text-text-muted mt-0.5">
+            <Calendar className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-medium text-text-primary truncate">
+                  {generateEventTitle(event)}
+                </h3>
+                {summary && (
+                  <p className="text-xs text-text-muted mt-1 truncate">
+                    {summary}
+                  </p>
+                )}
+              </div>
               {eventDate && (
-                <span className="text-xs text-text-muted whitespace-nowrap ml-2">
+                <span className="text-xs text-text-muted whitespace-nowrap">
                   {formatInstantInTimeZone(eventDate, preferences.timezone, { month: 'short', day: 'numeric' })}
-                  {(() => { const t = formatInstantInTimeZone(eventDate, preferences.timezone, { hour: 'numeric', minute: '2-digit', hour12: true }); return /12:00 AM/.test(t) ? '' : ` at ${t.toLowerCase()}`; })()}
+                  {(() => {
+                    const t = formatInstantInTimeZone(eventDate, preferences.timezone, { hour: 'numeric', minute: '2-digit', hour12: true });
+                    return /12:00 AM/.test(t) ? '' : ` • ${t.toLowerCase()}`;
+                  })()}
                 </span>
               )}
             </div>
-            
-            {/* Natural Language Summary */}
-            <p className="text-sm text-text-muted">
-              {generateEventSummary(event, children)}
-            </p>
-            
-            {/* Additional Notes */}
             {event.description && (
-              <p className="text-xs text-text-muted/70 mt-1">
+              <p className="text-xs text-text-muted/70 mt-2 line-clamp-2">
                 {event.description}
               </p>
             )}
           </div>
         </div>
-        {/* Admin Controls */}
         {isAdmin && (
-          <div className="flex items-center gap-1 ml-3">
-            <button 
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit();
               }}
               className="p-1.5 text-text-muted hover:text-text-primary transition-colors"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="h-4 w-4" />
             </button>
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete();
               }}
-              className="p-1.5 text-text-muted hover:text-red-500 transition-colors"
+              className="p-1.5 text-text-muted hover:text-urgent transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         )}

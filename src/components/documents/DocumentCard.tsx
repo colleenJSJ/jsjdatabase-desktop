@@ -61,9 +61,9 @@ export function DocumentCard({
   }, [document.assigned_to, document.related_to, familyMemberMap]);
 
   return (
-    <div className="bg-background-secondary border border-gray-600/30 rounded-lg p-4">
+    <div className="bg-background-secondary border border-gray-600/30 hover:border-gray-500 rounded-lg p-4 transition-colors h-full flex flex-col">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3 flex-1">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
           <div className="text-text-muted mt-0.5">
             {getFileIcon()}
           </div>
@@ -101,7 +101,7 @@ export function DocumentCard({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 self-start">
           {onCopy && (
             <button
               onClick={() => onCopy(document)}
@@ -134,7 +134,7 @@ export function DocumentCard({
       {onOpen && (
         <button
           onClick={() => onOpen(document)}
-          className="mt-3 text-xs text-primary-400 hover:text-primary-300 transition-colors"
+          className="mt-3 inline-flex items-center gap-2 text-xs text-primary-400 hover:text-primary-300 transition-colors"
         >
           Open document
         </button>
