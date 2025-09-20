@@ -137,7 +137,14 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = authResponse.data.downloadUrl;
     const authToken = downloadAuth.data.authorizationToken;
-    const signedUrl = `${baseUrl}/file/${bucketName}/${resolvedFilePath}?Authorization=${authToken}`;
+    const encodedPath = resolvedFilePath
+      .split('/')
+      .map(segment => encodeURIComponent(segment))
+      .join('/');
+
+    const signedUrlUrl = new URL(`${baseUrl}/file/${bucketName}/${encodedPath}`);
+    signedUrlUrl.searchParams.set('Authorization', authToken);
+    const signedUrl = signedUrlUrl.toString();
 
     logger.info(`${requestLabel} granted`, {
       userId: user.id,

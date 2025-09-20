@@ -291,8 +291,16 @@ export default function DocumentsPage() {
           if (response.success) {
             const { signedUrl } = (response.data as any) || {};
             if (signedUrl && isMounted) {
-              const urlWithBuster = `${signedUrl}${signedUrl.includes('?') ? '&' : '?'}preview_ts=${Date.now()}`;
-              setPreviewUrls(prev => ({ ...prev, [doc.id]: urlWithBuster }));
+              try {
+                const url = new URL(signedUrl);
+                url.searchParams.set('preview_ts', `${Date.now()}`);
+                const withBuster = url.toString();
+                setPreviewUrls(prev => ({ ...prev, [doc.id]: withBuster }));
+              } catch (urlError) {
+                console.error('[Documents] Invalid preview URL', { id: doc.id, signedUrl, urlError });
+                setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
+                continue;
+              }
               setPreviewErrors(prev => {
                 if (!prev[doc.id]) return prev;
                 const next = { ...prev };
@@ -330,6 +338,7 @@ export default function DocumentsPage() {
 
     return () => {
       isMounted = false;
+      previewRequestsInFlight.current.clear();
     };
   }, [filteredDocuments, previewUrls, previewErrors]);
 
