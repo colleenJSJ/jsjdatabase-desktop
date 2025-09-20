@@ -4,8 +4,9 @@ import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
 import { deriveFilePath } from '@/app/api/documents/_helpers';
 import { logger } from '@/lib/utils/logger';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function GET(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const id = pathname.split('/').filter(Boolean).pop();
   const requestLabel = '[Documents] Preview proxy';
 
   if (!id) {
