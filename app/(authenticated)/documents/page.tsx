@@ -273,8 +273,6 @@ export default function DocumentsPage() {
 
       if (pendingDocs.length === 0) return;
 
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-
       for (const doc of pendingDocs) {
         previewRequestsInFlight.current.add(doc.id);
         if (isMounted) {
@@ -282,38 +280,15 @@ export default function DocumentsPage() {
         }
 
         try {
-          const response = await ApiClient.post('/api/documents/get-signed-url', {
-            documentId: doc.id,
-            fileName: doc.file_name,
-            fileUrl: doc.file_url,
-          });
-
-          if (response.success) {
-            const { signedUrl } = (response.data as any) || {};
-            if (signedUrl && isMounted) {
-              try {
-                const url = new URL(signedUrl);
-                url.searchParams.set('preview_ts', `${Date.now()}`);
-                const withBuster = url.toString();
-                setPreviewUrls(prev => ({ ...prev, [doc.id]: withBuster }));
-              } catch (urlError) {
-                console.error('[Documents] Invalid preview URL', { id: doc.id, signedUrl, urlError });
-                setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
-                continue;
-              }
-              setPreviewErrors(prev => {
-                if (!prev[doc.id]) return prev;
-                const next = { ...prev };
-                delete next[doc.id];
-                return next;
-              });
-            } else if (isMounted) {
-              console.warn('[Documents] Preview signed URL missing response', { id: doc.id });
-              setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
-            }
-          } else if (isMounted) {
-            console.warn('[Documents] Preview fetch failed', { id: doc.id, error: response.error });
-            setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
+          const previewUrl = `/api/documents/preview/${doc.id}?ts=${Date.now()}`;
+          if (isMounted) {
+            setPreviewUrls(prev => ({ ...prev, [doc.id]: previewUrl }));
+            setPreviewErrors(prev => {
+              if (!prev[doc.id]) return prev;
+              const next = { ...prev };
+              delete next[doc.id];
+              return next;
+            });
           }
         } catch (error) {
           console.error('[Documents] Preview fetch error', { id: doc.id, error });
@@ -835,8 +810,6 @@ export default function DocumentsPage() {
                               return next;
                             });
                           }}
-                          referrerPolicy="no-referrer"
-                          crossOrigin="anonymous"
                         />
                       </div>
                     ) : previewPending || previewIsLoading ? (
