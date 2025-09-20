@@ -102,7 +102,6 @@ export default function DocumentsPage() {
   const [familyMemberMap, setFamilyMemberMap] = useState<Record<string, string>>({ shared: 'Shared/Family' });
   const [copyingDocId, setCopyingDocId] = useState<string | null>(null);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
-  const previewObjectUrls = useRef<Record<string, string>>({});
   const [previewErrors, setPreviewErrors] = useState<Record<string, boolean>>({});
   const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
   const previewRequestsInFlight = useRef<Set<string>>(new Set());
@@ -292,54 +291,14 @@ export default function DocumentsPage() {
           if (response.success) {
             const { signedUrl } = (response.data as any) || {};
             if (signedUrl && isMounted) {
-              try {
-                const fetchResponse = await fetch(signedUrl, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
-                if (!fetchResponse.ok) {
-                  throw new Error(`HTTP ${fetchResponse.status}`);
-                }
-                const contentType = fetchResponse.headers.get('content-type') || '';
-                const blob = await fetchResponse.blob();
-                const inferredType =
-                  contentType.startsWith('image/')
-                    ? contentType
-                    : (doc.file_type?.startsWith('image/') ? doc.file_type :
-                      (() => {
-                        const ext = (doc.file_name || '').split('.').pop()?.toLowerCase();
-                        if (!ext) return '';
-                        if (['jpg', 'jpeg'].includes(ext)) return 'image/jpeg';
-                        if (ext === 'png') return 'image/png';
-                        if (ext === 'gif') return 'image/gif';
-                        if (ext === 'bmp') return 'image/bmp';
-                        if (ext === 'webp') return 'image/webp';
-                        return '';
-                      })());
-
-                const typedBlob = inferredType ? blob.slice(0, blob.size, inferredType) : blob;
-                const objectUrl = URL.createObjectURL(typedBlob);
-
-                if (previewObjectUrls.current[doc.id]) {
-                  URL.revokeObjectURL(previewObjectUrls.current[doc.id]);
-                }
-                previewObjectUrls.current[doc.id] = objectUrl;
-
-                if (isMounted) {
-                  console.debug('[Documents] Preview blob prepared', { id: doc.id, contentType, inferredType });
-                  setPreviewUrls(prev => ({ ...prev, [doc.id]: objectUrl }));
-                  setPreviewErrors(prev => {
-                    if (!prev[doc.id]) return prev;
-                    const next = { ...prev };
-                    delete next[doc.id];
-                    return next;
-                  });
-                } else {
-                  URL.revokeObjectURL(objectUrl);
-                }
-              } catch (blobError) {
-                console.error('[Documents] Preview blob fetch error', { id: doc.id, error: blobError });
-                if (isMounted) {
-                  setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
-                }
-              }
+              const urlWithBuster = `${signedUrl}${signedUrl.includes('?') ? '&' : '?'}preview_ts=${Date.now()}`;
+              setPreviewUrls(prev => ({ ...prev, [doc.id]: urlWithBuster }));
+              setPreviewErrors(prev => {
+                if (!prev[doc.id]) return prev;
+                const next = { ...prev };
+                delete next[doc.id];
+                return next;
+              });
             } else if (isMounted) {
               console.warn('[Documents] Preview signed URL missing response', { id: doc.id });
               setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
@@ -371,10 +330,6 @@ export default function DocumentsPage() {
 
     return () => {
       isMounted = false;
-      Object.values(previewObjectUrls.current).forEach(url => {
-        try { URL.revokeObjectURL(url); } catch {}
-      });
-      previewObjectUrls.current = {};
     };
   }, [filteredDocuments, previewUrls, previewErrors]);
 
@@ -870,11 +825,9 @@ export default function DocumentsPage() {
                               delete next[doc.id];
                               return next;
                             });
-                            if (previewObjectUrls.current[doc.id]) {
-                              try { URL.revokeObjectURL(previewObjectUrls.current[doc.id]); } catch {}
-                              delete previewObjectUrls.current[doc.id];
-                            }
                           }}
+                          referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
                         />
                       </div>
                     ) : previewPending || previewIsLoading ? (
