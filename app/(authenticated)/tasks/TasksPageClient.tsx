@@ -125,10 +125,7 @@ export default function TasksPageClient() {
     }
     // Status filter
     if (statusFilter === 'active') {
-      t = t.filter(x => {
-        const isPending = Boolean((x as any).is_pending || x.status === 'pending');
-        return !isPending && x.status !== 'completed' && x.status !== 'archived' && x.status !== 'draft';
-      });
+      t = t.filter(x => x.status !== 'completed' && x.status !== 'archived' && x.status !== 'draft');
     } else if (statusFilter === 'pending') {
       t = t.filter(x => Boolean((x as any).is_pending || x.status === 'pending'));
     } else if (statusFilter === 'completed') {
@@ -151,10 +148,11 @@ export default function TasksPageClient() {
         counts.completed += 1;
       } else if (task.status === 'draft') {
         counts.drafts += 1;
-      } else if (isPending) {
-        counts.pending += 1;
       } else if (task.status !== 'archived') {
         counts.active += 1;
+        if (isPending) {
+          counts.pending += 1;
+        }
       }
     });
     return counts;

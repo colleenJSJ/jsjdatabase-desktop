@@ -15,6 +15,8 @@ import { getCSRFHeaders } from '@/lib/security/csrf-client';
 import ApiClient from '@/lib/api/api-client';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { usePersonFilter } from '@/contexts/person-filter-context';
+import { useUser } from '@/contexts/user-context';
+import { DocumentCard, DocumentItem } from '@/components/documents/DocumentCard';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -46,6 +48,8 @@ export default function TravelPageClient() {
   const [memberPrefs, setMemberPrefs] = useState<Record<string, { seat?: string; meal?: string }>>({});
   const { calendars: googleCalendars } = useGoogleCalendars();
   const { selectedPersonId, setSelectedPersonId } = usePersonFilter();
+  const { user } = useUser();
+  const [copyingDocId, setCopyingDocId] = useState<string | null>(null);
 
   const assignedTo = selectedPersonId ?? 'all';
   const selectedPersonParam = selectedPersonId && selectedPersonId !== 'all' ? selectedPersonId : null;
@@ -101,6 +105,74 @@ export default function TravelPageClient() {
       label: (member.name || 'Person').split(' ')[0] || 'Person',
     }));
   }, [data.family_members]);
+
+  const familyMemberMap = useMemo(() => {
+    const map: Record<string, string> = { shared: 'Shared/Family' };
+    (data.family_members || []).forEach((member: any) => {
+      const name = member.display_name || member.name || member.email || 'Member';
+      map[member.id] = name;
+    });
+    return map;
+  }, [data.family_members]);
+
+  const getSignedDocumentUrl = async (doc: DocumentItem) => {
+    const res = await fetch('/api/documents/get-signed-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getCSRFHeaders() },
+      body: JSON.stringify({
+        documentId: doc.id,
+        fileName: doc.file_name,
+        fileUrl: doc.file_url,
+      }),
+    });
+    if (!res.ok) return null;
+    const { signedUrl } = await res.json();
+    return signedUrl as string;
+  };
+
+  const handleDocumentCopy = async (doc: DocumentItem) => {
+    try {
+      const signedUrl = await getSignedDocumentUrl(doc);
+      if (!signedUrl) return;
+      await navigator.clipboard.writeText(signedUrl);
+      setCopyingDocId(doc.id);
+      setTimeout(() => setCopyingDocId(null), 2000);
+    } catch {}
+  };
+
+  const handleDocumentDownload = async (doc: DocumentItem) => {
+    try {
+      const signedUrl = await getSignedDocumentUrl(doc);
+      if (!signedUrl) return;
+      const link = document.createElement('a');
+      link.href = signedUrl;
+      link.download = doc.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch {}
+  };
+
+  const handleDocumentOpen = async (doc: DocumentItem) => {
+    try {
+      const signedUrl = await getSignedDocumentUrl(doc);
+      if (!signedUrl) return;
+      window.open(signedUrl, '_blank', 'noopener,noreferrer');
+    } catch {}
+  };
+
+  const handleDocumentDelete = async (doc: DocumentItem) => {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+    try {
+      const response = await fetch(`/api/documents/${doc.id}`, {
+        method: 'DELETE',
+        headers: getCSRFHeaders(),
+      });
+      if (response.ok) {
+        await refreshData();
+      }
+    } catch {}
+  };
 
   const refreshData = async () => {
     try {
@@ -548,32 +620,19 @@ export default function TravelPageClient() {
                   </div>
                   <button onClick={() => setShowUploadDoc(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Upload Document</button>
                 </div>
-                <div className="divide-y divide-gray-700/50">
-                  {filtered.documents.map((doc: any) => (
-                    <button
+                <div className="space-y-3">
+                  {filtered.documents.map((doc: DocumentItem) => (
+                    <DocumentCard
                       key={doc.id}
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch('/api/documents/get-signed-url', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...getCSRFHeaders() },
-                            body: JSON.stringify({
-                              documentId: doc.id,
-                              fileName: doc.file_name,
-                              fileUrl: doc.file_url,
-                            })
-                          });
-                          if (!res.ok) return;
-                          const { signedUrl } = await res.json();
-                          window.open(signedUrl, '_blank');
-                        } catch {}
-                      }}
-                      className="w-full text-left py-2 text-sm text-text-muted flex items-center justify-between hover:bg-gray-800/40 px-2 rounded"
-                    >
-                      <span className="truncate underline decoration-dotted">{doc.title || doc.file_name}</span>
-                      <span className="text-xs">{new Date(doc.created_at).toLocaleDateString()}</span>
-                    </button>
+                      document={doc}
+                      familyMemberMap={familyMemberMap}
+                      isCopying={copyingDocId === doc.id}
+                      onCopy={handleDocumentCopy}
+                      onDownload={handleDocumentDownload}
+                      onOpen={handleDocumentOpen}
+                      onDelete={user?.role === 'admin' ? handleDocumentDelete : undefined}
+                      canDelete={user?.role === 'admin'}
+                    />
                   ))}
                   {(filtered.documents.length === 0) && (
                     <div className="py-6 text-center text-text-muted">No documents</div>
