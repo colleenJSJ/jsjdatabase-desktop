@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const filteredDetails = (details || []).filter(detail =>
+    const filteredDetails = (details || []).filter((detail: any) =>
       shouldIncludeTravelRecord({
         record: detail,
         context: visibilityContext,
