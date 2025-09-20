@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@/contexts/user-context';
 import { usePersonFilter } from '@/contexts/person-filter-context';
 import { PersonSelector } from '@/components/ui/person-selector';
@@ -39,6 +39,8 @@ const sortOptions = [
   { id: 'expiring', name: 'Expiring Soon' }
 ];
 
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'];
+
 const getFileIcon = (fileType: string | null | undefined) => {
   if (!fileType) return <Paperclip className="h-5 w-5" />;
   
@@ -48,6 +50,13 @@ const getFileIcon = (fileType: string | null | undefined) => {
   if (type.includes('xls')) return <Sheet className="h-5 w-5" />;
   if (type.includes('jpg') || type.includes('jpeg') || type.includes('png')) return <Image className="h-5 w-5" />;
   return <Paperclip className="h-5 w-5" />;
+};
+
+const isImageDocument = (doc: Document) => {
+  const type = doc.file_type?.toLowerCase() || '';
+  if (type.startsWith('image/')) return true;
+  const fileName = (doc.file_name || doc.title || '').toLowerCase();
+  return IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext));
 };
 
 // Function to clean document title by removing file extension
@@ -91,6 +100,10 @@ export default function DocumentsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [familyMemberMap, setFamilyMemberMap] = useState<Record<string, string>>({ shared: 'Shared/Family' });
   const [copyingDocId, setCopyingDocId] = useState<string | null>(null);
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const [previewErrors, setPreviewErrors] = useState<Record<string, boolean>>({});
+  const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
+  const previewRequestsInFlight = useRef<Set<string>>(new Set());
 
   // Stats
   const [stats, setStats] = useState({
@@ -236,6 +249,68 @@ export default function DocumentsPage() {
 
     setFilteredDocuments(filtered);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadPreviews = async () => {
+      const imageDocs = filteredDocuments.filter(isImageDocument);
+      if (imageDocs.length === 0) return;
+
+      const pendingDocs = imageDocs.filter(doc => {
+        return !previewUrls[doc.id] && !previewErrors[doc.id] && !previewRequestsInFlight.current.has(doc.id);
+      });
+
+      if (pendingDocs.length === 0) return;
+
+      const ApiClient = (await import('@/lib/api/api-client')).default;
+
+      for (const doc of pendingDocs) {
+        previewRequestsInFlight.current.add(doc.id);
+        if (isMounted) {
+          setPreviewLoading(prev => ({ ...prev, [doc.id]: true }));
+        }
+
+        try {
+          const response = await ApiClient.post('/api/documents/get-signed-url', {
+            documentId: doc.id,
+            fileName: doc.file_name,
+            fileUrl: doc.file_url,
+          });
+
+          if (response.success) {
+            const { signedUrl } = (response.data as any) || {};
+            if (signedUrl && isMounted) {
+              setPreviewUrls(prev => ({ ...prev, [doc.id]: signedUrl }));
+            } else if (isMounted) {
+              setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
+            }
+          } else if (isMounted) {
+            setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
+          }
+        } catch (error) {
+          console.error('Failed to load preview for document', doc.id, error);
+          if (isMounted) {
+            setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
+          }
+        } finally {
+          previewRequestsInFlight.current.delete(doc.id);
+          if (isMounted) {
+            setPreviewLoading(prev => {
+              const next = { ...prev };
+              delete next[doc.id];
+              return next;
+            });
+          }
+        }
+      }
+    };
+
+    loadPreviews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [filteredDocuments, previewUrls, previewErrors]);
 
   const handleStarToggle = async (doc: Document) => {
     try {
@@ -640,11 +715,17 @@ export default function DocumentsPage() {
             const assignedSummary = relatedNames.length > 0
               ? `${relatedNames.slice(0, 2).join(', ')}${relatedNames.length > 2 ? ` +${relatedNames.length - 2}` : ''}`
               : '';
+            const isImageDoc = isImageDocument(doc);
+            const previewUrl = previewUrls[doc.id];
+            const previewError = previewErrors[doc.id];
+            const previewIsLoading = !!previewLoading[doc.id];
+            const showPreview = isImageDoc && !!previewUrl;
+            const previewPending = isImageDoc && !previewUrl && !previewError;
 
             return (
               <div
                 key={doc.id}
-                className="relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[190px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38]"
+                className="relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[280px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38]"
               >
                 <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 z-10" />
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -698,8 +779,22 @@ export default function DocumentsPage() {
                 </button>
 
                 <div className="relative z-10 flex w-full flex-1 flex-col items-center gap-2 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gray-700/40 text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60">
-                    {getFileIcon(doc.file_type)}
+                  <div className="w-full">
+                    {showPreview ? (
+                      <div className="h-36 w-full overflow-hidden rounded-lg border border-gray-600/40 bg-black/20">
+                        <img
+                          src={previewUrl}
+                          alt={`${cleanDocumentTitle(doc.title)} preview`}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : previewPending || previewIsLoading ? (
+                      <div className="h-36 w-full overflow-hidden rounded-lg border border-gray-600/40 bg-gray-800/60 animate-pulse" />
+                    ) : (
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-gray-700/40 text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60">
+                        {getFileIcon(doc.file_type)}
+                      </div>
+                    )}
                   </div>
                   <p
                     className="text-sm font-semibold text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60"
