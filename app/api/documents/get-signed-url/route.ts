@@ -9,12 +9,21 @@ function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | nul
     if (afterFile) {
       const parts = afterFile.split('/');
       if (parts.length > 1) {
-        return parts.slice(1).join('/');
+        const rawPath = parts.slice(1).join('/');
+        try {
+          return decodeURIComponent(rawPath);
+        } catch {
+          return rawPath;
+        }
       }
     }
   }
   if (fallbackFileName) {
-    return fallbackFileName;
+    try {
+      return decodeURIComponent(fallbackFileName);
+    } catch {
+      return fallbackFileName;
+    }
   }
   return null;
 }
