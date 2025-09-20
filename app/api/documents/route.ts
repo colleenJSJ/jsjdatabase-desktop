@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         try { qq = qq.eq('is_archived', true); } catch {}
       }
       if (category) qq = qq.eq('category', category.toLowerCase());
-      if (sourcePage) qq = qq.eq('source_page', sourcePage);
+      if (sourcePage) qq = qq.ilike('source_page', sourcePage);
       qq = qq.order('created_at', { ascending: false });
       if (limit) qq = qq.limit(parseInt(limit));
       return qq;

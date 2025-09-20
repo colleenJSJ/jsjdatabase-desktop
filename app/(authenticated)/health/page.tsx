@@ -681,7 +681,7 @@ export default function HealthPage() {
           { k: 'medications', label: 'Medications' },
           { k: 'doctors', label: 'Doctors' },
           { k: 'portals', label: 'Portals' },
-          { k: 'records', label: 'Medical Records' },
+          { k: 'records', label: 'Documents' },
         ] as const).map(t => (
           <button
             key={t.k}
@@ -910,7 +910,7 @@ export default function HealthPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-text-primary">
-              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Medical Records
+              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Documents
             </h2>
             {user?.role === 'admin' && (
               <>
@@ -919,7 +919,7 @@ export default function HealthPage() {
                   className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
                 >
                   <Upload className="h-4 w-4" />
-                  Upload Medical Record
+                  Upload Document
                 </button>
                 {showDocumentUploadModal && (
                   <DocumentUploadModal
@@ -928,7 +928,7 @@ export default function HealthPage() {
                       setShowDocumentUploadModal(false);
                       setRefreshDocuments(prev => prev + 1);
                     }}
-                    sourcePage="health"
+                    sourcePage="Health"
                     defaultCategory="Medical"
                     initialRelatedTo={selectedPerson !== 'all' ? [selectedPerson] : []}
                   />
