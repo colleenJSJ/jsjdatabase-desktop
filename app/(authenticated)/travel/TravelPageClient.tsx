@@ -169,7 +169,7 @@ export default function TravelPageClient() {
     return map;
   }, [data.family_members]);
 
-  const getSignedDocumentUrl = async (doc: DocumentItem) => {
+  const getSignedDocumentUrl = async (doc: TravelDocument) => {
     const res = await fetch('/api/documents/get-signed-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getCSRFHeaders() },
