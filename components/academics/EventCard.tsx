@@ -2,7 +2,7 @@
 
 import { usePreferences } from '@/contexts/preferences-context';
 import { toInstantFromNaive, formatInstantInTimeZone } from '@/lib/utils/date-utils';
-import { Edit2, Trash2, Calendar } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Users, MapPin } from 'lucide-react';
 
 interface EventCardProps {
   event: any;
@@ -104,10 +104,17 @@ export function EventCard({
   const { preferences } = usePreferences();
   const eventDate = event.event_date ? toInstantFromNaive(event.event_date, preferences.timezone) : null;
   const summary = generateEventSummary(event, children);
+  const attendeeNames = event.attendees?.map((id: string) => {
+    const child = children.find(c => c.id === id);
+    return child ? getFirstName(child.name) : null;
+  }).filter(Boolean) as string[];
+
+  const locationText = event.location ? String(event.location) : '';
+  const eventTypeLabel = event.event_type ? String(event.event_type) : '';
 
   return (
     <div
-      className="bg-background-secondary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 cursor-pointer transition-colors"
+      className="bg-background-primary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 cursor-pointer transition-colors"
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -124,55 +131,75 @@ export function EventCard({
             <Calendar className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-medium text-text-primary truncate">
-                  {generateEventTitle(event)}
-                </h3>
-                {summary && (
-                  <p className="text-xs text-text-muted mt-1 truncate">
-                    {summary}
-                  </p>
-                )}
-              </div>
-              {eventDate && (
-                <span className="text-xs text-text-muted whitespace-nowrap">
-                  {formatInstantInTimeZone(eventDate, preferences.timezone, { month: 'short', day: 'numeric' })}
-                  {(() => {
-                    const t = formatInstantInTimeZone(eventDate, preferences.timezone, { hour: 'numeric', minute: '2-digit', hour12: true });
-                    return /12:00 AM/.test(t) ? '' : ` • ${t.toLowerCase()}`;
-                  })()}
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-text-primary truncate">
+                {generateEventTitle(event)}
+              </h3>
+              {eventTypeLabel && (
+                <span className="text-[11px] uppercase tracking-wide text-[#AB9BBF]">
+                  {eventTypeLabel}
                 </span>
               )}
             </div>
+            {summary && (
+              <p className="mt-2 text-sm text-text-muted line-clamp-2">
+                {summary}
+              </p>
+            )}
             {event.description && (
-              <p className="text-xs text-text-muted/70 mt-2 line-clamp-2">
+              <p className="mt-2 text-xs text-text-muted/70 line-clamp-2">
                 {event.description}
               </p>
             )}
           </div>
         </div>
-        {isAdmin && (
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit();
-              }}
-              className="p-1.5 text-text-muted hover:text-text-primary transition-colors"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="p-1.5 text-text-muted hover:text-urgent transition-colors"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {eventDate && (
+            <span className="text-xs text-text-muted whitespace-nowrap">
+              {formatInstantInTimeZone(eventDate, preferences.timezone, { month: 'short', day: 'numeric' })}
+              {(() => {
+                const t = formatInstantInTimeZone(eventDate, preferences.timezone, { hour: 'numeric', minute: '2-digit', hour12: true });
+                return /12:00 AM/.test(t) ? '' : ` • ${t.toLowerCase()}`;
+              })()}
+            </span>
+          )}
+          {isAdmin && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+                className="p-1.5 text-text-muted hover:text-text-primary transition-colors"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="p-1.5 text-text-muted hover:text-urgent transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
+        {locationText && (
+          <span className="flex items-center gap-1">
+            <MapPin className="h-3 w-3" />
+            {locationText}
+          </span>
+        )}
+        {attendeeNames.length > 0 && (
+          <span className="flex items-center gap-1">
+            <Users className="h-3 w-3" />
+            {attendeeNames.join(', ')}
+          </span>
         )}
       </div>
     </div>

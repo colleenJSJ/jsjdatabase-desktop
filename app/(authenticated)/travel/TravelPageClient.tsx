@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TransportType } from '@/types/travel';
 import dynamic from 'next/dynamic';
 import { SmartUploadButtonV2 } from '@/components/travel/SmartUploadButtonV2';
-import { Plane, Train, Car, Ship, Globe, Pencil, Trash2, Calendar, Clock, MapPin, Users, Ticket, X } from 'lucide-react';
+import { Plane, Train, Car, Ship, Globe, Pencil, Trash2, Calendar, Clock, MapPin, Users, Ticket, X, Copy, CopyCheck, Download, Eye, FileText, FileEdit, Sheet, Image, Paperclip } from 'lucide-react';
 import { TravelSegmentFields } from '@/components/travel/shared/TravelSegmentFields';
 import { TravelersPicker } from '@/components/travel/shared/TravelersPicker';
 import { InvitesCalendarPanel } from '@/components/travel/shared/InvitesCalendarPanel';
@@ -16,9 +16,63 @@ import ApiClient from '@/lib/api/api-client';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { usePersonFilter } from '@/contexts/person-filter-context';
 import { useUser } from '@/contexts/user-context';
-import { DocumentCard, DocumentItem } from '@/components/documents/DocumentCard';
+import { formatBytes, formatDate } from '@/lib/utils';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
+
+type TravelDocument = {
+  id: string;
+  file_name: string;
+  file_url: string;
+  file_size?: number;
+  file_type?: string;
+  category?: string;
+  description?: string;
+  created_at: string;
+  assigned_to?: string[];
+  related_to?: string[];
+  title?: string;
+};
+
+const DOCUMENT_CATEGORY_META: Record<string, { name: string; className: string }> = {
+  legal: { name: 'Legal', className: 'bg-purple-500 text-white' },
+  financial: { name: 'Financial', className: 'bg-green-500 text-white' },
+  medical: { name: 'Medical', className: 'bg-red-500 text-white' },
+  education: { name: 'Education', className: 'bg-blue-500 text-white' },
+  travel: { name: 'Travel', className: 'bg-yellow-500 text-white' },
+  property: { name: 'Property', className: 'bg-indigo-500 text-white' },
+  vehicles: { name: 'Vehicles', className: 'bg-orange-500 text-white' },
+  personal: { name: 'Personal', className: 'bg-pink-500 text-white' },
+  work: { name: 'Work', className: 'bg-cyan-500 text-white' },
+  household: { name: 'Household', className: 'bg-teal-500 text-white' },
+  other: { name: 'Other', className: 'bg-gray-500 text-white' },
+};
+
+const cleanDocumentTitle = (title?: string) => {
+  if (!title) return '';
+  const extensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.txt', '.zip', '.rar'];
+  let clean = title;
+  for (const ext of extensions) {
+    if (clean.toLowerCase().endsWith(ext)) {
+      clean = clean.slice(0, -ext.length);
+      break;
+    }
+  }
+  if (clean.startsWith('Review Contract - ')) {
+    clean = clean.replace('Review Contract - ', '');
+  }
+  return clean;
+};
+
+const getDocumentIcon = (fileType?: string | null) => {
+  if (!fileType) return <Paperclip className="h-5 w-5" />;
+  const type = fileType.toLowerCase();
+  if (type.includes('pdf')) return <FileText className="h-5 w-5" />;
+  if (type.includes('doc')) return <FileEdit className="h-5 w-5" />;
+  if (type.includes('xls')) return <Sheet className="h-5 w-5" />;
+  if (type.includes('jpg') || type.includes('jpeg') || type.includes('png') || type.includes('gif')) return <Image className="h-5 w-5" />;
+  return <Paperclip className="h-5 w-5" />;
+};
 
 export default function TravelPageClient() {
   const [loading, setLoading] = useState(true);
@@ -130,7 +184,7 @@ export default function TravelPageClient() {
     return signedUrl as string;
   };
 
-  const handleDocumentCopy = async (doc: DocumentItem) => {
+  const handleDocumentCopy = async (doc: TravelDocument) => {
     try {
       const signedUrl = await getSignedDocumentUrl(doc);
       if (!signedUrl) return;
@@ -140,7 +194,7 @@ export default function TravelPageClient() {
     } catch {}
   };
 
-  const handleDocumentDownload = async (doc: DocumentItem) => {
+  const handleDocumentDownload = async (doc: TravelDocument) => {
     try {
       const signedUrl = await getSignedDocumentUrl(doc);
       if (!signedUrl) return;
@@ -153,7 +207,7 @@ export default function TravelPageClient() {
     } catch {}
   };
 
-  const handleDocumentOpen = async (doc: DocumentItem) => {
+  const handleDocumentOpen = async (doc: TravelDocument) => {
     try {
       const signedUrl = await getSignedDocumentUrl(doc);
       if (!signedUrl) return;
@@ -161,7 +215,7 @@ export default function TravelPageClient() {
     } catch {}
   };
 
-  const handleDocumentDelete = async (doc: DocumentItem) => {
+  const handleDocumentDelete = async (doc: TravelDocument) => {
     if (!confirm('Are you sure you want to delete this document?')) return;
     try {
       const response = await fetch(`/api/documents/${doc.id}`, {
@@ -623,20 +677,94 @@ export default function TravelPageClient() {
                 {filtered.documents.length === 0 ? (
                   <div className="py-6 text-center text-text-muted">No documents</div>
                 ) : (
-                  <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-                    {filtered.documents.map((doc: DocumentItem) => (
-                      <DocumentCard
-                        key={doc.id}
-                        document={doc}
-                        familyMemberMap={familyMemberMap}
-                        isCopying={copyingDocId === doc.id}
-                        onCopy={handleDocumentCopy}
-                        onDownload={handleDocumentDownload}
-                        onOpen={handleDocumentOpen}
-                        onDelete={user?.role === 'admin' ? handleDocumentDelete : undefined}
-                        canDelete={user?.role === 'admin'}
-                      />
-                    ))}
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
+                    {filtered.documents.map((doc: TravelDocument) => {
+                      const categoryKey = (doc.category || 'other').toString().toLowerCase();
+                      const categoryMeta = DOCUMENT_CATEGORY_META[categoryKey] || { name: doc.category || 'Other', className: 'bg-gray-500 text-white' };
+                      const labels = ((doc.assigned_to && doc.assigned_to.length > 0) ? doc.assigned_to : (doc.related_to && doc.related_to.length > 0 ? doc.related_to : []) || [])
+                        .map(id => familyMemberMap[id] || id)
+                        .filter(Boolean);
+                      const documentTitle = cleanDocumentTitle(doc.title || doc.file_name);
+
+                      return (
+                        <div
+                          key={doc.id}
+                          className="relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[190px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38]"
+                        >
+                          <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 z-10" />
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="invisible flex gap-2 rounded-lg bg-[#262625]/90 p-2 shadow-sm ring-1 ring-gray-700/60 opacity-0 transition duration-200 ease-out group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 z-20">
+                              <button
+                                onClick={() => handleDocumentCopy(doc)}
+                                className={`flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-gray-500 hover:bg-[#262625] pointer-events-auto ${copyingDocId === doc.id ? 'text-green-400' : ''}`}
+                                title="Copy link"
+                                aria-label="Copy document link"
+                              >
+                                {copyingDocId === doc.id ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                              </button>
+                              <button
+                                onClick={() => handleDocumentOpen(doc)}
+                                className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-blue-400/60 hover:text-blue-400 pointer-events-auto"
+                                title="Open document"
+                                aria-label="Open document"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDocumentDownload(doc)}
+                                className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-green-400/60 hover:text-green-400 pointer-events-auto"
+                                title="Download"
+                                aria-label="Download document"
+                              >
+                                <Download className="h-4 w-4" />
+                              </button>
+                              {user?.role === 'admin' && (
+                                <button
+                                  onClick={() => handleDocumentDelete(doc)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-red-400/60 hover:text-red-400 pointer-events-auto"
+                                  title="Delete"
+                                  aria-label="Delete document"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="relative z-10 flex w-full flex-1 flex-col items-center gap-2 text-center">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gray-700/40 text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60">
+                              {getDocumentIcon(doc.file_type)}
+                            </div>
+                            <p
+                              className="text-sm font-semibold text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60"
+                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                              title={documentTitle}
+                            >
+                              {documentTitle}
+                            </p>
+                            <div className="flex items-center gap-1 text-[11px] text-text-muted transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30">
+                              <span>{formatBytes(doc.file_size || 0)}</span>
+                              <span>•</span>
+                              <span>{formatDate(doc.created_at)}</span>
+                            </div>
+                            {labels.length > 0 && (
+                              <span
+                                className="w-full truncate px-1 text-[10px] text-[#C2C0B6] transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30"
+                                title={labels.join(', ')}
+                              >
+                                {labels.join(', ')}
+                              </span>
+                            )}
+                          </div>
+
+                          <span
+                            className={`relative z-10 mt-3 inline-flex items-center rounded-md px-2 py-1 text-[10px] font-medium text-white transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 ${categoryMeta.className}`}
+                          >
+                            {categoryMeta.name}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </section>
