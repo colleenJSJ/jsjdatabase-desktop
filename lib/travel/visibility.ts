@@ -85,9 +85,6 @@ export function shouldIncludeTravelRecord({
   }
 
   const creatorId = record.created_by ? String(record.created_by) : null;
-  if (creatorId && creatorId === context.currentUserId) {
-    return true;
-  }
 
   if (creatorId && context.selectedCreatorUserIds.has(creatorId)) {
     return true;
