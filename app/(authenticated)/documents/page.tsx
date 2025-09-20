@@ -56,7 +56,8 @@ const isImageDocument = (doc: Document) => {
   const type = doc.file_type?.toLowerCase() || '';
   if (type.startsWith('image/')) return true;
   const fileName = (doc.file_name || doc.title || '').toLowerCase();
-  return IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext));
+  const path = (doc.file_url || '').toLowerCase();
+  return IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext) || path.includes(ext));
 };
 
 // Function to clean document title by removing file extension
@@ -786,6 +787,14 @@ export default function DocumentsPage() {
                           src={previewUrl}
                           alt={`${cleanDocumentTitle(doc.title)} preview`}
                           className="h-full w-full object-cover"
+                          onError={() => {
+                            setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
+                            setPreviewUrls(prev => {
+                              const next = { ...prev };
+                              delete next[doc.id];
+                              return next;
+                            });
+                          }}
                         />
                       </div>
                     ) : previewPending || previewIsLoading ? (
