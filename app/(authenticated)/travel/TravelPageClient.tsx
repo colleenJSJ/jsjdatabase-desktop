@@ -620,24 +620,25 @@ export default function TravelPageClient() {
                   </div>
                   <button onClick={() => setShowUploadDoc(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Upload Document</button>
                 </div>
-                <div className="space-y-3">
-                  {filtered.documents.map((doc: DocumentItem) => (
-                    <DocumentCard
-                      key={doc.id}
-                      document={doc}
-                      familyMemberMap={familyMemberMap}
-                      isCopying={copyingDocId === doc.id}
-                      onCopy={handleDocumentCopy}
-                      onDownload={handleDocumentDownload}
-                      onOpen={handleDocumentOpen}
-                      onDelete={user?.role === 'admin' ? handleDocumentDelete : undefined}
-                      canDelete={user?.role === 'admin'}
-                    />
-                  ))}
-                  {(filtered.documents.length === 0) && (
-                    <div className="py-6 text-center text-text-muted">No documents</div>
-                  )}
-                </div>
+                {filtered.documents.length === 0 ? (
+                  <div className="py-6 text-center text-text-muted">No documents</div>
+                ) : (
+                  <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+                    {filtered.documents.map((doc: DocumentItem) => (
+                      <DocumentCard
+                        key={doc.id}
+                        document={doc}
+                        familyMemberMap={familyMemberMap}
+                        isCopying={copyingDocId === doc.id}
+                        onCopy={handleDocumentCopy}
+                        onDownload={handleDocumentDownload}
+                        onOpen={handleDocumentOpen}
+                        onDelete={user?.role === 'admin' ? handleDocumentDelete : undefined}
+                        canDelete={user?.role === 'admin'}
+                      />
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
