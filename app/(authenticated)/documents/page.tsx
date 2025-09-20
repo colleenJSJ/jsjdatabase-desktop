@@ -8,7 +8,7 @@ import { Document } from '@/types';
 import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import { useRouter } from 'next/navigation';
 import { 
-  Plus, Search, Star, Clock, Upload, Download, Eye, Trash2, 
+  Plus, Search, Star, Clock, Upload, Download, Trash2, 
   ChevronDown, Grid3X3, List, FileText, Calendar, FileEdit, Sheet, Image, Paperclip, Filter, X, Copy, CopyCheck
 } from 'lucide-react';
 import { formatBytes, formatDate } from '@/lib/utils';
@@ -105,6 +105,7 @@ export default function DocumentsPage() {
   const [previewErrors, setPreviewErrors] = useState<Record<string, boolean>>({});
   const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
   const previewRequestsInFlight = useRef<Set<string>>(new Set());
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
   // Stats
   const [stats, setStats] = useState({
@@ -317,6 +318,49 @@ export default function DocumentsPage() {
     };
   }, [filteredDocuments, previewUrls, previewErrors]);
 
+  useEffect(() => {
+    if (!previewDoc) return;
+    if (previewUrls[previewDoc.id] || previewErrors[previewDoc.id] || previewLoading[previewDoc.id]) return;
+
+    setPreviewLoading(prev => ({ ...prev, [previewDoc.id]: true }));
+    const url = `/api/documents/preview/${previewDoc.id}?ts=${Date.now()}`;
+    setPreviewUrls(prev => ({ ...prev, [previewDoc.id]: url }));
+    setPreviewErrors(prev => {
+      if (!prev[previewDoc.id]) return prev;
+      const next = { ...prev };
+      delete next[previewDoc.id];
+      return next;
+    });
+    setPreviewLoading(prev => {
+      const next = { ...prev };
+      delete next[previewDoc.id];
+      return next;
+    });
+  }, [previewDoc, previewUrls, previewErrors, previewLoading]);
+
+  useEffect(() => {
+    if (previewDoc) {
+      const previous = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = previous;
+      };
+    }
+  }, [previewDoc]);
+
+  useEffect(() => {
+    if (!previewDoc) return;
+    const listener = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePreview();
+      }
+    };
+    window.addEventListener('keydown', listener);
+    return () => {
+      window.removeEventListener('keydown', listener);
+    };
+  }, [previewDoc]);
+
   const handleStarToggle = async (doc: Document) => {
     try {
       const ApiClient = (await import('@/lib/api/api-client')).default;
@@ -350,27 +394,6 @@ export default function DocumentsPage() {
     } catch (error) {
       console.error('Failed to delete document:', error);
       alert('Failed to delete document. Please try again.');
-    }
-  };
-
-  const handleView = async (doc: Document) => {
-    try {
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-      const response = await ApiClient.post('/api/documents/get-signed-url', {
-        documentId: doc.id,
-        fileName: doc.file_name,
-        fileUrl: doc.file_url,
-      });
-
-      if (!response.success) {
-        console.error('Failed to get signed URL');
-        return;
-      }
-
-      const { signedUrl } = (response.data as any) || {};
-      window.open(signedUrl, '_blank');
-    } catch (error) {
-      console.error('Failed to view document:', error);
     }
   };
 
@@ -443,6 +466,14 @@ export default function DocumentsPage() {
     }
   };
 
+  const openPreview = (doc: Document) => {
+    setPreviewDoc(doc);
+  };
+
+  const closePreview = () => {
+    setPreviewDoc(null);
+  };
+
   const getDaysUntilExpiration = (date: Date | string | undefined) => {
     if (!date) return null;
     const expirationDate = new Date(date);
@@ -479,6 +510,14 @@ export default function DocumentsPage() {
       .filter(Boolean);
     return names;
   };
+
+  const activePreviewUrl = previewDoc ? previewUrls[previewDoc.id] : undefined;
+  const previewLoadError = previewDoc ? previewErrors[previewDoc.id] : false;
+  const previewIsFetching = previewDoc ? previewLoading[previewDoc.id] : false;
+  const previewIsImage = previewDoc ? isImageDocument(previewDoc) : false;
+  const previewIsPdf = previewDoc
+    ? (previewDoc.file_type?.toLowerCase().includes('pdf') || (previewDoc.file_name || '').toLowerCase().endsWith('.pdf'))
+    : false;
 
   if (loading || userLoading) {
     return (
@@ -740,13 +779,23 @@ export default function DocumentsPage() {
             return (
               <div
                 key={doc.id}
-                className="relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[280px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38]"
+                className="relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[280px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38] cursor-pointer"
+                onClick={() => openPreview(doc)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openPreview(doc);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`Open ${cleanDocumentTitle(doc.title)} preview`}
               >
                 <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 z-10" />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="invisible flex gap-2 rounded-lg bg-[#262625]/90 p-2 shadow-sm ring-1 ring-gray-700/60 opacity-0 transition duration-200 ease-out group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 z-20">
                     <button
-                      onClick={() => copyDocumentLink(doc)}
+                      onClick={(e) => { e.stopPropagation(); copyDocumentLink(doc); }}
                       className={`flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-gray-500 hover:bg-[#262625] ${copyingDocId === doc.id ? 'text-green-400' : ''}`}
                       title="Copy link"
                       aria-label="Copy document link"
@@ -754,15 +803,7 @@ export default function DocumentsPage() {
                       {copyingDocId === doc.id ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     </button>
                     <button
-                      onClick={() => handleView(doc)}
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-blue-400/60 hover:text-blue-400"
-                      title="View"
-                      aria-label="View document"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDownload(doc)}
+                      onClick={(e) => { e.stopPropagation(); handleDownload(doc); }}
                       className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-green-400/60 hover:text-green-400"
                       title="Download"
                       aria-label="Download document"
@@ -771,7 +812,7 @@ export default function DocumentsPage() {
                     </button>
                     {user?.role === 'admin' && (
                       <button
-                        onClick={() => handleDelete(doc)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(doc); }}
                         className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-red-400/60 hover:text-red-400"
                         title="Delete"
                         aria-label="Delete document"
@@ -783,7 +824,7 @@ export default function DocumentsPage() {
                 </div>
 
                 <button
-                  onClick={() => handleStarToggle(doc)}
+                  onClick={(e) => { e.stopPropagation(); handleStarToggle(doc); }}
                   className={`absolute top-3 right-3 z-30 rounded p-1 transition-colors ${
                     doc.is_starred ? 'text-yellow-500' : 'text-gray-500 hover:text-yellow-500'
                   }`}
@@ -897,9 +938,14 @@ export default function DocumentsPage() {
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 text-sm font-semibold text-text-primary truncate">
-                            <span className="truncate" title={cleanDocumentTitle(doc.title)}>
+                            <button
+                              type="button"
+                              onClick={() => openPreview(doc)}
+                              className="truncate text-left hover:underline decoration-dotted"
+                              title={cleanDocumentTitle(doc.title)}
+                            >
                               {cleanDocumentTitle(doc.title)}
-                            </span>
+                            </button>
                             {doc.is_starred && <Star className="h-4 w-4 text-yellow-500" fill="currentColor" />}
                           </div>
                         {expirationBadge !== null && (
@@ -949,13 +995,6 @@ export default function DocumentsPage() {
                           {copyingDocId === doc.id ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                         </button>
                         <button
-                          onClick={() => handleView(doc)}
-                          className="p-1.5 rounded text-text-muted/70 hover:text-blue-400 transition-colors"
-                          title="View"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        <button
                           onClick={() => handleDownload(doc)}
                           className="p-1.5 rounded text-text-muted/70 hover:text-green-400 transition-colors"
                           title="Download"
@@ -978,6 +1017,96 @@ export default function DocumentsPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {previewDoc && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 p-6"
+          onClick={closePreview}
+        >
+          <div
+            className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-gray-600/40 bg-[#1E1E1C] shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={closePreview}
+              className="absolute top-3 right-3 rounded-full bg-black/60 p-2 text-text-muted hover:text-text-primary"
+              aria-label="Close preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex flex-col gap-4 p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary">{cleanDocumentTitle(previewDoc.title)}</h3>
+                  <p className="text-sm text-text-muted">{formatDate(previewDoc.created_at)} · {formatBytes(previewDoc.file_size || 0)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
+                    onClick={() => handleDownload(previewDoc)}
+                  >
+                    <Download className="mr-1 inline h-4 w-4" /> Download
+                  </button>
+                  <button
+                    className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
+                    onClick={() => window.open(`/api/documents/preview/${previewDoc.id}`, '_blank', 'noopener')}
+                  >
+                    Open in new tab
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto rounded-xl border border-gray-700/40 bg-black/20 p-4">
+                {previewIsFetching && !activePreviewUrl && !previewLoadError && (
+                  <div className="flex h-[60vh] items-center justify-center">
+                    <div className="h-12 w-12 animate-spin rounded-full border-2 border-gray-700 border-t-transparent" />
+                  </div>
+                )}
+                {previewLoadError && (
+                  <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center text-text-muted">
+                    <FileText className="h-12 w-12" />
+                    <p>Preview unavailable for this file.</p>
+                    <button
+                      className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
+                      onClick={() => handleDownload(previewDoc)}
+                    >
+                      Download Instead
+                    </button>
+                  </div>
+                )}
+                {!previewLoadError && activePreviewUrl && (
+                  <div className="flex items-center justify-center">
+                    {previewIsImage ? (
+                      <img
+                        src={activePreviewUrl}
+                        alt={previewDoc.title}
+                        className="max-h-[70vh] w-full object-contain"
+                      />
+                    ) : previewIsPdf ? (
+                      <iframe
+                        src={activePreviewUrl}
+                        className="h-[70vh] w-full rounded-xl border border-gray-700/40"
+                      />
+                    ) : (
+                      <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center text-text-muted">
+                        <Paperclip className="h-12 w-12" />
+                        <p>This file type cannot be previewed. Download to view.</p>
+                        <button
+                          className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
+                          onClick={() => handleDownload(previewDoc)}
+                        >
+                          Download
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
