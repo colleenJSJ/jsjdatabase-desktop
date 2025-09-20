@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { FileText } from 'lucide-react';
 import { useUser } from '@/contexts/user-context';
 import { addCSRFToHeaders } from '@/lib/security/csrf-client';
 import { DocumentCard, DocumentItem } from '@/components/documents/DocumentCard';
