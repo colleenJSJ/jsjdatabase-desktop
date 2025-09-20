@@ -78,9 +78,13 @@ export default function J3AcademicsPageClient() {
           fetch('/api/academic-events').then(r => r.ok ? r.json() : { events: [] }),
           fetch('/api/j3-academics/children').then(r => r.ok ? r.json() : { children: [] }),
         ]);
-        setContacts(c.contacts || []);
-        setPortals(p.portals || []);
-        setEvents(e.events || []);
+        const contactsPayload = Array.isArray(c) ? c : c?.contacts || [];
+        const portalsPayload = Array.isArray(p) ? p : p?.portals || [];
+        const eventsPayload = Array.isArray(e) ? e : e?.events || [];
+
+        setContacts(contactsPayload);
+        setPortals(portalsPayload);
+        setEvents(eventsPayload);
         const rawChildren = Array.isArray(kids) ? kids : Array.isArray(kids?.children) ? kids.children : [];
         const filteredKids = normalizeChildren(rawChildren);
         setChildren(filteredKids);
@@ -102,9 +106,13 @@ export default function J3AcademicsPageClient() {
         fetch('/api/academic-events').then(r => r.ok ? r.json() : { events: [] }),
         fetch('/api/j3-academics/children').then(r => r.ok ? r.json() : { children: [] }),
       ]);
-      setContacts(c.contacts || c || []);
-      setPortals(p.portals || p || []);
-      setEvents(e.events || e || []);
+      const contactsPayload = Array.isArray(c) ? c : c?.contacts || [];
+      const portalsPayload = Array.isArray(p) ? p : p?.portals || [];
+      const eventsPayload = Array.isArray(e) ? e : e?.events || [];
+
+      setContacts(contactsPayload);
+      setPortals(portalsPayload);
+      setEvents(eventsPayload);
       const rawChildren = Array.isArray(kids) ? kids : Array.isArray(kids?.children) ? kids.children : [];
       const filteredKids = normalizeChildren(rawChildren);
       setChildren(filteredKids);

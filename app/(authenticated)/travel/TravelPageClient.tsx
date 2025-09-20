@@ -666,7 +666,7 @@ export default function TravelPageClient() {
             )}
 
             {activeTab === 'documents' && (
-              <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
+              <section className="border border-gray-600/30 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
                     <h2 className="font-semibold text-text-primary">Travel Documents</h2>
