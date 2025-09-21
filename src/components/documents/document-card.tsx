@@ -12,6 +12,7 @@ import {
   getDocumentCategoryBadge,
   getDocumentRelatedNames,
   getFileIcon,
+  isImageDocument,
 } from './document-helpers';
 
 type DocumentCardProps = {
@@ -41,7 +42,11 @@ export function DocumentCard({
   const expirationBadge = getDaysUntilExpiration(doc.expiration_date ?? null);
   const categoryBadge = getDocumentCategoryBadge(doc.category);
   const sourceLabel = formatSourcePage(doc.source_page);
-  const isImage = Boolean(doc.file_type && doc.file_type.toLowerCase().startsWith('image/'));
+  const isImage = isImageDocument({
+    file_type: doc.file_type,
+    file_name: doc.file_name,
+    file_url: doc.file_url,
+  });
 
   useEffect(() => {
     if (!isImage) {
@@ -171,7 +176,7 @@ export function DocumentCard({
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              {getFileIcon(doc.file_type)}
+              {getFileIcon(doc.file_type, doc.file_name || doc.file_url)}
             </div>
           )}
         </div>

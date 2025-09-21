@@ -569,7 +569,7 @@ export default function DocumentsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="h-9 w-9 rounded-lg bg-gray-700/40 flex items-center justify-center text-text-primary">
-                          {getFileIcon(doc.file_type)}
+                          {getFileIcon(doc.file_type, doc.file_name || doc.file_url)}
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 text-sm font-semibold text-text-primary truncate">

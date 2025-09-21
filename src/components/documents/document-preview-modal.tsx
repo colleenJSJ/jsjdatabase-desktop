@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, Download } from 'lucide-react';
 import { Document } from '@/types';
 import { formatBytes, formatDate } from '@/lib/utils';
+import { DocumentPreviewType, inferDocumentPreviewType } from '@/components/documents/document-helpers';
 
 interface DocumentPreviewModalProps {
   doc: Document | null;
@@ -14,17 +15,14 @@ interface DocumentPreviewModalProps {
   onDownload?: (doc: Document) => Promise<void> | void;
 }
 
-function getPreviewType(doc?: Document | null) {
-  if (!doc?.file_type) return 'other';
-  const type = doc.file_type.toLowerCase();
-  if (type.includes('image')) return 'image';
-  if (type.includes('pdf')) return 'pdf';
-  if (type.includes('video')) return 'video';
-  return 'other';
-}
-
 export function DocumentPreviewModal({ doc, signedUrl, loading, error, onClose, onDownload }: DocumentPreviewModalProps) {
-  const previewType = useMemo(() => getPreviewType(doc), [doc]);
+  const previewType: DocumentPreviewType = useMemo(() => {
+    return doc ? inferDocumentPreviewType({
+      file_type: doc.file_type,
+      file_name: doc.file_name,
+      file_url: doc.file_url,
+    }) : 'other';
+  }, [doc?.file_type, doc?.file_name, doc?.file_url, doc?.id]);
   const [contentLoading, setContentLoading] = useState(true);
 
   useEffect(() => {
