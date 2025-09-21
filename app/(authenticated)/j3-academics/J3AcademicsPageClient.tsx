@@ -146,13 +146,14 @@ export default function J3AcademicsPageClient() {
         {(['events','contacts','portals','documents'] as const).map(tab => {
           const label = tab === 'portals' ? 'Passwords & Portals' : tab[0].toUpperCase()+tab.slice(1);
           return (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-3 py-2 text-sm border-b-2 ${activeTab===tab ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
-          >
-            {label}
-          </button>
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-2 text-sm border-b-2 ${activeTab===tab ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
+            >
+              {label}
+            </button>
+          );
         })}
       </div>
       {loading ? (
