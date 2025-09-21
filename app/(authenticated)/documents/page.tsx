@@ -1,33 +1,44 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser } from '@/contexts/user-context';
 import { usePersonFilter } from '@/contexts/person-filter-context';
 import { PersonSelector } from '@/components/ui/person-selector';
 import { Document } from '@/types';
 import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import { useRouter } from 'next/navigation';
-import { 
-  Plus, Search, Star, Clock, Upload, Download, Trash2, 
-  ChevronDown, Grid3X3, List, FileText, Calendar, FileEdit, Sheet, Image, Paperclip, Filter, X, Copy, CopyCheck
+import {
+  Search,
+  Star,
+  Clock,
+  Upload,
+  Download,
+  Eye,
+  Trash2,
+  ChevronDown,
+  Grid3X3,
+  List,
+  Calendar,
+  Filter,
+  X,
+  Copy,
+  CopyCheck,
 } from 'lucide-react';
 import { formatBytes, formatDate } from '@/lib/utils';
+import { DocumentCard } from '@/components/documents/document-card';
+import {
+  DOCUMENT_CATEGORY_OPTIONS,
+  buildAssignedSummary,
+  cleanDocumentTitle,
+  formatSourcePage,
+  getDaysUntilExpiration,
+  getDocumentCategoryBadge,
+  getDocumentRelatedNames,
+  getFileIcon,
+} from '@/components/documents/document-helpers';
+import { useDocumentActions } from '@/hooks/useDocumentActions';
 
-const categories = [
-  { id: 'all', name: 'All Categories', color: 'bg-gray-500' },
-  { id: 'legal', name: 'Legal', color: 'bg-purple-500' },
-  { id: 'financial', name: 'Financial', color: 'bg-green-500' },
-  { id: 'medical', name: 'Medical', color: 'bg-red-500' },
-  { id: 'education', name: 'Education', color: 'bg-blue-500' },
-  { id: 'travel', name: 'Travel', color: 'bg-yellow-500' },
-  { id: 'property', name: 'Property', color: 'bg-indigo-500' },
-  { id: 'vehicles', name: 'Vehicles', color: 'bg-orange-500' },
-  { id: 'personal', name: 'Personal', color: 'bg-pink-500' },
-  { id: 'work', name: 'Work', color: 'bg-cyan-500' },
-  { id: 'household', name: 'Household', color: 'bg-teal-500' },
-  { id: 'other', name: 'Other', color: 'bg-gray-400' }
-];
-
+const categories = DOCUMENT_CATEGORY_OPTIONS;
 
 const sortOptions = [
   { id: 'newest', name: 'Newest First' },
@@ -39,51 +50,9 @@ const sortOptions = [
   { id: 'expiring', name: 'Expiring Soon' }
 ];
 
-const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'];
-
-const getFileIcon = (fileType: string | null | undefined) => {
-  if (!fileType) return <Paperclip className="h-5 w-5" />;
-  
-  const type = fileType.toLowerCase();
-  if (type.includes('pdf')) return <FileText className="h-5 w-5" />;
-  if (type.includes('doc')) return <FileEdit className="h-5 w-5" />;
-  if (type.includes('xls')) return <Sheet className="h-5 w-5" />;
-  if (type.includes('jpg') || type.includes('jpeg') || type.includes('png')) return <Image className="h-5 w-5" />;
-  return <Paperclip className="h-5 w-5" />;
-};
-
-const isImageDocument = (doc: Document) => {
-  const type = doc.file_type?.toLowerCase() || '';
-  if (type.startsWith('image/')) return true;
-  const fileName = (doc.file_name || doc.title || '').toLowerCase();
-  const path = (doc.file_url || '').toLowerCase();
-  return IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext) || path.includes(ext));
-};
-
-// Function to clean document title by removing file extension
-const cleanDocumentTitle = (title: string): string => {
-  // Remove common file extensions
-  const extensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.txt', '.zip', '.rar'];
-  let cleanTitle = title;
-  
-  for (const ext of extensions) {
-    if (cleanTitle.toLowerCase().endsWith(ext)) {
-      cleanTitle = cleanTitle.slice(0, -ext.length);
-      break;
-    }
-  }
-  
-  // Additional cleaning: remove "Review Contract - " prefix if present
-  if (cleanTitle.startsWith('Review Contract - ')) {
-    cleanTitle = cleanTitle.replace('Review Contract - ', '');
-  }
-  
-  return cleanTitle;
-};
-
 export default function DocumentsPage() {
   const { user, loading: userLoading } = useUser();
-  const { selectedPersonId, setSelectedPersonId } = usePersonFilter();
+  const { selectedPersonId } = usePersonFilter();
   const router = useRouter();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
@@ -101,11 +70,7 @@ export default function DocumentsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [familyMemberMap, setFamilyMemberMap] = useState<Record<string, string>>({ shared: 'Shared/Family' });
   const [copyingDocId, setCopyingDocId] = useState<string | null>(null);
-  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
-  const [previewErrors, setPreviewErrors] = useState<Record<string, boolean>>({});
-  const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
-  const previewRequestsInFlight = useRef<Set<string>>(new Set());
-  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const { copyLink, viewDocument, downloadDocument, deleteDocument, toggleStar } = useDocumentActions();
 
   // Stats
   const [stats, setStats] = useState({
@@ -252,119 +217,12 @@ export default function DocumentsPage() {
     setFilteredDocuments(filtered);
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadPreviews = async () => {
-      const imageDocs = filteredDocuments.filter(isImageDocument);
-      if (imageDocs.length === 0) return;
-
-      const pendingDocs = imageDocs.filter(doc => {
-        const shouldFetch = !previewUrls[doc.id] && !previewErrors[doc.id] && !previewRequestsInFlight.current.has(doc.id);
-        if (shouldFetch) {
-          console.debug('[Documents] Preview pending', {
-            id: doc.id,
-            title: doc.title,
-            fileName: doc.file_name,
-            fileType: doc.file_type,
-            fileUrl: doc.file_url,
-          });
-        }
-        return shouldFetch;
-      });
-
-      if (pendingDocs.length === 0) return;
-
-      for (const doc of pendingDocs) {
-        previewRequestsInFlight.current.add(doc.id);
-        if (isMounted) {
-          setPreviewLoading(prev => ({ ...prev, [doc.id]: true }));
-        }
-
-        try {
-          const previewUrl = `/api/documents/preview/${doc.id}?ts=${Date.now()}`;
-          if (isMounted) {
-            setPreviewUrls(prev => ({ ...prev, [doc.id]: previewUrl }));
-            setPreviewErrors(prev => {
-              if (!prev[doc.id]) return prev;
-              const next = { ...prev };
-              delete next[doc.id];
-              return next;
-            });
-          }
-        } catch (error) {
-          console.error('[Documents] Preview fetch error', { id: doc.id, error });
-          console.error('Failed to load preview for document', doc.id, error);
-          if (isMounted) {
-            setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
-          }
-        } finally {
-          previewRequestsInFlight.current.delete(doc.id);
-          if (isMounted) {
-            setPreviewLoading(prev => {
-              const next = { ...prev };
-              delete next[doc.id];
-              return next;
-            });
-          }
-        }
-      }
-    };
-
-    loadPreviews();
-
-    return () => {
-      isMounted = false;
-      previewRequestsInFlight.current.clear();
-    };
-  }, [filteredDocuments, previewUrls, previewErrors]);
-
-  useEffect(() => {
-    if (!previewDoc) return;
-    if (previewUrls[previewDoc.id] || previewErrors[previewDoc.id]) return;
-
-    const url = `/api/documents/preview/${previewDoc.id}?ts=${Date.now()}`;
-    setPreviewUrls(prev => ({ ...prev, [previewDoc.id]: url }));
-    setPreviewErrors(prev => {
-      if (!prev[previewDoc.id]) return prev;
-      const next = { ...prev };
-      delete next[previewDoc.id];
-      return next;
-    });
-  }, [previewDoc, previewUrls, previewErrors]);
-
-  useEffect(() => {
-    if (previewDoc) {
-      const previous = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = previous;
-      };
-    }
-  }, [previewDoc]);
-
-  useEffect(() => {
-    if (!previewDoc) return;
-    const listener = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closePreview();
-      }
-    };
-    window.addEventListener('keydown', listener);
-    return () => {
-      window.removeEventListener('keydown', listener);
-    };
-  }, [previewDoc]);
-
   const handleStarToggle = async (doc: Document) => {
     try {
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-      const response = await ApiClient.patch(`/api/documents/${doc.id}`, { is_starred: !doc.is_starred });
-
-      if (response.success) {
-        setDocuments(prev => prev.map(d => 
-          d.id === doc.id ? { ...d, is_starred: !d.is_starred } : d
-        ));
-      }
+      await toggleStar(doc);
+      setDocuments(prev => prev.map(d =>
+        d.id === doc.id ? { ...d, is_starred: !d.is_starred } : d
+      ));
     } catch (error) {
       console.error('Failed to update star status:', error);
     }
@@ -374,50 +232,37 @@ export default function DocumentsPage() {
     if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) return;
 
     try {
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-      const response = await ApiClient.delete(`/api/documents/${doc.id}`);
-
-      if (response.success) {
-        setDocuments(prev => prev.filter(d => d.id !== doc.id));
-        // Show success message (optional)
-        console.log('Document deleted successfully');
-      } else {
-        console.error('Failed to delete document:', response.error);
-        alert(`Failed to delete document: ${response.error || 'Unknown error'}`);
-      }
+      await deleteDocument(doc);
+      setDocuments(prev => {
+        const updated = prev.filter(d => d.id !== doc.id);
+        calculateStats(updated);
+        return updated;
+      });
     } catch (error) {
       console.error('Failed to delete document:', error);
       alert('Failed to delete document. Please try again.');
     }
   };
 
-  const handleDownload = (doc: Document) => {
-    const link = document.createElement('a');
-    link.href = `/api/documents/download/${doc.id}`;
-    link.rel = 'noopener';
-    link.download = doc.file_name || 'document';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleView = async (doc: Document) => {
+    try {
+      await viewDocument(doc);
+    } catch (error) {
+      console.error('Failed to view document:', error);
+    }
+  };
+
+  const handleDownload = async (doc: Document) => {
+    try {
+      await downloadDocument(doc);
+    } catch (error) {
+      console.error('Failed to download document:', error);
+    }
   };
 
   const copyDocumentLink = async (doc: Document) => {
     try {
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-        const response = await ApiClient.post('/api/documents/get-signed-url', {
-          documentId: doc.id,
-          fileName: doc.file_name,
-          fileUrl: doc.file_url,
-        });
-
-      if (!response.success) {
-        console.error('Failed to get signed URL for copy');
-        return;
-      }
-
-      const { signedUrl } = (response.data as any) || {};
-      if (!signedUrl) return;
-      await navigator.clipboard.writeText(signedUrl);
+      await copyLink(doc);
       setCopyingDocId(doc.id);
       setTimeout(() => setCopyingDocId(null), 2000);
     } catch (error) {
@@ -442,59 +287,6 @@ export default function DocumentsPage() {
       router.push(`${routes[doc.source_page]}?id=${doc.source_id}`);
     }
   };
-
-  const openPreview = (doc: Document) => {
-    setPreviewDoc(doc);
-  };
-
-  const closePreview = () => {
-    setPreviewDoc(null);
-  };
-
-  const getDaysUntilExpiration = (date: Date | string | undefined) => {
-    if (!date) return null;
-    const expirationDate = new Date(date);
-    const now = new Date();
-    const diffTime = expirationDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  const formatSourcePage = (page?: string | null) => {
-    if (!page) return 'Manual';
-    const normalized = page.toString().toLowerCase();
-    const map: Record<string, string> = {
-      tasks: 'Tasks',
-      travel: 'Travel',
-      health: 'Health',
-      calendar: 'Calendar',
-      'j3-academics': 'J3 Academics',
-      pets: 'Pets',
-      household: 'Household',
-      manual: 'Manual',
-    };
-    return map[normalized] || normalized.replace(/[-_]/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
-  };
-
-  const getRelatedNames = (doc: Document) => {
-    const ids = doc.related_to && doc.related_to.length > 0
-      ? doc.related_to
-      : doc.assigned_to && doc.assigned_to.length > 0
-        ? doc.assigned_to
-        : [];
-    const names = ids
-      .map(id => familyMemberMap[id] || id)
-      .filter(Boolean);
-    return names;
-  };
-
-  const activePreviewUrl = previewDoc ? previewUrls[previewDoc.id] : undefined;
-  const previewLoadError = previewDoc ? previewErrors[previewDoc.id] : false;
-  const previewIsFetching = previewDoc ? previewLoading[previewDoc.id] : false;
-  const previewIsImage = previewDoc ? isImageDocument(previewDoc) : false;
-  const previewIsPdf = previewDoc
-    ? (previewDoc.file_type?.toLowerCase().includes('pdf') || (previewDoc.file_name || '').toLowerCase().endsWith('.pdf'))
-    : false;
 
   if (loading || userLoading) {
     return (
@@ -604,64 +396,82 @@ export default function DocumentsPage() {
           {/* Expanded Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-gray-600/30">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <select
-                  aria-label="Category"
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
-
-                <PersonSelector className="w-full" showLabel={false} />
-
-                <select
-                  aria-label="Sort by"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  {sortOptions.map(option => (
-                    <option key={option.id} value={option.id}>{option.name}</option>
-                  ))}
-                </select>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => setFilters(prev => ({ ...prev, starred: !prev.starred }))}
-                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                      filters.starred
-                        ? 'bg-gray-700 text-text-primary border-gray-600'
-                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                    }`}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
                   >
-                    <Star className="h-4 w-4" fill={filters.starred ? 'currentColor' : 'none'} />
-                    Starred
-                  </button>
-                  <button
-                    onClick={() => setFilters(prev => ({ ...prev, expiringSoon: !prev.expiringSoon }))}
-                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                      filters.expiringSoon
-                        ? 'bg-gray-700 text-text-primary border-gray-600'
-                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                    }`}
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Filter by
+                  </label>
+                  <PersonSelector className="w-full" showLabel={false} />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Sort By
+                  </label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
                   >
-                    <Clock className="h-4 w-4" />
-                    Expiring
-                  </button>
-                  <button
-                    onClick={() => setFilters(prev => ({ ...prev, showArchived: !prev.showArchived }))}
-                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                      filters.showArchived
-                        ? 'bg-gray-700 text-text-primary border-gray-600'
-                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                    }`}
-                  >
-                    Show Archived
-                  </button>
+                    {sortOptions.map(option => (
+                      <option key={option.id} value={option.id}>{option.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Quick Filters
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setFilters(prev => ({ ...prev, starred: !prev.starred }))}
+                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                        filters.starred
+                          ? 'bg-gray-700 text-text-primary border-gray-600'
+                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                      }`}
+                    >
+                      <Star className="h-4 w-4" fill={filters.starred ? 'currentColor' : 'none'} />
+                      Starred
+                    </button>
+                    <button
+                      onClick={() => setFilters(prev => ({ ...prev, expiringSoon: !prev.expiringSoon }))}
+                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                        filters.expiringSoon
+                          ? 'bg-gray-700 text-text-primary border-gray-600'
+                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                      }`}
+                    >
+                      <Clock className="h-4 w-4" />
+                      Expiring
+                    </button>
+                    <button
+                      onClick={() => setFilters(prev => ({ ...prev, showArchived: !prev.showArchived }))}
+                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                        filters.showArchived
+                          ? 'bg-gray-700 text-text-primary border-gray-600'
+                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                      }`}
+                    >
+                      Show Archived
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -674,7 +484,6 @@ export default function DocumentsPage() {
                       setSortBy('newest');
                       setFilters({ starred: false, expiringSoon: false, showArchived: false });
                       setSearchQuery('');
-                      setSelectedPersonId(null);
                     }}
                     className="flex items-center gap-1 text-sm text-text-muted hover:text-text-primary transition-colors"
                   >
@@ -707,161 +516,18 @@ export default function DocumentsPage() {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-5">
-          {filteredDocuments.map(doc => {
-            const relatedNames = getRelatedNames(doc);
-            const sourceLabel = formatSourcePage(doc.source_page);
-            const categoryBadge = categories.find(c => c.id === doc.category);
-            const categoryClass = categoryBadge?.color?.startsWith('bg-') ? categoryBadge.color : '';
-            const categoryStyle = categoryBadge?.color && categoryBadge.color.startsWith('#')
-              ? { backgroundColor: categoryBadge.color }
-              : undefined;
-            const expiresIn = doc.expiration_date ? getDaysUntilExpiration(doc.expiration_date) : null;
-            const assignedSummary = relatedNames.length > 0
-              ? `${relatedNames.slice(0, 2).join(', ')}${relatedNames.length > 2 ? ` +${relatedNames.length - 2}` : ''}`
-              : '';
-            const isImageDoc = isImageDocument(doc);
-            console.debug('[Documents] grid card render', {
-              id: doc.id,
-              title: doc.title,
-              isImageDoc,
-              fileType: doc.file_type,
-              fileName: doc.file_name,
-              fileUrl: doc.file_url,
-              hasPreviewUrl: !!previewUrls[doc.id],
-              previewError: previewErrors[doc.id],
-            });
-            const previewUrl = previewUrls[doc.id];
-            const previewError = previewErrors[doc.id];
-            const previewIsLoading = !!previewLoading[doc.id];
-            const showPreview = isImageDoc && !!previewUrl;
-            const previewPending = isImageDoc && !previewUrl && !previewError;
-
-            return (
-              <div
-                key={doc.id}
-                className="relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[280px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38] cursor-pointer"
-                onClick={() => openPreview(doc)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openPreview(doc);
-                  }
-                }}
-                tabIndex={0}
-                role="button"
-                aria-label={`Open ${cleanDocumentTitle(doc.title)} preview`}
-              >
-                <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 z-10" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="invisible flex gap-2 rounded-lg bg-[#262625]/90 p-2 shadow-sm ring-1 ring-gray-700/60 opacity-0 transition duration-200 ease-out group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 z-20">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); copyDocumentLink(doc); }}
-                      className={`flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-gray-500 hover:bg-[#262625] ${copyingDocId === doc.id ? 'text-green-400' : ''}`}
-                      title="Copy link"
-                      aria-label="Copy document link"
-                    >
-                      {copyingDocId === doc.id ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDownload(doc); }}
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-green-400/60 hover:text-green-400"
-                      title="Download"
-                      aria-label="Download document"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
-                    {user?.role === 'admin' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(doc); }}
-                        className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-red-400/60 hover:text-red-400"
-                        title="Delete"
-                        aria-label="Delete document"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleStarToggle(doc); }}
-                  className={`absolute top-3 right-3 z-30 rounded p-1 transition-colors ${
-                    doc.is_starred ? 'text-yellow-500' : 'text-gray-500 hover:text-yellow-500'
-                  }`}
-                  title={doc.is_starred ? 'Unstar' : 'Star'}
-                  aria-label={doc.is_starred ? 'Remove star' : 'Add star'}
-                >
-                  <Star className="h-4 w-4" fill={doc.is_starred ? 'currentColor' : 'none'} />
-                </button>
-
-                <div className="relative z-10 flex w-full flex-1 flex-col items-center gap-2 text-center">
-                  <div className="w-full">
-                    {showPreview ? (
-                      <div className="h-36 w-full overflow-hidden rounded-lg border border-gray-600/40 bg-black/20">
-                        <img
-                          src={previewUrl}
-                          alt={`${cleanDocumentTitle(doc.title)} preview`}
-                          className="h-full w-full object-cover"
-                          onError={() => {
-                            console.warn('[Documents] Preview image failed to load in browser', { id: doc.id, signedUrl: previewUrl });
-                            setPreviewErrors(prev => ({ ...prev, [doc.id]: true }));
-                            setPreviewUrls(prev => {
-                              const next = { ...prev };
-                              delete next[doc.id];
-                              return next;
-                            });
-                          }}
-                        />
-                      </div>
-                    ) : previewPending || previewIsLoading ? (
-                      <div className="h-36 w-full overflow-hidden rounded-lg border border-gray-600/40 bg-gray-800/60 animate-pulse" />
-                    ) : (
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-gray-700/40 text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60">
-                        {getFileIcon(doc.file_type)}
-                      </div>
-                    )}
-                  </div>
-                  <p
-                    className="text-sm font-semibold text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60"
-                    style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-                    title={cleanDocumentTitle(doc.title)}
-                  >
-                    {cleanDocumentTitle(doc.title)}
-                  </p>
-                  <div className="flex items-center gap-1 text-[11px] text-text-muted transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30">
-                    <span>{formatBytes(doc.file_size || 0)}</span>
-                    <span>•</span>
-                    <span>{formatDate(doc.created_at)}</span>
-                  </div>
-                  <span className="text-[11px] font-medium text-[#AB9BBF] transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30">
-                    {doc.source_page ? `From ${sourceLabel}` : 'Manual Upload'}
-                  </span>
-                  {assignedSummary && (
-                    <span
-                      className="w-full truncate px-1 text-[10px] text-[#C2C0B6] transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30"
-                      title={assignedSummary}
-                    >
-                      {assignedSummary}
-                    </span>
-                  )}
-                  {expiresIn !== null && (
-                    <span
-                      className={`text-[10px] transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30 ${expiresIn <= 30 ? 'text-red-400' : 'text-text-muted'}`}
-                    >
-                      {expiresIn > 0 ? `Expires in ${expiresIn} days` : 'Expired'}
-                    </span>
-                  )}
-                </div>
-
-                <span
-                  className={`relative z-10 mt-3 inline-flex items-center rounded-md px-2 py-1 text-[10px] font-medium text-white transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 ${categoryClass}`}
-                  style={categoryStyle}
-                >
-                  {categoryBadge?.name || doc.category}
-                </span>
-              </div>
-            );
-          })}
+          {filteredDocuments.map(doc => (
+            <DocumentCard
+              key={doc.id}
+              doc={doc}
+              familyMemberMap={familyMemberMap}
+              onCopy={copyDocumentLink}
+              onView={handleView}
+              onDownload={handleDownload}
+              onDelete={user?.role === 'admin' ? handleDelete : undefined}
+              onStarToggle={handleStarToggle}
+            />
+          ))}
         </div>
       ) : (
         <div className="bg-background-secondary border border-gray-600/30 rounded-lg overflow-hidden">
@@ -878,13 +544,11 @@ export default function DocumentsPage() {
             </thead>
             <tbody className="divide-y divide-gray-600/30">
               {filteredDocuments.map(doc => {
-                const relatedNames = getRelatedNames(doc);
+                const relatedNames = getDocumentRelatedNames(doc, familyMemberMap);
                 const sourceLabel = formatSourcePage(doc.source_page);
-                const categoryBadge = categories.find(c => c.id === doc.category);
-                const categoryClass = categoryBadge?.color?.startsWith('bg-') ? categoryBadge.color : '';
-                const categoryStyle = categoryBadge?.color && categoryBadge.color.startsWith('#')
-                  ? { backgroundColor: categoryBadge.color }
-                  : undefined;
+                const categoryBadge = getDocumentCategoryBadge(doc.category);
+                const categoryClass = categoryBadge?.className ?? '';
+                const categoryStyle = categoryBadge?.style;
                 const expirationBadge = doc.expiration_date
                   ? getDaysUntilExpiration(doc.expiration_date)
                   : null;
@@ -898,14 +562,9 @@ export default function DocumentsPage() {
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 text-sm font-semibold text-text-primary truncate">
-                            <button
-                              type="button"
-                              onClick={() => openPreview(doc)}
-                              className="truncate text-left hover:underline decoration-dotted"
-                              title={cleanDocumentTitle(doc.title)}
-                            >
-                              {cleanDocumentTitle(doc.title)}
-                            </button>
+                            <span className="truncate" title={cleanDocumentTitle(doc.title, doc.file_name)}>
+                              {cleanDocumentTitle(doc.title, doc.file_name)}
+                            </span>
                             {doc.is_starred && <Star className="h-4 w-4 text-yellow-500" fill="currentColor" />}
                           </div>
                         {expirationBadge !== null && (
@@ -955,6 +614,13 @@ export default function DocumentsPage() {
                           {copyingDocId === doc.id ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                         </button>
                         <button
+                          onClick={() => handleView(doc)}
+                          className="p-1.5 rounded text-text-muted/70 hover:text-blue-400 transition-colors"
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => handleDownload(doc)}
                           className="p-1.5 rounded text-text-muted/70 hover:text-green-400 transition-colors"
                           title="Download"
@@ -977,96 +643,6 @@ export default function DocumentsPage() {
               })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* Upload Modal */}
-      {previewDoc && (
-        <div
-          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 p-6"
-          onClick={closePreview}
-        >
-          <div
-            className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-gray-600/40 bg-[#1E1E1C] shadow-xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex flex-col gap-4 p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-text-primary">{cleanDocumentTitle(previewDoc.title)}</h3>
-                  <p className="text-sm text-text-muted">{formatDate(previewDoc.created_at)} · {formatBytes(previewDoc.file_size || 0)}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
-                    onClick={() => handleDownload(previewDoc)}
-                  >
-                    <Download className="mr-1 inline h-4 w-4" /> Download
-                  </button>
-                  <button
-                    className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
-                    onClick={() => window.open(`/api/documents/preview/${previewDoc.id}`, '_blank', 'noopener')}
-                  >
-                    Open in new tab
-                  </button>
-                  <button
-                    onClick={closePreview}
-                    className="rounded-lg border border-gray-600/40 p-2 text-text-muted hover:text-text-primary hover:border-gray-500"
-                    aria-label="Close preview"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-auto rounded-xl border border-gray-700/40 bg-black/20 p-4">
-                {previewIsFetching && !activePreviewUrl && !previewLoadError && (
-                  <div className="flex h-[60vh] items-center justify-center">
-                    <div className="h-12 w-12 animate-spin rounded-full border-2 border-gray-700 border-t-transparent" />
-                  </div>
-                )}
-                {previewLoadError && (
-                  <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center text-text-muted">
-                    <FileText className="h-12 w-12" />
-                    <p>Preview unavailable for this file.</p>
-                    <button
-                      className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
-                      onClick={() => handleDownload(previewDoc)}
-                    >
-                      Download Instead
-                    </button>
-                  </div>
-                )}
-                {!previewLoadError && activePreviewUrl && (
-                  <div className="flex items-center justify-center">
-                    {previewIsImage ? (
-                      <img
-                        src={activePreviewUrl}
-                        alt={previewDoc.title}
-                        className="max-h-[70vh] w-full object-contain"
-                      />
-                    ) : previewIsPdf ? (
-                      <iframe
-                        src={activePreviewUrl}
-                        className="h-[70vh] w-full rounded-xl border border-gray-700/40"
-                      />
-                    ) : (
-                      <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center text-text-muted">
-                        <Paperclip className="h-12 w-12" />
-                        <p>This file type cannot be previewed. Download to view.</p>
-                        <button
-                          className="rounded-lg border border-gray-600/40 px-3 py-1.5 text-sm text-text-primary hover:border-gray-500"
-                          onClick={() => handleDownload(previewDoc)}
-                        >
-                          Download
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 

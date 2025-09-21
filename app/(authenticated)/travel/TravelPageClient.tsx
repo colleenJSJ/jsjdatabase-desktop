@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TransportType } from '@/types/travel';
 import dynamic from 'next/dynamic';
 import { SmartUploadButtonV2 } from '@/components/travel/SmartUploadButtonV2';
-import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import { Plane, Train, Car, Ship, Globe, Pencil, Trash2, Calendar, Clock, MapPin, Users, Ticket, X } from 'lucide-react';
 import { TravelSegmentFields } from '@/components/travel/shared/TravelSegmentFields';
 import { TravelersPicker } from '@/components/travel/shared/TravelersPicker';
@@ -16,6 +15,9 @@ import { getCSRFHeaders } from '@/lib/security/csrf-client';
 import ApiClient from '@/lib/api/api-client';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { usePersonFilter } from '@/contexts/person-filter-context';
+import { Document } from '@/types';
+import { DocumentCard } from '@/components/documents/document-card';
+import { useDocumentActions } from '@/hooks/useDocumentActions';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -47,6 +49,7 @@ export default function TravelPageClient() {
   const [memberPrefs, setMemberPrefs] = useState<Record<string, { seat?: string; meal?: string }>>({});
   const { calendars: googleCalendars } = useGoogleCalendars();
   const { selectedPersonId, setSelectedPersonId } = usePersonFilter();
+  const { copyLink, viewDocument, downloadDocument } = useDocumentActions();
 
   const assignedTo = selectedPersonId ?? 'all';
   const selectedPersonParam = selectedPersonId && selectedPersonId !== 'all' ? selectedPersonId : null;
@@ -130,6 +133,17 @@ export default function TravelPageClient() {
     } catch {}
   };
 
+  const familyMemberMap = useMemo(() => {
+    const map: Record<string, string> = { shared: 'Shared/Family' };
+    (data.family_members || []).forEach((member: any) => {
+      const name = member.display_name || member.name || member.email || member.id;
+      if (member?.id) {
+        map[member.id] = name;
+      }
+    });
+    return map;
+  }, [data.family_members]);
+
   // Derived filtered collections
   const filters = useMemo(() => ({ search: search.trim().toLowerCase(), tripId: selectedTripId }), [search, selectedTripId]);
   const filtered = useMemo(() => {
@@ -185,6 +199,30 @@ export default function TravelPageClient() {
 
     return { trips, details, accommodations, documents, contacts };
   }, [data, filters]);
+
+  const handleDocumentCopy = async (doc: Document) => {
+    try {
+      await copyLink(doc);
+    } catch (error) {
+      console.error('Failed to copy document link:', error);
+    }
+  };
+
+  const handleDocumentView = async (doc: Document) => {
+    try {
+      await viewDocument(doc);
+    } catch (error) {
+      console.error('Failed to open document:', error);
+    }
+  };
+
+  const handleDocumentDownload = async (doc: Document) => {
+    try {
+      await downloadDocument(doc);
+    } catch (error) {
+      console.error('Failed to download document:', error);
+    }
+  };
 
   const IconForType = ({ type }: { type?: string }) => {
     const t = (type || 'other').toLowerCase();
@@ -549,37 +587,22 @@ export default function TravelPageClient() {
                   </div>
                   <button onClick={() => setShowUploadDoc(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Upload Document</button>
                 </div>
-                <div className="divide-y divide-gray-700/50">
-                  {filtered.documents.map((doc: any) => (
-                    <button
-                      key={doc.id}
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch('/api/documents/get-signed-url', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...getCSRFHeaders() },
-                            body: JSON.stringify({
-                              documentId: doc.id,
-                              fileName: doc.file_name,
-                              fileUrl: doc.file_url,
-                            })
-                          });
-                          if (!res.ok) return;
-                          const { signedUrl } = await res.json();
-                          window.open(signedUrl, '_blank');
-                        } catch {}
-                      }}
-                      className="w-full text-left py-2 text-sm text-text-muted flex items-center justify-between hover:bg-gray-800/40 px-2 rounded"
-                    >
-                      <span className="truncate underline decoration-dotted">{doc.title || doc.file_name}</span>
-                      <span className="text-xs">{new Date(doc.created_at).toLocaleDateString()}</span>
-                    </button>
-                  ))}
-                  {(filtered.documents.length === 0) && (
-                    <div className="py-6 text-center text-text-muted">No documents</div>
-                  )}
-                </div>
+                {filtered.documents.length === 0 ? (
+                  <div className="py-6 text-center text-text-muted">No documents</div>
+                ) : (
+                  <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-5">
+                    {(filtered.documents as Document[]).map((doc) => (
+                      <DocumentCard
+                        key={doc.id}
+                        doc={doc}
+                        familyMemberMap={familyMemberMap}
+                        onCopy={handleDocumentCopy}
+                        onView={handleDocumentView}
+                        onDownload={handleDocumentDownload}
+                      />
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
@@ -683,13 +706,10 @@ export default function TravelPageClient() {
 
       {/* Upload Document Modal */}
       {showUploadDoc && (
-        <DocumentUploadModal
+        <UploadTravelDocumentModal
           onClose={() => setShowUploadDoc(false)}
-          onUploadComplete={async () => { setShowUploadDoc(false); await refreshData(); }}
-          sourcePage="Travel"
-          defaultCategory="Travel"
-          includePets
-          initialRelatedTo={selectedPersonParam ? [selectedPersonParam] : ['shared']}
+          onUploaded={async ()=>{ setShowUploadDoc(false); await refreshData(); }}
+          familyMembers={data.family_members}
         />
       )}
 
@@ -936,6 +956,61 @@ function ViewTravelDetailModal({ detail, trips, travelerNames, googleCalendars =
 }
 
 // Upload document modal (uses /api/documents/upload)
+function UploadTravelDocumentModal({ onClose, onUploaded, familyMembers }: { onClose: () => void; onUploaded: () => void; familyMembers: any[] }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState('');
+  const [assignedPersonIds, setAssignedPersonIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const toggleAssigned = (id: string) => setAssignedPersonIds(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+  const submit = async () => {
+    if (!file) return;
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.set('file', file);
+      fd.set('title', title || file.name);
+      fd.set('category', 'travel');
+      fd.set('sourcePage', 'travel');
+      fd.set('relatedPeople', JSON.stringify(assignedPersonIds));
+      const res = await fetch('/api/documents/upload', { method: 'POST', body: fd, headers: getCSRFHeaders() });
+      if (res.ok) onUploaded();
+    } finally { setSubmitting(false); }
+  };
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-background-secondary rounded-xl w-full max-w-xl border border-gray-600/30">
+        <div className="p-4 border-b border-gray-600/30 flex items-center justify-between">
+          <div className="font-semibold text-text-primary">Upload Travel Document</div>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary">✕</button>
+        </div>
+        <div className="p-4 space-y-3">
+          <label className="block text-sm">File
+            <input type="file" onChange={e=>setFile(e.target.files?.[0]||null)} className="mt-1 w-full text-sm" />
+          </label>
+          <label className="block text-sm">Title
+            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Document title" className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
+          </label>
+          <div>
+            <div className="text-sm mb-1">Assign To</div>
+            <div className="grid grid-cols-2 gap-2 p-2 bg-background-primary rounded border border-gray-600/30 max-h-40 overflow-auto">
+              {familyMembers.map((m:any)=> (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={assignedPersonIds.includes(m.id)} onChange={()=>toggleAssigned(m.id)} />
+                  <span className="text-text-primary">{m.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="p-4 border-t border-gray-600/30 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary">Cancel</button>
+          <button disabled={!file || submitting} onClick={submit} className="px-3 py-2 bg-button-create disabled:bg-gray-700 text-white rounded">{submitting?'Uploading...':'Upload'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Add travel contact modal (uses /api/travel-contacts)
 function AddTravelContactModal({ onClose, onSaved, trips }: { onClose: () => void; onSaved: () => void; trips: any[] }) {
   const [name, setName] = useState('');
