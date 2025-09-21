@@ -320,9 +320,8 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     if (!previewDoc) return;
-    if (previewUrls[previewDoc.id] || previewErrors[previewDoc.id] || previewLoading[previewDoc.id]) return;
+    if (previewUrls[previewDoc.id] || previewErrors[previewDoc.id]) return;
 
-    setPreviewLoading(prev => ({ ...prev, [previewDoc.id]: true }));
     const url = `/api/documents/preview/${previewDoc.id}?ts=${Date.now()}`;
     setPreviewUrls(prev => ({ ...prev, [previewDoc.id]: url }));
     setPreviewErrors(prev => {
@@ -331,12 +330,7 @@ export default function DocumentsPage() {
       delete next[previewDoc.id];
       return next;
     });
-    setPreviewLoading(prev => {
-      const next = { ...prev };
-      delete next[previewDoc.id];
-      return next;
-    });
-  }, [previewDoc, previewUrls, previewErrors, previewLoading]);
+  }, [previewDoc, previewUrls, previewErrors]);
 
   useEffect(() => {
     if (previewDoc) {
@@ -404,6 +398,7 @@ export default function DocumentsPage() {
         documentId: doc.id,
         fileName: doc.file_name,
         fileUrl: doc.file_url,
+        download: true,
       });
 
       if (!response.success) {
@@ -415,7 +410,8 @@ export default function DocumentsPage() {
       // Create a temporary link element for download
       const link = document.createElement('a');
       link.href = signedUrl;
-      link.download = doc.file_name;
+      link.rel = 'noopener';
+      link.download = doc.file_name || 'document';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1030,13 +1026,6 @@ export default function DocumentsPage() {
             className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-gray-600/40 bg-[#1E1E1C] shadow-xl"
             onClick={e => e.stopPropagation()}
           >
-            <button
-              onClick={closePreview}
-              className="absolute top-3 right-3 rounded-full bg-black/60 p-2 text-text-muted hover:text-text-primary"
-              aria-label="Close preview"
-            >
-              <X className="h-4 w-4" />
-            </button>
             <div className="flex flex-col gap-4 p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1055,6 +1044,13 @@ export default function DocumentsPage() {
                     onClick={() => window.open(`/api/documents/preview/${previewDoc.id}`, '_blank', 'noopener')}
                   >
                     Open in new tab
+                  </button>
+                  <button
+                    onClick={closePreview}
+                    className="rounded-lg border border-gray-600/40 p-2 text-text-muted hover:text-text-primary hover:border-gray-500"
+                    aria-label="Close preview"
+                  >
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               </div>

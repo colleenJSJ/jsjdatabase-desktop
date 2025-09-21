@@ -2,13 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import B2 from 'backblaze-b2';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
 import { logger } from '@/lib/utils/logger';
-import { deriveFilePath } from '@/app/api/documents/_helpers';
+
+function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | null): string | null {
+  if (fileUrl && fileUrl.includes('/file/')) {
+    const afterFile = fileUrl.split('/file/')[1];
+    if (afterFile) {
+      const parts = afterFile.split('/');
+      if (parts.length > 1) {
+        return parts.slice(1).join('/');
+      }
+    }
+  }
+  if (fallbackFileName) {
+    return fallbackFileName;
+  }
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   const requestLabel = '[Documents] Signed URL';
 
   try {
-    const { fileName, fileUrl, documentId } = await request.json();
+    const payload = await request.json().catch(() => ({}));
+    const { fileName, fileUrl, documentId, download = false } = payload as {
+      fileName?: string | null;
+      fileUrl?: string | null;
+      documentId?: string | null;
+      download?: boolean;
+    };
 
     if (!documentId && !fileUrl && !fileName) {
       logger.warn(`${requestLabel} denied: missing identifiers`);
@@ -25,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     let query = supabase
       .from('documents')
-      .select('id,file_name,file_url,file_type,uploaded_by,related_to,assigned_to,source_page,source_id');
+      .select('id,file_name,file_url,uploaded_by,related_to,assigned_to,source_page,source_id');
 
     if (documentId) {
       query = query.eq('id', documentId).limit(1);
@@ -76,15 +97,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unable to resolve document file path' }, { status: 400 });
     }
 
-    logger.info(`${requestLabel} resolved metadata`, {
-      userId: user.id,
-      documentId: document.id,
-      fileType: document.file_type,
-      fileName: document.file_name,
-      fileUrl: document.file_url,
-      resolvedFilePath,
-    });
-
     const keyId = process.env.BACKBLAZE_KEY_ID;
     const applicationKey = process.env.BACKBLAZE_APPLICATION_KEY;
     const bucketId = process.env.BACKBLAZE_BUCKET_ID;
@@ -113,14 +125,21 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = authResponse.data.downloadUrl;
     const authToken = downloadAuth.data.authorizationToken;
+
+    const searchParams = new URLSearchParams();
+    searchParams.set('Authorization', authToken);
+
+    if (download) {
+      const filename = document.file_name || `document-${document.id}`;
+      searchParams.set('response-content-disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    }
+
     const encodedPath = resolvedFilePath
       .split('/')
       .map(segment => encodeURIComponent(segment))
       .join('/');
 
-    const signedUrlUrl = new URL(`${baseUrl}/file/${bucketName}/${encodedPath}`);
-    signedUrlUrl.searchParams.set('Authorization', authToken);
-    const signedUrl = signedUrlUrl.toString();
+    const signedUrl = `${baseUrl}/file/${bucketName}/${encodedPath}?${searchParams.toString()}`;
 
     logger.info(`${requestLabel} granted`, {
       userId: user.id,
