@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     let query = supabase
       .from('documents')
-      .select('id,file_name,file_url,uploaded_by,related_to,assigned_to,source_page,source_id');
+      .select('id,file_name,file_url,file_type,file_size,uploaded_by,related_to,assigned_to,source_page,source_id');
 
     if (documentId) {
       query = query.eq('id', documentId).limit(1);
