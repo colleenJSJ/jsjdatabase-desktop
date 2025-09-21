@@ -42,18 +42,25 @@ export function useDocumentActions(options: UseDocumentActionsOptions = {}) {
   }, []);
 
   const viewDocument = useCallback(async (doc: MinimalDocument) => {
-    const signedUrl = await resolveSignedUrl(doc);
-    window.open(signedUrl, '_blank', 'noopener,noreferrer');
+    const previewUrl = `/api/documents/preview/${doc.id}?ts=${Date.now()}`;
+    window.open(previewUrl, '_blank', 'noopener,noreferrer');
   }, []);
 
   const downloadDocument = useCallback(async (doc: MinimalDocument) => {
-    const signedUrl = await resolveSignedUrl(doc, { download: true });
+    const response = await fetch(`/api/documents/preview/${doc.id}?mode=download&ts=${Date.now()}`);
+    if (!response.ok) {
+      throw new Error('Failed to download document');
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = signedUrl;
+    link.href = url;
     link.download = doc.file_name;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }, []);
 
   const deleteDocument = useCallback(async (doc: MinimalDocument) => {

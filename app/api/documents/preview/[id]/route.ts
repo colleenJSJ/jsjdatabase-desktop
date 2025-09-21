@@ -77,7 +77,12 @@ export async function GET(request: NextRequest) {
     const b2 = new B2({ applicationKeyId: keyId, applicationKey });
     const authResponse = await b2.authorize();
 
-    const downloadUrl = `${authResponse.data.downloadUrl}/file/${bucketName}/${resolvedFilePath}`;
+    const encodedPath = resolvedFilePath
+      .split('/')
+      .map(segment => encodeURIComponent(segment))
+      .join('/');
+
+    const downloadUrl = `${authResponse.data.downloadUrl}/file/${bucketName}/${encodedPath}`;
     const downloadResponse = await fetch(downloadUrl, {
       headers: {
         Authorization: authResponse.data.authorizationToken,
@@ -93,8 +98,12 @@ export async function GET(request: NextRequest) {
     }
 
     const headers = new Headers();
+    const mode = request.nextUrl.searchParams.get('mode');
+    const isDownload = mode === 'download';
+    const filename = document.file_name || `document-${document.id}`;
+
     headers.set('Content-Type', document.file_type || downloadResponse.headers.get('content-type') || 'application/octet-stream');
-    headers.set('Content-Disposition', `inline; filename="${encodeURIComponent(document.file_name || `document-${document.id}`)}"`);
+    headers.set('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${encodeURIComponent(filename)}"`);
     headers.set('Cache-Control', 'private, no-store');
     const contentLength = downloadResponse.headers.get('content-length');
     if (contentLength) {
