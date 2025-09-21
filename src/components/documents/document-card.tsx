@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, MouseEvent, KeyboardEvent } from 'react';
-import { Star, Copy, CopyCheck, Eye, Download, Trash2 } from 'lucide-react';
+import { useState, useEffect, MouseEvent, KeyboardEvent } from 'react';
+import { Star, Copy, CopyCheck, Download, Trash2 } from 'lucide-react';
 import { Document } from '@/types';
 import { formatBytes, formatDate } from '@/lib/utils';
 import {
@@ -13,12 +13,12 @@ import {
   getDocumentRelatedNames,
   getFileIcon,
 } from './document-helpers';
+import ApiClient from '@/lib/api/api-client';
 
 type DocumentCardProps = {
   doc: Document;
   familyMemberMap?: Record<string, string>;
   onCopy: (doc: Document) => Promise<void> | void;
-  onView: (doc: Document) => Promise<void> | void;
   onDownload: (doc: Document) => Promise<void> | void;
   onDelete?: (doc: Document) => Promise<void> | void;
   onStarToggle?: (doc: Document) => Promise<void> | void;
@@ -29,18 +29,64 @@ export function DocumentCard({
   doc,
   familyMemberMap,
   onCopy,
-  onView,
   onDownload,
   onDelete,
   onStarToggle,
   onOpen,
 }: DocumentCardProps) {
   const [isCopying, setIsCopying] = useState(false);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailLoaded, setThumbnailLoaded] = useState(false);
   const relatedNames = familyMemberMap ? getDocumentRelatedNames(doc, familyMemberMap) : [];
   const assignedSummary = buildAssignedSummary(relatedNames);
   const expirationBadge = getDaysUntilExpiration(doc.expiration_date ?? null);
   const categoryBadge = getDocumentCategoryBadge(doc.category);
   const sourceLabel = formatSourcePage(doc.source_page);
+  const isImage = Boolean(doc.file_type && doc.file_type.toLowerCase().startsWith('image/'));
+
+  useEffect(() => {
+    let isMounted = true;
+    const cache = (window as any).__docThumbCache ?? ((window as any).__docThumbCache = new Map<string, string>());
+
+    if (!isImage) {
+      setThumbnailUrl(null);
+      return undefined;
+    }
+
+    const cached = cache.get(doc.id);
+    if (cached) {
+      setThumbnailUrl(cached);
+      return undefined;
+    }
+
+    const loadThumbnail = async () => {
+      try {
+        const response = await ApiClient.post('/api/documents/get-signed-url', {
+          documentId: doc.id,
+          fileName: doc.file_name,
+          fileUrl: doc.file_url,
+          preview: true,
+        });
+        if (!isMounted) return;
+        if (response.success) {
+          const payload = response.data as any;
+          const signedUrl = payload?.signedUrl || payload?.signed_url;
+          if (signedUrl) {
+            cache.set(doc.id, signedUrl);
+            setThumbnailUrl(signedUrl);
+          }
+        }
+      } catch (error) {
+        console.error('[DocumentCard] thumbnail fetch failed', error);
+      }
+    };
+
+    loadThumbnail();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [doc, isImage]);
 
   const handleAction = async (
     event: MouseEvent<HTMLButtonElement>,
@@ -101,15 +147,6 @@ export function DocumentCard({
           </button>
           <button
             type="button"
-            onClick={(event) => handleAction(event, onView)}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-blue-400/60 hover:text-blue-400"
-            title="View"
-            aria-label="View document"
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
             onClick={(event) => handleAction(event, onDownload)}
             className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-green-400/60 hover:text-green-400"
             title="Download"
@@ -146,8 +183,19 @@ export function DocumentCard({
       )}
 
       <div className="relative z-10 flex w-full flex-1 flex-col items-center gap-2 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gray-700/40 text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60">
-          {getFileIcon(doc.file_type)}
+        <div className="flex h-[88px] w-full items-center justify-center overflow-hidden rounded-lg bg-gray-700/40 text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60">
+          {thumbnailUrl ? (
+            <img
+              src={thumbnailUrl}
+              alt={doc.title || doc.file_name}
+              className={`h-full w-full object-cover transition-opacity ${thumbnailLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setThumbnailLoaded(true)}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              {getFileIcon(doc.file_type)}
+            </div>
+          )}
         </div>
         <p
           className="text-sm font-semibold text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60"

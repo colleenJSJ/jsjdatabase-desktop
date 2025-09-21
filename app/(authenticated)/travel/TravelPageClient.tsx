@@ -615,7 +615,6 @@ export default function TravelPageClient() {
                         doc={doc}
                         familyMemberMap={familyMemberMap}
                         onCopy={handleDocumentCopy}
-                        onView={handleDocumentView}
                         onDownload={handleDocumentDownload}
                         onOpen={handleDocumentPreview}
                       />

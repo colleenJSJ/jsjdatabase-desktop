@@ -533,7 +533,6 @@ export default function DocumentsPage() {
               doc={doc}
               familyMemberMap={familyMemberMap}
               onCopy={copyDocumentLink}
-              onView={handleView}
               onDownload={handleDownload}
               onDelete={user?.role === 'admin' ? handleDelete : undefined}
               onStarToggle={handleStarToggle}

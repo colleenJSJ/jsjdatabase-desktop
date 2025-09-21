@@ -24,11 +24,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = await request.json().catch(() => ({}));
-    const { fileName, fileUrl, documentId, download = false } = payload as {
+    const { fileName, fileUrl, documentId, download = false, preview = false } = payload as {
       fileName?: string | null;
       fileUrl?: string | null;
       documentId?: string | null;
       download?: boolean;
+      preview?: boolean;
     };
 
     if (!documentId && !fileUrl && !fileName) {
@@ -125,13 +126,17 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = authResponse.data.downloadUrl;
     const authToken = downloadAuth.data.authorizationToken;
-
     const searchParams = new URLSearchParams();
     searchParams.set('Authorization', authToken);
 
     if (download) {
       const filename = document.file_name || `document-${document.id}`;
       searchParams.set('response-content-disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    } else if (preview) {
+      searchParams.set('response-content-disposition', 'inline');
+      if (document.file_type) {
+        searchParams.set('response-content-type', document.file_type);
+      }
     }
 
     const encodedPath = resolvedFilePath

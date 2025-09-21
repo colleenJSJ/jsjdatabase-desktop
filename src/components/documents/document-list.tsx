@@ -97,14 +97,6 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
     }
   };
 
-  const handleView = async (doc: Document) => {
-    try {
-      await viewDocument(doc);
-    } catch (error) {
-      console.error('Failed to open document:', error);
-    }
-  };
-
   const handleDownload = async (doc: Document) => {
     try {
       await downloadDocument(doc);
@@ -158,7 +150,6 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
             doc={doc}
             familyMemberMap={familyMemberMap}
             onCopy={handleCopyLink}
-            onView={handleView}
             onDownload={handleDownload}
             onDelete={user?.role === 'admin' ? handleDelete : undefined}
             onOpen={openPreview}

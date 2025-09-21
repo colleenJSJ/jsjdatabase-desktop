@@ -37,6 +37,7 @@ export function useDocumentPreview() {
       documentId: doc.id,
       fileName: doc.file_name,
       fileUrl: doc.file_url,
+      preview: true,
     });
 
     if (!response.success) {
