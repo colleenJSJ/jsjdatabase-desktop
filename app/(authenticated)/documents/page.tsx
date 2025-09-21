@@ -37,7 +37,9 @@ import {
   getDocumentRelatedNames,
   getFileIcon,
 } from '@/components/documents/document-helpers';
+import { DocumentPreviewModal } from '@/components/documents/document-preview-modal';
 import { useDocumentActions } from '@/hooks/useDocumentActions';
+import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 
 const categories = DOCUMENT_CATEGORY_OPTIONS;
 
@@ -72,6 +74,14 @@ export default function DocumentsPage() {
   const [familyMemberMap, setFamilyMemberMap] = useState<Record<string, string>>({ shared: 'Shared/Family' });
   const [copyingDocId, setCopyingDocId] = useState<string | null>(null);
   const { copyLink, viewDocument, downloadDocument, deleteDocument, toggleStar } = useDocumentActions();
+  const {
+    doc: previewDoc,
+    signedUrl: previewUrl,
+    loading: previewLoading,
+    error: previewError,
+    openPreview,
+    closePreview,
+  } = useDocumentPreview();
 
   // Stats
   const [stats, setStats] = useState({
@@ -527,7 +537,7 @@ export default function DocumentsPage() {
               onDownload={handleDownload}
               onDelete={user?.role === 'admin' ? handleDelete : undefined}
               onStarToggle={handleStarToggle}
-              onOpen={handleView}
+              onOpen={openPreview}
             />
           ))}
         </div>
@@ -658,6 +668,15 @@ export default function DocumentsPage() {
           }}
         />
       )}
+
+      <DocumentPreviewModal
+        doc={previewDoc}
+        signedUrl={previewUrl}
+        loading={previewLoading}
+        error={previewError}
+        onClose={closePreview}
+        onDownload={handleDownload}
+      />
     </div>
   );
 }

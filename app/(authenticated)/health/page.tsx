@@ -680,8 +680,8 @@ export default function HealthPage() {
           { k: 'appointments', label: 'Appointments' },
           { k: 'medications', label: 'Medications' },
           { k: 'doctors', label: 'Doctors' },
-          { k: 'portals', label: 'Passwords & Portals' },
-          { k: 'records', label: 'Medical Records' },
+          { k: 'portals', label: 'Portals' },
+          { k: 'records', label: 'Documents' },
         ] as const).map(t => (
           <button
             key={t.k}
@@ -872,7 +872,7 @@ export default function HealthPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-text-primary">
-              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Passwords & Portals
+              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Medical Portals
             </h2>
             {user?.role === 'admin' && (
               <button
@@ -910,7 +910,7 @@ export default function HealthPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-text-primary">
-              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Medical Records
+              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Documents
             </h2>
             {user?.role === 'admin' && (
               <>

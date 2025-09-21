@@ -17,7 +17,9 @@ import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { usePersonFilter } from '@/contexts/person-filter-context';
 import { Document } from '@/types';
 import { DocumentCard } from '@/components/documents/document-card';
+import { DocumentPreviewModal } from '@/components/documents/document-preview-modal';
 import { useDocumentActions } from '@/hooks/useDocumentActions';
+import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -50,6 +52,14 @@ export default function TravelPageClient() {
   const { calendars: googleCalendars } = useGoogleCalendars();
   const { selectedPersonId, setSelectedPersonId } = usePersonFilter();
   const { copyLink, viewDocument, downloadDocument } = useDocumentActions();
+  const {
+    doc: previewDoc,
+    signedUrl: previewUrl,
+    loading: previewLoading,
+    error: previewError,
+    openPreview,
+    closePreview,
+  } = useDocumentPreview();
 
   const assignedTo = selectedPersonId ?? 'all';
   const selectedPersonParam = selectedPersonId && selectedPersonId !== 'all' ? selectedPersonId : null;
@@ -221,6 +231,14 @@ export default function TravelPageClient() {
       await downloadDocument(doc);
     } catch (error) {
       console.error('Failed to download document:', error);
+    }
+  };
+
+  const handleDocumentPreview = async (doc: Document) => {
+    try {
+      await openPreview(doc);
+    } catch (error) {
+      console.error('Failed to preview document:', error);
     }
   };
 
@@ -599,7 +617,7 @@ export default function TravelPageClient() {
                         onCopy={handleDocumentCopy}
                         onView={handleDocumentView}
                         onDownload={handleDocumentDownload}
-                        onOpen={handleDocumentView}
+                        onOpen={handleDocumentPreview}
                       />
                     ))}
                   </div>
@@ -704,6 +722,15 @@ export default function TravelPageClient() {
       onClose={() => setViewingDetail(null)}
     />
   )}
+
+      <DocumentPreviewModal
+        doc={previewDoc}
+        signedUrl={previewUrl}
+        loading={previewLoading}
+        error={previewError}
+        onClose={closePreview}
+        onDownload={handleDocumentDownload}
+      />
 
       {/* Upload Document Modal */}
       {showUploadDoc && (

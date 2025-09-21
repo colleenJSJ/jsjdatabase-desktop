@@ -6,7 +6,9 @@ import { useUser } from '@/contexts/user-context';
 import { Document } from '@/types';
 import ApiClient from '@/lib/api/api-client';
 import { DocumentCard } from '@/components/documents/document-card';
+import { DocumentPreviewModal } from '@/components/documents/document-preview-modal';
 import { useDocumentActions } from '@/hooks/useDocumentActions';
+import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 
 interface DocumentListProps {
   category?: 'Medical' | 'Travel' | 'Legal' | 'Financial' | 'Personal' | 'Other' | 'pets' | 'Education';
@@ -24,6 +26,14 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
   const [familyMemberMap, setFamilyMemberMap] = useState<Record<string, string>>({ shared: 'Shared/Family' });
 
   const { copyLink, viewDocument, downloadDocument, deleteDocument } = useDocumentActions();
+  const {
+    doc: previewDoc,
+    signedUrl: previewUrl,
+    loading: previewLoading,
+    error: previewError,
+    openPreview,
+    closePreview,
+  } = useDocumentPreview();
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -140,19 +150,30 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
   }
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-5">
-      {documents.map((doc) => (
-        <DocumentCard
-          key={doc.id}
-          doc={doc}
-          familyMemberMap={familyMemberMap}
-          onCopy={handleCopyLink}
-          onView={handleView}
-          onDownload={handleDownload}
-          onDelete={user?.role === 'admin' ? handleDelete : undefined}
-          onOpen={handleView}
-        />
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-5">
+        {documents.map((doc) => (
+          <DocumentCard
+            key={doc.id}
+            doc={doc}
+            familyMemberMap={familyMemberMap}
+            onCopy={handleCopyLink}
+            onView={handleView}
+            onDownload={handleDownload}
+            onDelete={user?.role === 'admin' ? handleDelete : undefined}
+            onOpen={openPreview}
+          />
+        ))}
+      </div>
+
+      <DocumentPreviewModal
+        doc={previewDoc}
+        signedUrl={previewUrl}
+        loading={previewLoading}
+        error={previewError}
+        onClose={closePreview}
+        onDownload={handleDownload}
+      />
+    </>
   );
 }
