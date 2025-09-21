@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Grid3X3,
   List,
+  FileText,
   Calendar,
   Filter,
   X,
