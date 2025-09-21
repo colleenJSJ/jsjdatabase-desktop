@@ -82,8 +82,16 @@ export async function GET(request: NextRequest) {
       .map(segment => encodeURIComponent(segment))
       .join('/');
 
-    const downloadUrl = `${authResponse.data.downloadUrl}/file/${bucketName}/${encodedPath}`;
-    const downloadResponse = await fetch(downloadUrl, {
+    const downloadAuth = await b2.getDownloadAuthorization({
+      bucketId,
+      fileNamePrefix: resolvedFilePath,
+      validDurationInSeconds: 3600,
+    });
+
+    const signedUrl = new URL(`${authResponse.data.downloadUrl}/file/${bucketName}/${encodedPath}`);
+    signedUrl.searchParams.set('Authorization', downloadAuth.data.authorizationToken);
+
+    const downloadResponse = await fetch(signedUrl.toString(), {
       headers: {
         Authorization: authResponse.data.authorizationToken,
       },

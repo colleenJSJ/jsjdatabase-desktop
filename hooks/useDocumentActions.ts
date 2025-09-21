@@ -52,11 +52,15 @@ export function useDocumentActions(options: UseDocumentActionsOptions = {}) {
       throw new Error('Failed to download document');
     }
 
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match?.[1] ? decodeURIComponent(match[1]) : doc.file_name;
+
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = doc.file_name;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
