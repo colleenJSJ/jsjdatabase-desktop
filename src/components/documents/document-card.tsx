@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, MouseEvent } from 'react';
+import { useState, MouseEvent, KeyboardEvent } from 'react';
 import { Star, Copy, CopyCheck, Eye, Download, Trash2 } from 'lucide-react';
 import { Document } from '@/types';
 import { formatBytes, formatDate } from '@/lib/utils';
@@ -22,6 +22,7 @@ type DocumentCardProps = {
   onDownload: (doc: Document) => Promise<void> | void;
   onDelete?: (doc: Document) => Promise<void> | void;
   onStarToggle?: (doc: Document) => Promise<void> | void;
+  onOpen?: (doc: Document) => Promise<void> | void;
 };
 
 export function DocumentCard({
@@ -32,6 +33,7 @@ export function DocumentCard({
   onDownload,
   onDelete,
   onStarToggle,
+  onOpen,
 }: DocumentCardProps) {
   const [isCopying, setIsCopying] = useState(false);
   const relatedNames = familyMemberMap ? getDocumentRelatedNames(doc, familyMemberMap) : [];
@@ -57,13 +59,34 @@ export function DocumentCard({
     }
   };
 
+  const handleOpen = async () => {
+    if (!onOpen) return;
+    try {
+      await onOpen(doc);
+    } catch (error) {
+      console.error('[DocumentCard] open failed', error);
+    }
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!onOpen) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleOpen();
+    }
+  };
+
   return (
     <div
-      className="relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[190px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38]"
+      className={`relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[190px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38] ${onOpen ? 'cursor-pointer' : ''}`}
+      onClick={onOpen ? handleOpen : undefined}
+      onKeyDown={handleKeyDown}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
     >
-      <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 z-10" />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="invisible flex gap-2 rounded-lg bg-[#262625]/90 p-2 shadow-sm ring-1 ring-gray-700/60 opacity-0 transition duration-200 ease-out group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 z-20">
+      <div className="pointer-events-none absolute inset-0 rounded-xl bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 z-10" />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="invisible flex gap-2 rounded-lg bg-[#262625]/90 p-2 shadow-sm ring-1 ring-gray-700/60 opacity-0 transition duration-200 ease-out group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 z-20 pointer-events-auto">
           <button
             type="button"
             onClick={(event) => handleAction(event, onCopy, () => {

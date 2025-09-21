@@ -599,6 +599,7 @@ export default function TravelPageClient() {
                         onCopy={handleDocumentCopy}
                         onView={handleDocumentView}
                         onDownload={handleDocumentDownload}
+                        onOpen={handleDocumentView}
                       />
                     ))}
                   </div>

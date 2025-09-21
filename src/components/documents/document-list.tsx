@@ -150,6 +150,7 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
           onView={handleView}
           onDownload={handleDownload}
           onDelete={user?.role === 'admin' ? handleDelete : undefined}
+          onOpen={handleView}
         />
       ))}
     </div>

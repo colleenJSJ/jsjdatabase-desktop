@@ -527,6 +527,7 @@ export default function DocumentsPage() {
               onDownload={handleDownload}
               onDelete={user?.role === 'admin' ? handleDelete : undefined}
               onStarToggle={handleStarToggle}
+              onOpen={handleView}
             />
           ))}
         </div>
