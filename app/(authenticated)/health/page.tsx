@@ -680,8 +680,8 @@ export default function HealthPage() {
           { k: 'appointments', label: 'Appointments' },
           { k: 'medications', label: 'Medications' },
           { k: 'doctors', label: 'Doctors' },
-          { k: 'portals', label: 'Portals' },
-          { k: 'records', label: 'Documents' },
+          { k: 'portals', label: 'Passwords & Portals' },
+          { k: 'records', label: 'Medical Records' },
         ] as const).map(t => (
           <button
             key={t.k}
@@ -872,7 +872,7 @@ export default function HealthPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-text-primary">
-              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Medical Portals
+              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Passwords & Portals
             </h2>
             {user?.role === 'admin' && (
               <button
@@ -910,7 +910,7 @@ export default function HealthPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-text-primary">
-              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Documents
+              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Medical Records
             </h2>
             {user?.role === 'admin' && (
               <>
@@ -919,7 +919,7 @@ export default function HealthPage() {
                   className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
                 >
                   <Upload className="h-4 w-4" />
-                  Upload Document
+                  Upload Medical Record
                 </button>
                 {showDocumentUploadModal && (
                   <DocumentUploadModal
@@ -928,7 +928,7 @@ export default function HealthPage() {
                       setShowDocumentUploadModal(false);
                       setRefreshDocuments(prev => prev + 1);
                     }}
-                    sourcePage="Health"
+                    sourcePage="health"
                     defaultCategory="Medical"
                     initialRelatedTo={selectedPerson !== 'all' ? [selectedPerson] : []}
                   />

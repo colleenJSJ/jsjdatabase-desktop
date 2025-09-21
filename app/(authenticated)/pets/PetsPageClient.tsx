@@ -212,7 +212,7 @@ export default function PetsPageClient() {
         {([
           { key: 'appointments', label: 'Appointments' },
           { key: 'contacts', label: 'Contacts' },
-          { key: 'portals', label: 'Portals' },
+          { key: 'portals', label: 'Passwords & Portals' },
           { key: 'documents', label: 'Documents' },
         ] as const).map(tab => (
           <button
@@ -291,7 +291,7 @@ export default function PetsPageClient() {
           {activeTab==='portals' && (
             <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="font-semibold text-text-primary">Portals</h2>
+                <h2 className="font-semibold text-text-primary">Passwords & Portals</h2>
                 <button onClick={()=>setShowAddPortal(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Portal</button>
               </div>
               <ul className="space-y-1 text-sm text-text-muted">

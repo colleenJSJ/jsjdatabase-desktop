@@ -1,127 +1,159 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
-import { expandPersonReferences } from '@/app/api/_helpers/person-resolver';
-import { applyPersonFilter } from '@/app/api/_helpers/apply-person-filter';
+import B2 from 'backblaze-b2';
+import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { logger } from '@/lib/utils/logger';
 
-export async function GET(request: NextRequest) {
+function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | null): string | null {
+  if (fileUrl && fileUrl.includes('/file/')) {
+    const afterFile = fileUrl.split('/file/')[1];
+    if (afterFile) {
+      const parts = afterFile.split('/');
+      if (parts.length > 1) {
+        return parts.slice(1).join('/');
+      }
+    }
+  }
+  if (fallbackFileName) {
+    return fallbackFileName;
+  }
+  return null;
+}
+
+export async function POST(request: NextRequest) {
+  const requestLabel = '[Documents] Signed URL';
+
   try {
+    const payload = await request.json().catch(() => ({}));
+    const { fileName, fileUrl, documentId, download = false } = payload as {
+      fileName?: string | null;
+      fileUrl?: string | null;
+      documentId?: string | null;
+      download?: boolean;
+    };
+
+    if (!documentId && !fileUrl && !fileName) {
+      logger.warn(`${requestLabel} denied: missing identifiers`);
+      return NextResponse.json({ error: 'Document identifier is required' }, { status: 400 });
+    }
+
     const authResult = await getAuthenticatedUser();
     if ('error' in authResult) {
+      logger.warn(`${requestLabel} denied: unauthenticated request`);
       return authResult.error;
     }
 
-    const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
-    const sourcePage = searchParams.get('sourcePage');
-    const limit = searchParams.get('limit');
-    const selectedPerson = searchParams.get('selected_person');
-    const showArchived = searchParams.get('show_archived') === 'true';
-    const onlyArchived = searchParams.get('only_archived') === 'true';
-
     const { user, supabase } = authResult;
-    
-    let base = supabase.from('documents').select('*');
 
-    const applyBaseFilters = (q: any) => {
-      let qq = q;
-      // Archived filtering
-      if (!showArchived) {
-        try { qq = qq.eq('is_archived', onlyArchived ? true : false); } catch {}
-      } else if (onlyArchived) {
-        try { qq = qq.eq('is_archived', true); } catch {}
-      }
-      if (category) qq = qq.eq('category', category.toLowerCase());
-      if (sourcePage) qq = qq.ilike('source_page', sourcePage);
-      qq = qq.order('created_at', { ascending: false });
-      if (limit) qq = qq.limit(parseInt(limit));
-      return qq;
-    };
-    
-    // Archived filtering is handled inside applyBaseFilters via the query builder.
+    let query = supabase
+      .from('documents')
+      .select('id,file_name,file_url,uploaded_by,related_to,assigned_to,source_page,source_id');
 
-    // Person filtering path: build union of related_to and assigned_to without using OR on missing columns
-    let documents: any[] | null = null;
-    let error: any = null;
-    if (selectedPerson && selectedPerson !== 'all') {
-      try {
-        const { resolvePersonReferences } = await import('@/app/api/_helpers/person-resolver');
-        const resolved = await resolvePersonReferences(selectedPerson);
-        const famId = Array.isArray(resolved) ? resolved[0] : resolved;
-        if (famId) {
-          const q1 = applyBaseFilters(base.contains('related_to', [famId]));
-          const { data: d1, error: e1 } = await q1;
-          if (e1) throw e1;
-          let d2: any[] = [];
-          try {
-            const q2 = applyBaseFilters(base.contains('assigned_to', [famId]));
-            const res2 = await q2;
-            d2 = res2.data || [];
-          } catch {}
-          // Merge by id
-          const map = new Map<string, any>();
-          (d1 || []).forEach((doc: any) => map.set(doc.id, doc));
-          (d2 || []).forEach((doc: any) => map.set(doc.id, doc));
-          documents = Array.from(map.values());
-        } else {
-          documents = [];
-        }
-      } catch (e) {
-        error = e;
-      }
+    if (documentId) {
+      query = query.eq('id', documentId).limit(1);
+    } else if (fileUrl) {
+      query = query.eq('file_url', fileUrl).limit(1);
     } else {
-      // No person filter: show all (with base filters)
-      const { data, error: e } = await applyBaseFilters(base);
-      documents = data || [];
-      error = e;
+      query = query.eq('file_name', fileName).order('created_at', { ascending: false }).limit(1);
     }
 
-    if (error) {
-      console.error('Database error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
+    const { data: document, error: documentError } = await query.maybeSingle();
+
+    if (documentError || !document) {
+      logger.warn(`${requestLabel} denied`, {
+        userId: user.id,
+        documentId,
+        fileUrl,
+        fileName,
+        reason: documentError?.message ?? 'not_found'
       });
-      
-      // Check if error is due to missing columns
-      if (error.message?.includes('column') || error.code === '42703') {
-        return NextResponse.json(
-          { 
-            error: 'Database schema needs update. Please run the migration script.',
-            details: error.message
-          },
-          { status: 500 }
-        );
-      }
-      
+      const statusCode = (!document && (!documentError || documentError.code === 'PGRST116')) ? 404 : 403;
+      return NextResponse.json({ error: 'Document not found' }, { status: statusCode });
+    }
+
+    if (documentId && document.id !== documentId) {
+      logger.warn(`${requestLabel} denied: document mismatch`, {
+        userId: user.id,
+        requestedId: documentId,
+        resolvedId: document.id
+      });
+      return NextResponse.json({ error: 'Document mismatch' }, { status: 403 });
+    }
+
+    if (fileUrl && document.file_url && document.file_url !== fileUrl) {
+      logger.warn(`${requestLabel} file URL mismatch`, {
+        userId: user.id,
+        documentId: document.id,
+        requestedUrl: fileUrl,
+        storedUrl: document.file_url
+      });
+    }
+
+    const resolvedFilePath = deriveFilePath(document.file_url || fileUrl, document.file_name || fileName);
+    if (!resolvedFilePath) {
+      logger.warn(`${requestLabel} denied: unable to resolve file path`, {
+        userId: user.id,
+        documentId: document.id
+      });
+      return NextResponse.json({ error: 'Unable to resolve document file path' }, { status: 400 });
+    }
+
+    const keyId = process.env.BACKBLAZE_KEY_ID;
+    const applicationKey = process.env.BACKBLAZE_APPLICATION_KEY;
+    const bucketId = process.env.BACKBLAZE_BUCKET_ID;
+    const bucketName = process.env.BACKBLAZE_BUCKET_NAME;
+
+    if (!keyId || !applicationKey || !bucketId || !bucketName) {
+      logger.error(`${requestLabel} failed: missing Backblaze configuration`);
       return NextResponse.json(
-        { error: 'Failed to fetch documents', details: error.message },
+        { error: 'Storage configuration incomplete' },
         { status: 500 }
       );
     }
 
-    // Transform documents to expand person references
-    const transformedDocuments = await Promise.all(
-      (documents || []).map(async (doc) => {
-        // Expand person references to include names
-        const expandedRelatedTo = await expandPersonReferences(doc.related_to || doc.assigned_to);
-        
-        return {
-          ...doc,
-          related_to: doc.related_to || doc.assigned_to || [], // Keep UUIDs for compatibility
-          related_to_expanded: expandedRelatedTo, // Add expanded person objects
-        };
-      })
-    );
+    const b2 = new B2({
+      applicationKeyId: keyId,
+      applicationKey,
+    });
 
-    // Return in expected format with documents key
-    return NextResponse.json({ documents: transformedDocuments });
+    const authResponse = await b2.authorize();
+
+    const downloadAuth = await b2.getDownloadAuthorization({
+      bucketId,
+      fileNamePrefix: resolvedFilePath,
+      validDurationInSeconds: 3600,
+    });
+
+    const baseUrl = authResponse.data.downloadUrl;
+    const authToken = downloadAuth.data.authorizationToken;
+
+    const searchParams = new URLSearchParams();
+    searchParams.set('Authorization', authToken);
+
+    if (download) {
+      const filename = document.file_name || `document-${document.id}`;
+      searchParams.set('response-content-disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    }
+
+    const encodedPath = resolvedFilePath
+      .split('/')
+      .map(segment => encodeURIComponent(segment))
+      .join('/');
+
+    const signedUrl = `${baseUrl}/file/${bucketName}/${encodedPath}?${searchParams.toString()}`;
+
+    logger.info(`${requestLabel} granted`, {
+      userId: user.id,
+      documentId: document.id,
+    });
+
+    return NextResponse.json({ signedUrl });
   } catch (error) {
-    console.error('API error:', error);
+    logger.error('[Documents] Signed URL error', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Failed to generate signed URL',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }

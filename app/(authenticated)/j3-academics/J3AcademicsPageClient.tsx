@@ -78,13 +78,9 @@ export default function J3AcademicsPageClient() {
           fetch('/api/academic-events').then(r => r.ok ? r.json() : { events: [] }),
           fetch('/api/j3-academics/children').then(r => r.ok ? r.json() : { children: [] }),
         ]);
-        const contactsPayload = Array.isArray(c) ? c : c?.contacts || [];
-        const portalsPayload = Array.isArray(p) ? p : p?.portals || [];
-        const eventsPayload = Array.isArray(e) ? e : e?.events || [];
-
-        setContacts(contactsPayload);
-        setPortals(portalsPayload);
-        setEvents(eventsPayload);
+        setContacts(c.contacts || []);
+        setPortals(p.portals || []);
+        setEvents(e.events || []);
         const rawChildren = Array.isArray(kids) ? kids : Array.isArray(kids?.children) ? kids.children : [];
         const filteredKids = normalizeChildren(rawChildren);
         setChildren(filteredKids);
@@ -106,13 +102,9 @@ export default function J3AcademicsPageClient() {
         fetch('/api/academic-events').then(r => r.ok ? r.json() : { events: [] }),
         fetch('/api/j3-academics/children').then(r => r.ok ? r.json() : { children: [] }),
       ]);
-      const contactsPayload = Array.isArray(c) ? c : c?.contacts || [];
-      const portalsPayload = Array.isArray(p) ? p : p?.portals || [];
-      const eventsPayload = Array.isArray(e) ? e : e?.events || [];
-
-      setContacts(contactsPayload);
-      setPortals(portalsPayload);
-      setEvents(eventsPayload);
+      setContacts(c.contacts || c || []);
+      setPortals(p.portals || p || []);
+      setEvents(e.events || e || []);
       const rawChildren = Array.isArray(kids) ? kids : Array.isArray(kids?.children) ? kids.children : [];
       const filteredKids = normalizeChildren(rawChildren);
       setChildren(filteredKids);
@@ -151,15 +143,17 @@ export default function J3AcademicsPageClient() {
       />
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-gray-600/30">
-        {(['events','contacts','portals','documents'] as const).map(tab => (
+        {(['events','contacts','portals','documents'] as const).map(tab => {
+          const label = tab === 'portals' ? 'Passwords & Portals' : tab[0].toUpperCase()+tab.slice(1);
+          return (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-3 py-2 text-sm border-b-2 ${activeTab===tab ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
           >
-            {tab[0].toUpperCase()+tab.slice(1)}
+            {label}
           </button>
-        ))}
+        })}
       </div>
       {loading ? (
         <div className="flex items-center justify-center h-40">
@@ -200,7 +194,7 @@ export default function J3AcademicsPageClient() {
           {activeTab==='portals' && (
           <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="font-semibold text-text-primary">Portals</h2>
+              <h2 className="font-semibold text-text-primary">Passwords & Portals</h2>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-text-muted">{filtered.portals.length} total</span>
                 {user?.role === 'admin' && (
@@ -220,7 +214,7 @@ export default function J3AcademicsPageClient() {
                 />
               ))}
               {filtered.portals.length === 0 && (
-                <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No portals</div>
+                <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No passwords or portals</div>
               )}
             </div>
           </section>
@@ -237,7 +231,7 @@ export default function J3AcademicsPageClient() {
                 )}
               </div>
             </div>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filtered.events.map((ev: any) => (
                 <EventCard
                   key={ev.id}

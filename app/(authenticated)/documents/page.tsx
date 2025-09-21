@@ -83,7 +83,7 @@ const cleanDocumentTitle = (title: string): string => {
 
 export default function DocumentsPage() {
   const { user, loading: userLoading } = useUser();
-  const { selectedPersonId } = usePersonFilter();
+  const { selectedPersonId, setSelectedPersonId } = usePersonFilter();
   const router = useRouter();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
@@ -604,82 +604,64 @@ export default function DocumentsPage() {
           {/* Expanded Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-gray-600/30">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <select
+                  aria-label="Category"
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                >
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+
+                <PersonSelector className="w-full" showLabel={false} />
+
+                <select
+                  aria-label="Sort by"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                >
+                  {sortOptions.map(option => (
+                    <option key={option.id} value={option.id}>{option.name}</option>
+                  ))}
+                </select>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, starred: !prev.starred }))}
+                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                      filters.starred
+                        ? 'bg-gray-700 text-text-primary border-gray-600'
+                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                    }`}
                   >
-                    {categories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Filter by
-                  </label>
-                  <PersonSelector className="w-full" showLabel={false} />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Sort By
-                  </label>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                    <Star className="h-4 w-4" fill={filters.starred ? 'currentColor' : 'none'} />
+                    Starred
+                  </button>
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, expiringSoon: !prev.expiringSoon }))}
+                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                      filters.expiringSoon
+                        ? 'bg-gray-700 text-text-primary border-gray-600'
+                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                    }`}
                   >
-                    {sortOptions.map(option => (
-                      <option key={option.id} value={option.id}>{option.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Quick Filters
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => setFilters(prev => ({ ...prev, starred: !prev.starred }))}
-                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                        filters.starred
-                          ? 'bg-gray-700 text-text-primary border-gray-600'
-                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                      }`}
-                    >
-                      <Star className="h-4 w-4" fill={filters.starred ? 'currentColor' : 'none'} />
-                      Starred
-                    </button>
-                    <button
-                      onClick={() => setFilters(prev => ({ ...prev, expiringSoon: !prev.expiringSoon }))}
-                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                        filters.expiringSoon
-                          ? 'bg-gray-700 text-text-primary border-gray-600'
-                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                      }`}
-                    >
-                      <Clock className="h-4 w-4" />
-                      Expiring
-                    </button>
-                    <button
-                      onClick={() => setFilters(prev => ({ ...prev, showArchived: !prev.showArchived }))}
-                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                        filters.showArchived
-                          ? 'bg-gray-700 text-text-primary border-gray-600'
-                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                      }`}
-                    >
-                      Show Archived
-                    </button>
-                  </div>
+                    <Clock className="h-4 w-4" />
+                    Expiring
+                  </button>
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, showArchived: !prev.showArchived }))}
+                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                      filters.showArchived
+                        ? 'bg-gray-700 text-text-primary border-gray-600'
+                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                    }`}
+                  >
+                    Show Archived
+                  </button>
                 </div>
               </div>
 
@@ -692,6 +674,7 @@ export default function DocumentsPage() {
                       setSortBy('newest');
                       setFilters({ starred: false, expiringSoon: false, showArchived: false });
                       setSearchQuery('');
+                      setSelectedPersonId(null);
                     }}
                     className="flex items-center gap-1 text-sm text-text-muted hover:text-text-primary transition-colors"
                   >
