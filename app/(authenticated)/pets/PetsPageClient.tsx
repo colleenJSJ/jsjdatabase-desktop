@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { PetDocumentUpload } from './PetDocumentUpload';
 import { DocumentList } from '@/components/documents/document-list';
+import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import dynamic from 'next/dynamic';
 import PetAppointmentModal from './PetAppointmentModal';
 import PetContactModal from './PetContactModal';
@@ -70,6 +70,7 @@ export default function PetsPageClient() {
   const [selectedAppointment, setSelectedAppointment] = useState<PetAppointment | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showAddPortal, setShowAddPortal] = useState(false);
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
   const { calendars: googleCalendars } = useGoogleCalendars();
 
   const loadData = useCallback(async () => {
@@ -381,7 +382,12 @@ export default function PetsPageClient() {
             <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-semibold text-text-primary">Documents</h2>
-                <PetDocumentUpload pets={pets} selectedPetId={selectedPetId} onUploadSuccess={() => setRefreshDocs(x => x + 1)} />
+                <button
+                  onClick={() => setShowDocumentModal(true)}
+                  className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
+                >
+                  Upload Document
+                </button>
               </div>
               <DocumentList category="pets" sourcePage="Pets" refreshKey={refreshDocs} />
             </section>
@@ -420,6 +426,19 @@ export default function PetsPageClient() {
           pets={pets}
           googleCalendars={googleCalendars}
           onClose={() => setSelectedAppointment(null)}
+        />
+      )}
+      {showDocumentModal && (
+        <DocumentUploadModal
+          onClose={() => setShowDocumentModal(false)}
+          onUploadComplete={() => {
+            setShowDocumentModal(false);
+            setRefreshDocs(x => x + 1);
+          }}
+          sourcePage="Pets"
+          defaultCategory="Pets"
+          includePets
+          initialRelatedTo={selectedPetId && selectedPetId !== 'all' ? [selectedPetId] : ['shared']}
         />
       )}
     </div>

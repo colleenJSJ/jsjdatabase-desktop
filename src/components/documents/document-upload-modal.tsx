@@ -31,7 +31,9 @@ export default function DocumentUploadModal({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
-  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>(initialRelatedTo);
+  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>(
+    initialRelatedTo && initialRelatedTo.length > 0 ? initialRelatedTo : ['shared']
+  );
   const [tags, setTags] = useState('');
   const [description, setDescription] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
@@ -40,6 +42,7 @@ export default function DocumentUploadModal({
   const [dragActive, setDragActive] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [formError, setFormError] = useState<string>('');
   const { members: baseFamilyMembers } = useFamilyMembers({ includePets });
 
   const personOptions = useMemo(() => {
@@ -85,6 +88,7 @@ export default function DocumentUploadModal({
   };
 
   const handlePersonToggle = (personId: string) => {
+    setFormError('');
     setSelectedPersonIds(prev =>
       prev.includes(personId)
         ? prev.filter(id => id !== personId)
@@ -93,12 +97,11 @@ export default function DocumentUploadModal({
   };
 
   const handleSelectAll = () => {
+    setFormError('');
     if (selectAll) {
       setSelectedPersonIds([]);
     } else {
-      const selectable = personOptions
-        .map(option => option.id)
-        .filter(id => id !== 'shared');
+      const selectable = personOptions.map(option => option.id);
       setSelectedPersonIds(selectable);
     }
     setSelectAll(!selectAll);
@@ -106,13 +109,11 @@ export default function DocumentUploadModal({
 
   useEffect(() => {
     // Update "All" checkbox state when individual selections change
-    const selectableIds = personOptions
-      .map(option => option.id)
-      .filter(id => id !== 'shared');
-    const selectedNonShared = selectedPersonIds.filter(id => id !== 'shared');
+    const selectableIds = personOptions.map(option => option.id);
+    const normalizedSelected = selectedPersonIds.filter(id => selectableIds.includes(id));
     setSelectAll(
       selectableIds.length > 0 &&
-      selectedNonShared.length === selectableIds.length
+      normalizedSelected.length === selectableIds.length
     );
   }, [personOptions, selectedPersonIds]);
 
@@ -146,9 +147,16 @@ export default function DocumentUploadModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !title || !category) return;
+    if (!file || !title || !category) {
+      return;
+    }
+    if (selectedPersonIds.length === 0) {
+      setFormError('Assign To is required.');
+      return;
+    }
 
     setUploading(true);
+    setFormError('');
 
     try {
       // Log session status before upload
@@ -162,12 +170,14 @@ export default function DocumentUploadModal({
       formData.append('source_id', sourceId || '');
       formData.append('uploaded_by', user?.id || '');
       
-      const assigned = selectedPersonIds.length > 0 ? selectedPersonIds : ['shared'];
-      formData.append('assigned_to', JSON.stringify(assigned));
+      formData.append('assigned_to', JSON.stringify(selectedPersonIds));
       
       // Combine assignees and custom tags for metadata
       const normalizedTags = tags.split(',').map(t => t.trim()).filter(Boolean);
-      const allTags = Array.from(new Set([...assigned, ...normalizedTags]));
+      const allTags = Array.from(new Set([
+        ...selectedPersonIds,
+        ...normalizedTags,
+      ]));
       formData.append('tags', JSON.stringify(allTags));
       
       formData.append('description', description);
@@ -309,8 +319,9 @@ export default function DocumentUploadModal({
 
             {/* Assign To */}
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Assign To (optional)
+              <label className="flex items-center gap-1 text-sm font-medium text-text-primary mb-1">
+                <span>Assign To</span>
+                <span className="text-urgent">*</span>
               </label>
               <div className="space-y-2 max-h-48 overflow-y-auto p-3 bg-background-primary border border-gray-600/30 rounded-md">
                 <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-700/20 p-1 rounded font-medium">
@@ -337,8 +348,11 @@ export default function DocumentUploadModal({
                   ))}
                 </div>
               </div>
+              {formError && (
+                <p className="text-xs text-urgent mt-1">{formError}</p>
+              )}
               <p className="text-xs text-text-muted mt-1">
-                Assigning tags who this document relates to; all users can still view every document.
+                Assign who this document relates to; all users can still view every document.
               </p>
             </div>
 
