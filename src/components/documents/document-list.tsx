@@ -231,29 +231,15 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
                 {copyingDocId === doc.id ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </button>
               <button
-                onClick={async () => {
-                  try {
-                    const response = await fetch('/api/documents/get-signed-url', {
-                      method: 'POST',
-                      headers: addCSRFToHeaders({ 'Content-Type': 'application/json' }),
-                  body: JSON.stringify({
-                    documentId: doc.id,
-                    fileName: doc.file_name,
-                    fileUrl: doc.file_url,
-                    download: true,
-                  })
-                });
-                if (!response.ok) return;
-                const { signedUrl } = await response.json();
-                const link = document.createElement('a');
-                link.href = signedUrl;
-                link.rel = 'noopener';
-                link.download = doc.file_name || 'document';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              } catch {}
-            }}
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = `/api/documents/download/${doc.id}`;
+                  link.rel = 'noopener';
+                  link.download = doc.file_name || 'document';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
                 className="text-text-muted hover:text-primary-400 transition-colors"
                 title="Download"
               >

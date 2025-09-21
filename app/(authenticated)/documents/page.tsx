@@ -391,33 +391,14 @@ export default function DocumentsPage() {
     }
   };
 
-  const handleDownload = async (doc: Document) => {
-    try {
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-      const response = await ApiClient.post('/api/documents/get-signed-url', {
-        documentId: doc.id,
-        fileName: doc.file_name,
-        fileUrl: doc.file_url,
-        download: true,
-      });
-
-      if (!response.success) {
-        console.error('Failed to get signed URL');
-        return;
-      }
-
-      const { signedUrl } = (response.data as any) || {};
-      // Create a temporary link element for download
-      const link = document.createElement('a');
-      link.href = signedUrl;
-      link.rel = 'noopener';
-      link.download = doc.file_name || 'document';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error('Failed to download document:', error);
-    }
+  const handleDownload = (doc: Document) => {
+    const link = document.createElement('a');
+    link.href = `/api/documents/download/${doc.id}`;
+    link.rel = 'noopener';
+    link.download = doc.file_name || 'document';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const copyDocumentLink = async (doc: Document) => {
