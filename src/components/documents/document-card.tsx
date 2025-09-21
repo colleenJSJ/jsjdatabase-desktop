@@ -13,7 +13,6 @@ import {
   getDocumentRelatedNames,
   getFileIcon,
 } from './document-helpers';
-import ApiClient from '@/lib/api/api-client';
 
 type DocumentCardProps = {
   doc: Document;
@@ -45,47 +44,22 @@ export function DocumentCard({
   const isImage = Boolean(doc.file_type && doc.file_type.toLowerCase().startsWith('image/'));
 
   useEffect(() => {
-    let isMounted = true;
-    const cache = (window as any).__docThumbCache ?? ((window as any).__docThumbCache = new Map<string, string>());
-
     if (!isImage) {
       setThumbnailUrl(null);
-      return undefined;
+      return;
     }
 
+    setThumbnailLoaded(false);
+    const cache = (window as any).__docThumbCache ?? ((window as any).__docThumbCache = new Map<string, string>());
     const cached = cache.get(doc.id);
     if (cached) {
       setThumbnailUrl(cached);
-      return undefined;
+      return;
     }
 
-    const loadThumbnail = async () => {
-      try {
-        const response = await ApiClient.post('/api/documents/get-signed-url', {
-          documentId: doc.id,
-          fileName: doc.file_name,
-          fileUrl: doc.file_url,
-          preview: true,
-        });
-        if (!isMounted) return;
-        if (response.success) {
-          const payload = response.data as any;
-          const signedUrl = payload?.signedUrl || payload?.signed_url;
-          if (signedUrl) {
-            cache.set(doc.id, signedUrl);
-            setThumbnailUrl(signedUrl);
-          }
-        }
-      } catch (error) {
-        console.error('[DocumentCard] thumbnail fetch failed', error);
-      }
-    };
-
-    loadThumbnail();
-
-    return () => {
-      isMounted = false;
-    };
+    const url = `/api/documents/preview/${doc.id}?mode=thumbnail`;
+    cache.set(doc.id, url);
+    setThumbnailUrl(url);
   }, [doc, isImage]);
 
   const handleAction = async (
@@ -190,6 +164,10 @@ export function DocumentCard({
               alt={doc.title || doc.file_name}
               className={`h-full w-full object-cover transition-opacity ${thumbnailLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setThumbnailLoaded(true)}
+              onError={() => {
+                setThumbnailLoaded(false);
+                setThumbnailUrl(null);
+              }}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">

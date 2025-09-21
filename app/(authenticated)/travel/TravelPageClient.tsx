@@ -51,7 +51,7 @@ export default function TravelPageClient() {
   const [memberPrefs, setMemberPrefs] = useState<Record<string, { seat?: string; meal?: string }>>({});
   const { calendars: googleCalendars } = useGoogleCalendars();
   const { selectedPersonId, setSelectedPersonId } = usePersonFilter();
-  const { copyLink, viewDocument, downloadDocument } = useDocumentActions();
+  const { copyLink, downloadDocument } = useDocumentActions();
   const {
     doc: previewDoc,
     signedUrl: previewUrl,
@@ -215,14 +215,6 @@ export default function TravelPageClient() {
       await copyLink(doc);
     } catch (error) {
       console.error('Failed to copy document link:', error);
-    }
-  };
-
-  const handleDocumentView = async (doc: Document) => {
-    try {
-      await viewDocument(doc);
-    } catch (error) {
-      console.error('Failed to open document:', error);
     }
   };
 

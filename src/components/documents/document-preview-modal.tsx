@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X, Download } from 'lucide-react';
 import { Document } from '@/types';
 import { formatBytes, formatDate } from '@/lib/utils';
@@ -25,8 +25,23 @@ function getPreviewType(doc?: Document | null) {
 
 export function DocumentPreviewModal({ doc, signedUrl, loading, error, onClose, onDownload }: DocumentPreviewModalProps) {
   const previewType = useMemo(() => getPreviewType(doc), [doc]);
+  const [contentLoading, setContentLoading] = useState(true);
+
+  useEffect(() => {
+    if (doc && signedUrl) {
+      setContentLoading(true);
+    }
+  }, [doc?.id, signedUrl]);
+
+  useEffect(() => {
+    if (doc && signedUrl && previewType === 'other') {
+      setContentLoading(false);
+    }
+  }, [doc?.id, signedUrl, previewType]);
 
   if (!doc) return null;
+
+  const showSpinner = (loading || contentLoading) && !error;
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
@@ -68,7 +83,7 @@ export function DocumentPreviewModal({ doc, signedUrl, loading, error, onClose, 
         </header>
 
         <div className="relative flex-1 bg-background-primary">
-          {loading && (
+          {showSpinner && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="h-10 w-10 animate-spin rounded-full border-2 border-t-transparent border-gray-500" />
             </div>
@@ -81,18 +96,35 @@ export function DocumentPreviewModal({ doc, signedUrl, loading, error, onClose, 
             </div>
           )}
 
-          {!loading && !error && signedUrl && (
+          {!error && signedUrl && (
             <div className="h-full w-full overflow-hidden">
               {previewType === 'image' && (
                 <div className="flex h-full w-full items-center justify-center bg-black">
-                  <img src={signedUrl} alt={doc.title || doc.file_name} className="max-h-full max-w-full object-contain" />
+                  <img
+                    src={signedUrl}
+                    alt={doc.title || doc.file_name}
+                    className="max-h-full max-w-full object-contain"
+                    onLoad={() => setContentLoading(false)}
+                    onError={() => setContentLoading(false)}
+                  />
                 </div>
               )}
               {previewType === 'pdf' && (
-                <iframe src={signedUrl} className="h-full w-full" title={doc.title || doc.file_name} />
+                <iframe
+                  src={signedUrl}
+                  className="h-full w-full"
+                  title={doc.title || doc.file_name}
+                  onLoad={() => setContentLoading(false)}
+                />
               )}
               {previewType === 'video' && (
-                <video src={signedUrl} controls className="h-full w-full bg-black" />
+                <video
+                  src={signedUrl}
+                  controls
+                  className="h-full w-full bg-black"
+                  onLoadedData={() => setContentLoading(false)}
+                  onError={() => setContentLoading(false)}
+                />
               )}
               {previewType === 'other' && (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-center text-sm text-text-muted">

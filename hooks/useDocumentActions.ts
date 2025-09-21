@@ -11,11 +11,12 @@ type UseDocumentActionsOptions = {
 
 type MinimalDocument = Pick<Document, 'id' | 'file_name' | 'file_url' | 'is_starred'>;
 
-async function resolveSignedUrl(doc: MinimalDocument) {
+async function resolveSignedUrl(doc: MinimalDocument, params?: Record<string, any>) {
   const response = await ApiClient.post('/api/documents/get-signed-url', {
     documentId: doc.id,
     fileName: doc.file_name,
     fileUrl: doc.file_url,
+    ...params,
   });
 
   if (!response.success) {
@@ -46,7 +47,7 @@ export function useDocumentActions(options: UseDocumentActionsOptions = {}) {
   }, []);
 
   const downloadDocument = useCallback(async (doc: MinimalDocument) => {
-    const signedUrl = await resolveSignedUrl(doc);
+    const signedUrl = await resolveSignedUrl(doc, { download: true });
     const link = document.createElement('a');
     link.href = signedUrl;
     link.download = doc.file_name;

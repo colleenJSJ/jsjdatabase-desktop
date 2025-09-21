@@ -1,36 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import B2 from 'backblaze-b2';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
-import { deriveFilePath } from '@/app/api/documents/_helpers';
 import { logger } from '@/lib/utils/logger';
 
-export async function GET(request: NextRequest) {
-  const pathname = request.nextUrl.pathname;
-  const id = pathname.split('/').filter(Boolean).pop();
-  const requestLabel = '[Documents] Preview proxy';
-
-  if (!id) {
-    return NextResponse.json({ error: 'Document id required' }, { status: 400 });
+function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | null): string | null {
+  if (fileUrl && fileUrl.includes('/file/')) {
+    const afterFile = fileUrl.split('/file/')[1];
+    if (afterFile) {
+      const parts = afterFile.split('/');
+      if (parts.length > 1) {
+        return parts.slice(1).join('/');
+      }
+    }
   }
+  if (fallbackFileName) {
+    return fallbackFileName;
+  }
+  return null;
+}
+
+export async function GET(request: NextRequest) {
+  const requestLabel = '[Documents] Preview';
 
   try {
+    const segments = request.nextUrl.pathname.split('/');
+    const documentId = segments[segments.length - 1];
+    if (!documentId) {
+      return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
+    }
+
     const authResult = await getAuthenticatedUser();
     if ('error' in authResult) {
+      logger.warn(`${requestLabel} denied: unauthenticated request`);
       return authResult.error;
     }
 
     const { supabase, user } = authResult;
-
     const { data: document, error: documentError } = await supabase
       .from('documents')
-      .select('id,file_name,file_url,file_type')
-      .eq('id', id)
+      .select('id,file_name,file_url,file_type,file_size')
+      .eq('id', documentId)
       .maybeSingle();
 
     if (documentError || !document) {
       logger.warn(`${requestLabel} denied`, {
         userId: user.id,
-        documentId: id,
+        documentId,
         reason: documentError?.message ?? 'not_found'
       });
       const statusCode = (!document && (!documentError || documentError.code === 'PGRST116')) ? 404 : 403;
@@ -39,11 +54,11 @@ export async function GET(request: NextRequest) {
 
     const resolvedFilePath = deriveFilePath(document.file_url, document.file_name);
     if (!resolvedFilePath) {
-      logger.warn(`${requestLabel} file path unresolved`, {
+      logger.warn(`${requestLabel} denied: unable to resolve file path`, {
         userId: user.id,
-        documentId: document.id,
+        documentId: document.id
       });
-      return NextResponse.json({ error: 'Unable to resolve document path' }, { status: 400 });
+      return NextResponse.json({ error: 'Unable to resolve document file path' }, { status: 400 });
     }
 
     const keyId = process.env.BACKBLAZE_KEY_ID;
@@ -53,57 +68,42 @@ export async function GET(request: NextRequest) {
 
     if (!keyId || !applicationKey || !bucketId || !bucketName) {
       logger.error(`${requestLabel} failed: missing Backblaze configuration`);
-      return NextResponse.json({ error: 'Storage configuration incomplete' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Storage configuration incomplete' },
+        { status: 500 }
+      );
     }
 
     const b2 = new B2({ applicationKeyId: keyId, applicationKey });
     const authResponse = await b2.authorize();
-    const downloadAuth = await b2.getDownloadAuthorization({
-      bucketId,
-      fileNamePrefix: resolvedFilePath,
-      validDurationInSeconds: 3600,
-    });
 
-    const baseUrl = authResponse.data.downloadUrl;
-    const encodedPath = resolvedFilePath
-      .split('/')
-      .map(segment => encodeURIComponent(segment))
-      .join('/');
-
-    const signedUrl = new URL(`${baseUrl}/file/${bucketName}/${encodedPath}`);
-    signedUrl.searchParams.set('Authorization', downloadAuth.data.authorizationToken);
-
-    const downloadResponse = await fetch(signedUrl.toString(), {
+    const downloadUrl = `${authResponse.data.downloadUrl}/file/${bucketName}/${resolvedFilePath}`;
+    const downloadResponse = await fetch(downloadUrl, {
       headers: {
         Authorization: authResponse.data.authorizationToken,
       },
     });
 
     if (!downloadResponse.ok || !downloadResponse.body) {
-      logger.error(`${requestLabel} download failed`, {
-        userId: user.id,
-        documentId: document.id,
+      logger.error(`${requestLabel} fetch failed`, {
         status: downloadResponse.status,
+        statusText: downloadResponse.statusText,
       });
-      return NextResponse.json({ error: 'Failed to fetch document preview' }, { status: 502 });
+      return NextResponse.json({ error: 'Failed to load document preview' }, { status: 502 });
     }
 
-    const responseHeaders = new Headers();
-    const upstreamType = downloadResponse.headers.get('content-type');
-    const inferredType = document.file_type?.startsWith('image/') ? document.file_type : upstreamType;
-    if (inferredType) {
-      responseHeaders.set('Content-Type', inferredType);
+    const headers = new Headers();
+    headers.set('Content-Type', document.file_type || downloadResponse.headers.get('content-type') || 'application/octet-stream');
+    headers.set('Content-Disposition', `inline; filename="${encodeURIComponent(document.file_name || `document-${document.id}`)}"`);
+    headers.set('Cache-Control', 'private, no-store');
+    const contentLength = downloadResponse.headers.get('content-length');
+    if (contentLength) {
+      headers.set('Content-Length', contentLength);
     }
-    responseHeaders.set('Cache-Control', 'private, no-store');
-    const filename = document.file_name || `document-${document.id}`;
-    responseHeaders.set('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
 
-    return new Response(downloadResponse.body, {
-      status: 200,
-      headers: responseHeaders,
-    });
+    return new NextResponse(downloadResponse.body, { headers });
   } catch (error) {
-    logger.error(`${requestLabel} error`, error);
-    return NextResponse.json({ error: 'Failed to load preview' }, { status: 500 });
+    logger.error('[Documents] Preview error', error);
+    return NextResponse.json({ error: 'Failed to load document preview' }, { status: 500 });
   }
 }

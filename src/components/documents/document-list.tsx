@@ -25,7 +25,7 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
   const [loading, setLoading] = useState(true);
   const [familyMemberMap, setFamilyMemberMap] = useState<Record<string, string>>({ shared: 'Shared/Family' });
 
-  const { copyLink, viewDocument, downloadDocument, deleteDocument } = useDocumentActions();
+  const { copyLink, downloadDocument, deleteDocument } = useDocumentActions();
   const {
     doc: previewDoc,
     signedUrl: previewUrl,
