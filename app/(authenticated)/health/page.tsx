@@ -165,7 +165,13 @@ export default function HealthPage() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const hiddenFilterNames = new Set(['Colleen Russell', 'Kate McLaren']);
   const selectedPerson = selectedPersonId ?? 'all';
+  const filteredSelectedPerson = selectedPerson !== 'all' && hiddenFilterNames.has(
+    familyMembers.find(m => m.id === selectedPerson)?.name ?? ''
+  )
+    ? 'all'
+    : selectedPerson;
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showMedicationModal, setShowMedicationModal] = useState(false);
@@ -660,11 +666,13 @@ export default function HealthPage() {
         onSearchChange={setSearch}
         placeholder="Search health for appointments, medications, doctors..."
         includePetsOption={false}
-        customOptions={familyMembers.map(member => ({
-          id: member.id,
-          label: getFirstName(member.name),
-        }))}
-        selectedOption={selectedPerson}
+        customOptions={familyMembers
+          .filter(member => !hiddenFilterNames.has(member.name))
+          .map(member => ({
+            id: member.id,
+            label: getFirstName(member.name),
+          }))}
+        selectedOption={filteredSelectedPerson}
         onOptionChange={(value) => {
           if (value === 'all') {
             setSelectedPersonId(null);

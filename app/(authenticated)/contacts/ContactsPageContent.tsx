@@ -394,10 +394,8 @@ export default function ContactsPageContent() {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {/* Category Filter Dropdown */}
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Category
-                  </label>
                   <select
+                    aria-label="Category"
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
                     onFocus={async () => {
@@ -415,10 +413,8 @@ export default function ContactsPageContent() {
 
                 {/* Related To Filter Dropdown */}
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Related To
-                  </label>
                   <select
+                    aria-label="Related To"
                     value={selectedFamilyMember}
                     onChange={(e) => setSelectedFamilyMember(e.target.value)}
                     className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
@@ -431,22 +427,18 @@ export default function ContactsPageContent() {
                 </div>
 
                 {/* Quick Filters */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Quick Filters
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="emergency-only"
+                    checked={showEmergencyOnly}
+                    onChange={(e) => setShowEmergencyOnly(e.target.checked)}
+                    className="rounded border-neutral-600 bg-neutral-700 text-primary-600 focus:ring-primary-500"
+                    aria-label="Emergency Only"
+                  />
+                  <label htmlFor="emergency-only" className="text-sm text-text-primary cursor-pointer">
+                    Emergency Only
                   </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="emergency-only"
-                      checked={showEmergencyOnly}
-                      onChange={(e) => setShowEmergencyOnly(e.target.checked)}
-                      className="rounded border-neutral-600 bg-neutral-700 text-primary-600 focus:ring-primary-500"
-                    />
-                    <label htmlFor="emergency-only" className="text-sm text-text-primary cursor-pointer">
-                      Emergency Only
-                    </label>
-                  </div>
                 </div>
               </div>
             </div>

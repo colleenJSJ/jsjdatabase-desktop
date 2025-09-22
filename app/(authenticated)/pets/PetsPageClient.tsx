@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PetDocumentUpload } from './PetDocumentUpload';
 import { DocumentList } from '@/components/documents/document-list';
-import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import dynamic from 'next/dynamic';
 import PetAppointmentModal from './PetAppointmentModal';
 import PetContactModal from './PetContactModal';
 import ViewPetAppointmentModal from './ViewPetAppointmentModal';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
+import { PawPrint, Stethoscope, Syringe, Scissors } from 'lucide-react';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -70,7 +71,6 @@ export default function PetsPageClient() {
   const [selectedAppointment, setSelectedAppointment] = useState<PetAppointment | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showAddPortal, setShowAddPortal] = useState(false);
-  const [showDocumentModal, setShowDocumentModal] = useState(false);
   const { calendars: googleCalendars } = useGoogleCalendars();
 
   const loadData = useCallback(async () => {
@@ -137,6 +137,70 @@ export default function PetsPageClient() {
       hour: 'numeric',
       minute: '2-digit'
     });
+  };
+
+  const getAppointmentDateForCountdown = (appointment: PetAppointment): string | null => {
+    if (appointment.start_time) return appointment.start_time as string;
+    if (appointment.appointment_date) {
+      const time = (appointment.appointment_time as string | undefined)?.slice(0, 8) || '00:00:00';
+      return `${appointment.appointment_date}T${time}`;
+    }
+    return null;
+  };
+
+  const daysUntil = (dateTime?: string | null) => {
+    if (!dateTime) return null;
+    const date = new Date(dateTime);
+    if (Number.isNaN(date.getTime())) return null;
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diff = Math.ceil((startOfTarget.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+    return diff;
+  };
+
+  const formatPetNames = (names: string[]) => {
+    if (names.length === 0) return '';
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+  };
+
+  const describeAppointment = (appointment: PetAppointment, petNames: string[], location?: string, vetName?: string | null) => {
+    const names = formatPetNames(petNames);
+    const hasMultiple = petNames.length > 1;
+    const rawType = (appointment.appointment_type || appointment.title || 'appointment') as string;
+    const normalizedType = rawType.replace(/_/g, ' ');
+    const typeLower = normalizedType.toLowerCase();
+    const article = /^[aeiou]/.test(typeLower) ? 'an' : 'a';
+    let sentence = `${names || 'Your pet'} ${hasMultiple ? 'have' : 'has'} ${article} ${typeLower}`;
+    if (vetName) {
+      sentence += ` with ${vetName}`;
+    }
+    if (location) {
+      sentence += ` at ${location}`;
+    }
+    const extra = (appointment.description as string | undefined)?.trim();
+    if (extra) {
+      sentence += `. ${extra}`;
+    } else {
+      sentence += '.';
+    }
+    return sentence;
+  };
+
+  const appointmentIconForType = (type?: string) => {
+    const t = (type || '').toLowerCase();
+    if (t.includes('vet') || t.includes('doctor')) {
+      return <Stethoscope className="w-4 h-4 text-blue-400" />;
+    }
+    if (t.includes('vaccine') || t.includes('shot') || t.includes('vaccination')) {
+      return <Syringe className="w-4 h-4 text-blue-400" />;
+    }
+    if (t.includes('groom')) {
+      return <Scissors className="w-4 h-4 text-blue-400" />;
+    }
+    return <PawPrint className="w-4 h-4 text-blue-400" />;
   };
 
   const term = search.trim().toLowerCase();
@@ -212,7 +276,7 @@ export default function PetsPageClient() {
         {([
           { key: 'appointments', label: 'Appointments' },
           { key: 'contacts', label: 'Contacts' },
-          { key: 'portals', label: 'Passwords & Portals' },
+          { key: 'portals', label: 'Portals' },
           { key: 'documents', label: 'Documents' },
         ] as const).map(tab => (
           <button
@@ -291,7 +355,7 @@ export default function PetsPageClient() {
           {activeTab==='portals' && (
             <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="font-semibold text-text-primary">Passwords & Portals</h2>
+                <h2 className="font-semibold text-text-primary">Portals</h2>
                 <button onClick={()=>setShowAddPortal(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Portal</button>
               </div>
               <ul className="space-y-1 text-sm text-text-muted">
@@ -317,7 +381,6 @@ export default function PetsPageClient() {
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {filtered.appointments.map((appointment) => {
-                  const title = (appointment.title as string | undefined) || 'Pet Appointment';
                   const petIdSet = Array.from(
                     new Set([
                       ...(Array.isArray(appointment.petIds) ? appointment.petIds : []),
@@ -333,8 +396,14 @@ export default function PetsPageClient() {
                     appointment.appointment_date as string | undefined,
                     (appointment as any).appointment_time as string | undefined
                   );
-                  const locationDisplay = (appointment.location as string | undefined) || 'Location TBD';
+                  const locationDisplay = (appointment.location as string | undefined) || undefined;
                   const vetName = appointment.vet_name as string | undefined;
+                  const typeLabel = (appointment.appointment_type as string | undefined)?.replace(/_/g, ' ');
+                  const header = (appointment.title && String(appointment.title).trim().length > 0)
+                    ? String(appointment.title)
+                    : (typeLabel ? typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1) : 'Pet Appointment');
+                  const summary = describeAppointment(appointment, petNames, locationDisplay, vetName);
+                  const countdown = daysUntil(getAppointmentDateForCountdown(appointment));
 
                   return (
                     <button
@@ -343,31 +412,27 @@ export default function PetsPageClient() {
                       className="text-left bg-background-primary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
-                            <span>{title}</span>
-                          </h3>
-                          <p className="text-xs text-text-muted mt-1">{dateDisplay}</p>
-                        </div>
-                        <span className="text-xs text-text-muted capitalize bg-[#30302E] border border-[#3A3A38] px-2 py-1 rounded-full">
-                          {(appointment.appointment_type as string | undefined)?.replace(/_/g, ' ') || 'appointment'}
-                        </span>
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-text-muted">
-                        <div className="flex items-center gap-1">
-                          <span className="text-text-primary">Pets:</span>
-                          <span>{petNames.length > 0 ? petNames.join(', ') : 'TBD'}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-text-primary">Location:</span>
-                          <span>{locationDisplay}</span>
-                        </div>
-                        {vetName && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-text-primary">Vet:</span>
-                            <span>{vetName}</span>
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 rounded-full bg-blue-400/10 p-2">
+                            {appointmentIconForType(appointment.appointment_type as string | undefined)}
                           </div>
-                        )}
+                          <div>
+                            <div className="text-sm font-medium text-text-primary capitalize">
+                              {header}
+                            </div>
+                            <p className="mt-1 text-xs text-text-muted leading-relaxed">
+                              {summary}
+                            </p>
+                            {countdown !== null && (
+                              <div className="mt-1 text-xs text-travel font-semibold">
+                                {countdown === 0 ? 'Today' : countdown === 1 ? '1 day' : `${countdown} days`}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right text-xs text-text-muted whitespace-nowrap">
+                          {dateDisplay}
+                        </div>
                       </div>
                     </button>
                   );
@@ -382,12 +447,7 @@ export default function PetsPageClient() {
             <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-semibold text-text-primary">Documents</h2>
-                <button
-                  onClick={() => setShowDocumentModal(true)}
-                  className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
-                >
-                  Upload Document
-                </button>
+                <PetDocumentUpload pets={pets} selectedPetId={selectedPetId} onUploadSuccess={() => setRefreshDocs(x => x + 1)} />
               </div>
               <DocumentList category="pets" sourcePage="Pets" refreshKey={refreshDocs} />
             </section>
@@ -426,19 +486,6 @@ export default function PetsPageClient() {
           pets={pets}
           googleCalendars={googleCalendars}
           onClose={() => setSelectedAppointment(null)}
-        />
-      )}
-      {showDocumentModal && (
-        <DocumentUploadModal
-          onClose={() => setShowDocumentModal(false)}
-          onUploadComplete={() => {
-            setShowDocumentModal(false);
-            setRefreshDocs(x => x + 1);
-          }}
-          sourcePage="Pets"
-          defaultCategory="Pets"
-          includePets
-          initialRelatedTo={selectedPetId && selectedPetId !== 'all' ? [selectedPetId] : ['shared']}
         />
       )}
     </div>

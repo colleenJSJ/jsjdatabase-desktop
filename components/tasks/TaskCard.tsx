@@ -168,12 +168,10 @@ export default function TaskCard({ task, urgent = false, isDraft = false, isComp
                       e.stopPropagation();
                       handleTogglePending();
                     }}
-                    className={`px-2 py-1 text-white text-xs font-medium rounded transition-colors flex-shrink-0 flex items-center gap-1 ${isPending ? 'bg-[#6b5fa3] hover:bg-[#5d5294]' : 'bg-[#514c78] hover:bg-[#474169]'}`}
-                    aria-pressed={isPending}
-                    title={isPending ? 'Click to clear pending status' : 'Click to mark this task as pending'}
+                    className="px-2 py-1 bg-[#514c78] hover:bg-[#474169] text-white text-xs font-medium rounded transition-colors flex-shrink-0 flex items-center gap-1"
                   >
                     <Clock className="h-3 w-3" />
-                    {isPending ? 'Pending' : 'Mark Pending'}
+                    {isPending ? 'Clear Pending' : 'Mark Pending'}
                   </button>
                   {showDelete && onDelete && (
                     <button
@@ -228,19 +226,11 @@ export default function TaskCard({ task, urgent = false, isDraft = false, isComp
 
           <div className="flex items-center justify-between gap-2 mt-2 text-xs text-text-muted">
             <div className="flex items-center gap-2">
-                  {isPending && (
-                    <>
-                      <span className="px-2 py-0.5 bg-[#514c78] text-white rounded-full text-xs font-medium">PENDING</span>
-                    </>
-                  )}
               {task.due_date && (
-                <>
-                  {isPending && <span>•</span>}
-                  <span className={isOverdue ? 'text-red-400 font-semibold' : ''}>
-                    Due {dueDateLocal?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    {isOverdue && ' (Overdue)'}
-                  </span>
-                </>
+                <span className={isOverdue ? 'text-red-400 font-semibold' : ''}>
+                  Due {dueDateLocal?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {isOverdue && ' (Overdue)'}
+                </span>
               )}
             </div>
             {/* Comment icon - show only if there are comments */}

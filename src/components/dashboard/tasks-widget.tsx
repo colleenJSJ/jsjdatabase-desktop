@@ -306,19 +306,11 @@ export function TasksWidget() {
 
               <div className="flex items-center justify-between gap-2 mt-2 text-xs text-text-muted">
                 <div className="flex items-center gap-2">
-                  {isPending && (
-                    <>
-                      <span className="px-2 py-0.5 bg-[#514c78] text-white rounded-full text-xs font-medium">PENDING</span>
-                    </>
-                  )}
                   {task.due_date && (
-                    <>
-                      {isPending && <span>•</span>}
-                      <span className={isOverdue ? 'text-red-400 font-semibold' : ''}>
-                        Due {dueLocal?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        {isOverdue && ' (Overdue)'}
-                      </span>
-                    </>
+                    <span className={isOverdue ? 'text-red-400 font-semibold' : ''}>
+                      Due {dueLocal?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {isOverdue && ' (Overdue)'}
+                    </span>
                   )}
                 </div>
                 {/* Comment icon - show only if there are comments */}
