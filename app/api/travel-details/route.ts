@@ -51,8 +51,15 @@ export async function GET(request: NextRequest) {
       .order('departure_time', { ascending: true });
 
     if (error) {
+      console.error('[Travel Details API] Supabase query failed', error);
       return NextResponse.json(
-        { error: 'Failed to fetch travel details' },
+        {
+          error: 'Failed to fetch travel details',
+          code: (error as any)?.code ?? null,
+          message: (error as any)?.message ?? null,
+          hint: (error as any)?.hint ?? null,
+          details: (error as any)?.details ?? null,
+        },
         { status: 500 }
       );
     }
@@ -78,9 +85,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ details: enhancedDetails });
   } catch (error) {
-
+    console.error('[Travel Details API] Unexpected error', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
