@@ -22,6 +22,59 @@ import { useDocumentActions } from '@/hooks/useDocumentActions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 
+const normalizeId = (raw: unknown): string | null => {
+  if (raw === null || raw === undefined) return null;
+  try {
+    return String(raw);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeTravelerArray = (raw: unknown): string[] => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw
+      .map(item => normalizeId(item))
+      .filter((id): id is string => Boolean(id));
+  }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map(item => normalizeId(item))
+          .filter((id): id is string => Boolean(id));
+      }
+    } catch {
+      return raw
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+};
+
+const matchesText = (searchTerm: string, value: unknown): boolean => {
+  if (!searchTerm) return true;
+  if (typeof value === 'string') {
+    return value.toLowerCase().includes(searchTerm);
+  }
+  if (Array.isArray(value)) {
+    return value.some(item => typeof item === 'string' && item.toLowerCase().includes(searchTerm));
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value).some(entry => typeof entry === 'string' && entry.toLowerCase().includes(searchTerm));
+  }
+  return false;
+};
+
+const matchesSearchBlob = (searchTerm: string, ...values: Array<unknown>): boolean => {
+  if (!searchTerm) return true;
+  return values.some(entry => matchesText(searchTerm, entry));
+};
+
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
 export default function TravelPageClient() {
@@ -191,72 +244,23 @@ export default function TravelPageClient() {
   // Derived filtered collections
   const filters = useMemo(() => ({ search: search.trim().toLowerCase(), tripId: selectedTripId }), [search, selectedTripId]);
   const filtered = useMemo(() => {
-    const matchesText = (value: unknown) => {
-      const term = filters.search;
-      if (!term) return true;
-      if (typeof value === 'string') {
-        return value.toLowerCase().includes(term);
-      }
-      if (Array.isArray(value)) {
-        return value.some(item => typeof item === 'string' && item.toLowerCase().includes(term));
-      }
-      if (value && typeof value === 'object') {
-        return Object.values(value).some(entry => typeof entry === 'string' && entry.toLowerCase().includes(term));
-      }
-      return false;
-    };
-
-    const normalizeId = (raw: unknown): string | null => {
-      if (!raw) return null;
-      try {
-        return String(raw);
-      } catch {
-        return null;
-      }
-    };
-
-    const normalizeArray = (raw: unknown): string[] => {
-      if (!raw) return [];
-      if (Array.isArray(raw)) {
-        return raw.map(item => normalizeId(item)).filter((id): id is string => Boolean(id));
-      }
-      if (typeof raw === 'string') {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            return parsed.map(item => normalizeId(item)).filter((id): id is string => Boolean(id));
-          }
-        } catch {
-          // fall back to treating as comma-delimited list
-          return raw
-            .split(',')
-            .map(part => part.trim())
-            .filter(Boolean);
-        }
-      }
-      return [];
-    };
-
-    const matchesSearchBlob = (...values: Array<unknown>) => {
-      if (!filters.search) return true;
-      return values.some(entry => matchesText(entry));
-    };
+    const searchTerm = filters.search;
 
     // Trips: search destination/name/notes; person filter via traveler_ids
     const trips = (data.trips || []).filter((t: any) => {
       const textBlob = [t.destination, t.name, t.notes, t.location, t.description]
         .filter(Boolean)
         .join(' ');
-      return matchesText(textBlob);
+      return matchesSearchBlob(searchTerm, textBlob);
     });
 
     // Travel details: search provider/airports/locations/notes; person via travelers array
     const details = (data.travel_details || []).filter((d: any) => {
-      let travelerIds = normalizeArray(d.travelers || d.travelers_ids || d.traveler_ids);
+      let travelerIds = normalizeTravelerArray(d.travelers || d.travelers_ids || d.traveler_ids);
       if (travelerIds.length === 0 && d.trip_id) {
         const trip = (data.trips || []).find((t: any) => t.id === d.trip_id);
         // Use traveler_ids from the trip (already an array of UUIDs)
-        travelerIds = normalizeArray(trip?.traveler_ids);
+        travelerIds = normalizeTravelerArray(trip?.traveler_ids);
       }
       const textBlob = [
         d.type,
@@ -276,7 +280,7 @@ export default function TravelPageClient() {
         return false;
       }
 
-      return matchesSearchBlob(textBlob, travelerIds);
+      return matchesSearchBlob(searchTerm, textBlob, travelerIds);
     });
 
     // Accommodations: search hotel/name/address/notes; person via joining to trip (best effort)
@@ -289,7 +293,7 @@ export default function TravelPageClient() {
       const textBlob = [a.hotel_name, a.name, a.address, a.notes, a.confirmation_number]
         .filter(Boolean)
         .join(' ');
-      return matchesText(textBlob);
+      return matchesSearchBlob(searchTerm, textBlob);
     });
 
     // Documents: title/file_name; no person association currently
@@ -301,7 +305,7 @@ export default function TravelPageClient() {
         const linked = (sourcePage === 'travel' && sourceId === filterTripId);
         if (!linked) return false;
       }
-      return matchesSearchBlob(doc.title, doc.file_name, doc.notes);
+      return matchesSearchBlob(searchTerm, doc.title, doc.file_name, doc.notes);
     });
 
     // Contacts: name/company/notes/phone/email/address
@@ -312,6 +316,7 @@ export default function TravelPageClient() {
         return false;
       }
       return matchesSearchBlob(
+        searchTerm,
         c.name,
         c.company,
         c.notes,
