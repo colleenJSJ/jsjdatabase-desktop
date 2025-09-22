@@ -191,61 +191,134 @@ export default function TravelPageClient() {
   // Derived filtered collections
   const filters = useMemo(() => ({ search: search.trim().toLowerCase(), tripId: selectedTripId }), [search, selectedTripId]);
   const filtered = useMemo(() => {
-    const matchesText = (str: any) => {
+    const matchesText = (value: unknown) => {
       const term = filters.search;
       if (!term) return true;
-      const s = (str || '').toString().toLowerCase();
-      return s.includes(term);
+      if (typeof value === 'string') {
+        return value.toLowerCase().includes(term);
+      }
+      if (Array.isArray(value)) {
+        return value.some(item => typeof item === 'string' && item.toLowerCase().includes(term));
+      }
+      if (value && typeof value === 'object') {
+        return Object.values(value).some(entry => typeof entry === 'string' && entry.toLowerCase().includes(term));
+      }
+      return false;
+    };
+
+    const normalizeId = (raw: unknown): string | null => {
+      if (!raw) return null;
+      try {
+        return String(raw);
+      } catch {
+        return null;
+      }
+    };
+
+    const normalizeArray = (raw: unknown): string[] => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) {
+        return raw.map(item => normalizeId(item)).filter((id): id is string => Boolean(id));
+      }
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed.map(item => normalizeId(item)).filter((id): id is string => Boolean(id));
+          }
+        } catch {
+          // fall back to treating as comma-delimited list
+          return raw
+            .split(',')
+            .map(part => part.trim())
+            .filter(Boolean);
+        }
+      }
+      return [];
+    };
+
+    const matchesSearchBlob = (...values: Array<unknown>) => {
+      if (!filters.search) return true;
+      return values.some(entry => matchesText(entry));
     };
 
     // Trips: search destination/name/notes; person filter via traveler_ids
     const trips = (data.trips || []).filter((t: any) => {
-      // traveler_ids is already an array of UUIDs
-      const textBlob = [t.destination, t.name, t.notes, t.location, t.description].filter(Boolean).join(' ');
+      const textBlob = [t.destination, t.name, t.notes, t.location, t.description]
+        .filter(Boolean)
+        .join(' ');
       return matchesText(textBlob);
     });
 
     // Travel details: search provider/airports/locations/notes; person via travelers array
     const details = (data.travel_details || []).filter((d: any) => {
-      let travelerIds = (d.travelers || d.travelers_ids || d.traveler_ids) as string[] | undefined;
-      if ((!travelerIds || travelerIds.length === 0) && d.trip_id) {
+      let travelerIds = normalizeArray(d.travelers || d.travelers_ids || d.traveler_ids);
+      if (travelerIds.length === 0 && d.trip_id) {
         const trip = (data.trips || []).find((t: any) => t.id === d.trip_id);
         // Use traveler_ids from the trip (already an array of UUIDs)
-        travelerIds = trip?.traveler_ids || [];
+        travelerIds = normalizeArray(trip?.traveler_ids);
       }
-      travelerIds = (travelerIds || []).filter(Boolean);
-      const textBlob = [d.type, d.provider, d.airline, d.flight_number, d.departure_airport, d.arrival_airport, d.departure_location, d.arrival_location, d.notes].filter(Boolean).join(' ');
-      if (filters.tripId && d.trip_id !== filters.tripId) return false;
-      return matchesText(textBlob);
+      const textBlob = [
+        d.type,
+        d.provider,
+        d.airline,
+        d.flight_number,
+        d.departure_airport,
+        d.arrival_airport,
+        d.departure_location,
+        d.arrival_location,
+        d.notes,
+      ].filter(Boolean);
+
+      const filterTripId = normalizeId(filters.tripId);
+      const detailTripId = normalizeId(d.trip_id);
+      if (filterTripId && (!detailTripId || detailTripId !== filterTripId)) {
+        return false;
+      }
+
+      return matchesSearchBlob(textBlob, travelerIds);
     });
 
     // Accommodations: search hotel/name/address/notes; person via joining to trip (best effort)
     const accommodations = (data.accommodations || []).filter((a: any) => {
-      if (filters.tripId && a.trip_id !== filters.tripId) return false;
-      const textBlob = [a.hotel_name, a.name, a.address, a.notes, a.confirmation_number].filter(Boolean).join(' ');
+      const filterTripId = normalizeId(filters.tripId);
+      const accommodationTripId = normalizeId(a.trip_id);
+      if (filterTripId && (!accommodationTripId || accommodationTripId !== filterTripId)) {
+        return false;
+      }
+      const textBlob = [a.hotel_name, a.name, a.address, a.notes, a.confirmation_number]
+        .filter(Boolean)
+        .join(' ');
       return matchesText(textBlob);
     });
 
     // Documents: title/file_name; no person association currently
     const documents = (data.documents || []).filter((doc: any) => {
-      if (filters.tripId) {
-        const linked = (doc.source_page === 'travel' && (doc.source_id === filters.tripId));
+      const filterTripId = normalizeId(filters.tripId);
+      if (filterTripId) {
+        const sourcePage = typeof doc.source_page === 'string' ? doc.source_page.toLowerCase() : '';
+        const sourceId = normalizeId(doc.source_id);
+        const linked = (sourcePage === 'travel' && sourceId === filterTripId);
         if (!linked) return false;
       }
-      return matchesText([doc.title, doc.file_name, doc.notes].filter(Boolean).join(' '));
+      return matchesSearchBlob(doc.title, doc.file_name, doc.notes);
     });
 
     // Contacts: name/company/notes/phone/email/address
     const contacts = (data.contacts || []).filter((c: any) => {
-      if (filters.tripId && c.trip_id !== filters.tripId) return false;
-      return matchesText([
+      const filterTripId = normalizeId(filters.tripId);
+      const contactTripId = normalizeId(c.trip_id);
+      if (filterTripId && (!contactTripId || contactTripId !== filterTripId)) {
+        return false;
+      }
+      return matchesSearchBlob(
         c.name,
         c.company,
         c.notes,
         c.phone,
         c.email,
-        c.address
-      ].filter(Boolean).join(' '));
+        c.address,
+      );
     });
 
     return { trips, details, accommodations, documents, contacts };
