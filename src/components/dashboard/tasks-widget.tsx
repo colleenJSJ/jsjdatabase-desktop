@@ -299,7 +299,7 @@ export function TasksWidget() {
                     className="px-2 py-1 bg-[#514c78] hover:bg-[#474169] text-white text-xs font-medium rounded transition-colors flex-shrink-0 flex items-center gap-1"
                   >
                     <Clock className="h-3 w-3" />
-                    {isPending ? 'Clear Pending' : 'Mark Pending'}
+                    {isPending ? 'Pending' : 'Mark Pending'}
                   </button>
                 </div>
               </div>

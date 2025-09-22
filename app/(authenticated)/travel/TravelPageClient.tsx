@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TransportType } from '@/types/travel';
 import dynamic from 'next/dynamic';
 import { SmartUploadButtonV2 } from '@/components/travel/SmartUploadButtonV2';
-import { Plane, Train, Car, Ship, Globe, Pencil, Trash2, Calendar, Clock, MapPin, Users, Ticket, X } from 'lucide-react';
+import { Plane, Train, Car, Ship, Globe, Pencil, Trash2, Calendar, Clock, MapPin, Users, Ticket, X, Phone, Mail, Building2, FileText } from 'lucide-react';
 import { TravelSegmentFields } from '@/components/travel/shared/TravelSegmentFields';
 import { TravelersPicker } from '@/components/travel/shared/TravelersPicker';
 import { InvitesCalendarPanel } from '@/components/travel/shared/InvitesCalendarPanel';
@@ -20,6 +20,7 @@ import { DocumentCard } from '@/components/documents/document-card';
 import { DocumentPreviewModal } from '@/components/documents/document-preview-modal';
 import { useDocumentActions } from '@/hooks/useDocumentActions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
+import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -201,14 +202,29 @@ export default function TravelPageClient() {
       return matchesText([doc.title, doc.file_name, doc.notes].filter(Boolean).join(' '));
     });
 
-    // Contacts: name/company/notes
+    // Contacts: name/company/notes/phone/email/address
     const contacts = (data.contacts || []).filter((c: any) => {
       if (filters.tripId && c.trip_id !== filters.tripId) return false;
-      return matchesText([c.name, c.company, c.notes].filter(Boolean).join(' '));
+      return matchesText([
+        c.name,
+        c.company,
+        c.notes,
+        c.phone,
+        c.email,
+        c.address
+      ].filter(Boolean).join(' '));
     });
 
     return { trips, details, accommodations, documents, contacts };
   }, [data, filters]);
+
+  const tripsById = useMemo(() => {
+    const map = new Map<string, any>();
+    (data.trips || []).forEach((trip: any) => {
+      if (trip?.id) map.set(trip.id, trip);
+    });
+    return map;
+  }, [data.trips]);
 
   const handleDocumentCopy = async (doc: Document) => {
     try {
@@ -623,16 +639,86 @@ export default function TravelPageClient() {
                     <h2 className="font-semibold text-text-primary">Travel Contacts</h2>
                     <span className="text-xs text-text-muted">{filtered.contacts.length} total</span>
                   </div>
-                  <button onClick={() => setShowAddContact(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Contact</button>
+                  <button
+                    onClick={() => setShowAddContact(true)}
+                    className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
+                  >
+                    Add Contact
+                  </button>
                 </div>
-                <ul className="space-y-2">
-                  {filtered.contacts.map((c: any) => (
-                    <li key={c.id} className="text-sm text-text-muted truncate">{c.name}</li>
-                  ))}
-                  {(filtered.contacts.length === 0) && (
-                    <li className="text-text-muted">No contacts</li>
-                  )}
-                </ul>
+
+                {filtered.contacts.length === 0 ? (
+                  <div className="py-6 text-center text-text-muted">No contacts</div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filtered.contacts.map((contact: any, index: number) => {
+                      const key = contact.id || contact.email || contact.phone || `${contact.name || 'contact'}-${index}`;
+                      const trip = contact.trip || (contact.trip_id ? tripsById.get(contact.trip_id) : null);
+                      const tripLabel = contact.trip_name || trip?.destination || trip?.name || '';
+                      const company = contact.company || contact.organization || '';
+                      const phone = contact.phone || contact.phone_number || '';
+                      const email = contact.email || '';
+                      const address = contact.address || '';
+                      const notes = contact.notes || '';
+
+                      return (
+                        <div
+                          key={key}
+                          className="bg-background-primary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-text-primary text-lg truncate">
+                                {contact.name || 'Travel Contact'}
+                              </h3>
+                              {company && (
+                                <p className="mt-1 text-sm text-text-muted flex items-center gap-1">
+                                  <Building2 className="h-3.5 w-3.5" />
+                                  <span className="truncate">{company}</span>
+                                </p>
+                              )}
+                            </div>
+                            {tripLabel && (
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs px-2 py-1 bg-[#30302E] border border-[#3A3A38] text-text-muted rounded-full">
+                                <Ticket className="h-3 w-3" />
+                                {tripLabel}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-3 space-y-2 text-sm text-text-muted">
+                            {phone && (
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-3.5 w-3.5 text-text-primary" />
+                                <span>{phone}</span>
+                              </div>
+                            )}
+                            {email && (
+                              <div className="flex items-center gap-2">
+                                <Mail className="h-3.5 w-3.5 text-text-primary" />
+                                <a href={`mailto:${email}`} className="text-text-primary hover:underline">
+                                  {email}
+                                </a>
+                              </div>
+                            )}
+                            {address && (
+                              <div className="flex items-start gap-2">
+                                <MapPin className="h-3.5 w-3.5 text-text-primary mt-0.5" />
+                                <span>{address}</span>
+                              </div>
+                            )}
+                            {notes && (
+                              <div className="flex items-start gap-2">
+                                <FileText className="h-3.5 w-3.5 text-text-primary mt-0.5" />
+                                <span>{notes}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </section>
             )}
 
@@ -1078,9 +1164,15 @@ function AddTravelContactModal({ onClose, onSaved, trips }: { onClose: () => voi
               <input value={email} onChange={e=>setEmail(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
             </label>
           </div>
-          <label className="block text-sm">Address
-            <input value={address} onChange={e=>setAddress(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-          </label>
+          <div className="space-y-1">
+            <label className="block text-sm">Address</label>
+            <AddressAutocomplete
+              value={address}
+              onChange={setAddress}
+              placeholder="Street, city, state"
+              className="w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary"
+            />
+          </div>
           <label className="block text-sm">Notes
             <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
           </label>
