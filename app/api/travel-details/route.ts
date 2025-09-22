@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('travel_details')
-      .select('*');
+      .select('*')
+      .order('travel_date', { ascending: true })
+      .order('departure_time', { ascending: true });
 
     if (tripId && tripId !== 'all') {
       query = query.eq('trip_id', tripId);
@@ -46,9 +48,7 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    const { data: details, error } = await query
-      .order('travel_date', { ascending: true })
-      .order('departure_time', { ascending: true });
+    const { data: details, error } = await query;
 
     if (error) {
       console.error('[Travel Details API] Supabase query failed', error);
