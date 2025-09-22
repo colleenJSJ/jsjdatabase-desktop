@@ -143,18 +143,15 @@ export default function J3AcademicsPageClient() {
       />
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-gray-600/30">
-        {(['events','contacts','portals','documents'] as const).map(tab => {
-          const label = tab === 'portals' ? 'Passwords & Portals' : tab[0].toUpperCase()+tab.slice(1);
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-2 text-sm border-b-2 ${activeTab===tab ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
-            >
-              {label}
-            </button>
-          );
-        })}
+        {(['events','contacts','portals','documents'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-3 py-2 text-sm border-b-2 ${activeTab===tab ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
+          >
+            {tab[0].toUpperCase()+tab.slice(1)}
+          </button>
+        ))}
       </div>
       {loading ? (
         <div className="flex items-center justify-center h-40">
@@ -195,7 +192,7 @@ export default function J3AcademicsPageClient() {
           {activeTab==='portals' && (
           <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="font-semibold text-text-primary">Passwords & Portals</h2>
+              <h2 className="font-semibold text-text-primary">Portals</h2>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-text-muted">{filtered.portals.length} total</span>
                 {user?.role === 'admin' && (
@@ -215,7 +212,7 @@ export default function J3AcademicsPageClient() {
                 />
               ))}
               {filtered.portals.length === 0 && (
-                <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No passwords or portals</div>
+                <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No portals</div>
               )}
             </div>
           </section>

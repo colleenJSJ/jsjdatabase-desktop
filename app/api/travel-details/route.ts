@@ -29,18 +29,16 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    let baseQuery = supabase
+    let query = supabase
       .from('travel_details')
-      .select('*')
-      .order('travel_date', { ascending: true })
-      .order('departure_time', { ascending: true });
+      .select('*');
 
     if (tripId && tripId !== 'all') {
-      baseQuery = baseQuery.eq('trip_id', tripId);
+      query = query.eq('trip_id', tripId);
     }
 
-    let query = await applyPersonFilter({
-      query: baseQuery,
+    query = await applyPersonFilter({
+      query,
       selectedPerson: selectedParam,
       userId: user.id,
       module: 'travel_details',
@@ -48,12 +46,9 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    if (!query || typeof (query as any)?.order !== 'function') {
-      console.warn('[Travel Details API] Filtered query lost builder methods. Falling back to base query.');
-      query = baseQuery;
-    }
-
-    const { data: details, error } = await query;
+    const { data: details, error } = await query
+      .order('travel_date', { ascending: true })
+      .order('departure_time', { ascending: true });
 
     if (error) {
       return NextResponse.json(
@@ -62,14 +57,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const filteredDetails = (details || []).filter((detail: any) =>
+    const filteredDetails = (details || []).filter(detail =>
       shouldIncludeTravelRecord({
         record: detail,
         context: visibilityContext,
       })
     );
 
-    const enhancedDetails = filteredDetails.map((detail: any) => ({
+    const enhancedDetails = filteredDetails.map(detail => ({
       ...detail,
       // Keep original fields
       // Add combined datetime fields for frontend use
@@ -83,10 +78,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ details: enhancedDetails });
   } catch (error) {
-    console.error('[Travel Details API] Error handling request:', error);
-    const message = error instanceof Error ? error.message : String(error);
+
     return NextResponse.json(
-      { error: 'Internal server error', details: message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

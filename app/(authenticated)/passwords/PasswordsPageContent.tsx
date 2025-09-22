@@ -341,80 +341,94 @@ export default function PasswordsPage() {
           {/* Expanded Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-gray-600/30">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                <select
-                  aria-label="Category"
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  onFocus={async () => {
-                    try {
-                      const passwordCategories = await CategoriesClient.getCategories('passwords');
-                      setCategories(passwordCategories);
-                    } catch (error) {
-                      console.error('Error refreshing password categories:', error);
-                    }
-                  }}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  <option value="all">All Categories</option>
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    onFocus={async () => {
+                      // Fetch fresh categories when dropdown is focused
+                      try {
+                        const passwordCategories = await CategoriesClient.getCategories('passwords');
+                        setCategories(passwordCategories);
+                      } catch (error) {
+                        console.error('Error refreshing password categories:', error);
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                  >
+                    <option value="all">All Categories</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
 
-                <select
-                  aria-label="Owner"
-                  value={selectedOwner}
-                  onChange={(e) => setSelectedOwner(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  <option value="all">All Owners</option>
-                  <option value="shared">Shared/Family</option>
-                  {familyMembers.map(member => {
-                    const memberType = member.type === 'pet' ? '🐾' : member.is_child ? '👶' : '👤';
-                    const memberName = member.name || member.email?.split('@')[0] || 'Unknown';
-                    return (
-                      <option key={member.id} value={member.id}>
-                        {memberType} {memberName}
-                      </option>
-                    );
-                  })}
-                </select>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Owner
+                  </label>
+                  <select
+                    value={selectedOwner}
+                    onChange={(e) => setSelectedOwner(e.target.value)}
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                  >
+                    <option value="all">All Owners</option>
+                    <option value="shared">Shared/Family</option>
+                    {familyMembers.map(member => {
+                      const memberType = member.type === 'pet' ? '🐾' : member.is_child ? '👶' : '👤';
+                      const memberName = member.name || member.email?.split('@')[0] || 'Unknown';
+                      return (
+                        <option key={member.id} value={member.id}>
+                          {memberType} {memberName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
 
-                <div className="flex flex-wrap gap-2 md:col-span-2">
-                  <button
-                    onClick={() => setShowFavorites(!showFavorites)}
-                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                      showFavorites
-                        ? 'bg-gray-700 text-text-primary border-gray-600'
-                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                    }`}
-                  >
-                    <Star className="h-4 w-4" fill={showFavorites ? 'currentColor' : 'none'} />
-                    Favorites
-                  </button>
-                  <button
-                    onClick={() => setShowExpiring(!showExpiring)}
-                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                      showExpiring
-                        ? 'bg-gray-700 text-text-primary border-gray-600'
-                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                    }`}
-                  >
-                    <AlertCircle className="h-4 w-4" />
-                    Expiring
-                  </button>
-                  <button
-                    onClick={() => setShowWeak(!showWeak)}
-                    className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
-                      showWeak
-                        ? 'bg-gray-700 text-text-primary border-gray-600'
-                        : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
-                    }`}
-                  >
-                    <AlertCircle className="h-4 w-4" />
-                    Weak
-                  </button>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Quick Filters
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setShowFavorites(!showFavorites)}
+                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                        showFavorites
+                          ? 'bg-gray-700 text-text-primary border-gray-600'
+                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                      }`}
+                    >
+                      <Star className="h-4 w-4" fill={showFavorites ? 'currentColor' : 'none'} />
+                      Favorites
+                    </button>
+                    <button
+                      onClick={() => setShowExpiring(!showExpiring)}
+                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                        showExpiring
+                          ? 'bg-gray-700 text-text-primary border-gray-600'
+                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                      }`}
+                    >
+                      <AlertCircle className="h-4 w-4" />
+                      Expiring
+                    </button>
+                    <button
+                      onClick={() => setShowWeak(!showWeak)}
+                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors border ${
+                        showWeak
+                          ? 'bg-gray-700 text-text-primary border-gray-600'
+                          : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
+                      }`}
+                    >
+                      <AlertCircle className="h-4 w-4" />
+                      Weak
+                    </button>
+                  </div>
                 </div>
               </div>
 
