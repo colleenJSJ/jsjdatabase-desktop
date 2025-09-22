@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/contexts/user-context';
 import { createClient } from '@/lib/supabase/client';
 import { 
-  Heart, Calendar, Pill, FileText, Users, Plus, 
-  Clock, AlertCircle, Phone, Globe, MapPin, User, X,
-  Eye, EyeOff, Copy, Mail, Lock, KeyRound, Edit2, Trash2, Upload
+  Calendar, Pill, FileText, Plus, 
+  Clock, Phone, Globe, MapPin, X,
+  Eye, EyeOff, Copy, Mail, Lock, KeyRound, Edit2, Trash2, Upload, Stethoscope
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Task } from '@/lib/supabase/types';
@@ -21,6 +21,10 @@ import { usePersonFilter } from '@/contexts/person-filter-context';
 import { toInstantFromNaive, formatInstantInTimeZone, getEventTimeZone } from '@/lib/utils/date-utils';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import ApiClient from '@/lib/api/api-client';
+import { PasswordCard } from '@/components/passwords/PasswordCard';
+import { Category } from '@/lib/categories/categories-client';
+import { Password } from '@/lib/services/password-service-interface';
+import { getPasswordStrength } from '@/lib/passwords/utils';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -184,6 +188,15 @@ export default function HealthPage() {
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [editingPortal, setEditingPortal] = useState<MedicalPortal | null>(null);
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
+
+  const portalUsers = useMemo(() => {
+    const base = familyMembers.map(member => ({
+      id: member.id,
+      email: member.email ?? '',
+      name: member.name,
+    }));
+    return [...base, { id: 'shared', email: '', name: 'Shared' }];
+  }, [familyMembers]);
 
   // Define the order for family members
   const familyMemberOrder = ['John', 'Susan', 'Claire', 'Auggie', 'Blossom'];
@@ -549,6 +562,18 @@ export default function HealthPage() {
     }
   };
 
+  const handlePortalOpen = async (id: string) => {
+    try {
+      await fetch(`/api/medical-portals/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_accessed: new Date().toISOString() })
+      });
+    } catch (error) {
+      console.error('Failed to update portal access time:', error);
+    }
+  };
+
   const handleDeleteAppointment = async (appointmentId: string) => {
     if (!confirm('Are you sure you want to delete this appointment? This will also remove it from your calendar.')) {
       return;
@@ -688,7 +713,7 @@ export default function HealthPage() {
           { k: 'appointments', label: 'Appointments' },
           { k: 'medications', label: 'Medications' },
           { k: 'doctors', label: 'Doctors' },
-          { k: 'portals', label: 'Portals' },
+            { k: 'portals', label: 'Passwords & Portals' },
           { k: 'records', label: 'Documents' },
         ] as const).map(t => (
           <button
@@ -898,17 +923,96 @@ export default function HealthPage() {
               <p className="text-text-muted">No medical portals{selectedPerson !== 'all' && ` for ${familyMembers.find(m => m.id === selectedPerson)?.name}`}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {filteredPortals.map((portal) => (
-                <PortalCard
-                  key={portal.id}
-                  portal={portal}
-                  familyMembers={familyMembers}
-                  onEdit={() => setEditingPortal(portal)}
-                  onDelete={() => handleDeletePortal(portal.id)}
-                  isAdmin={user?.role === 'admin'}
-                />
-              ))}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {filteredPortals.map((portal) => {
+                const patientNames = portal.patient_ids
+                  .map(patientId => familyMembers.find(m => m.id === patientId)?.name)
+                  .filter((name): name is string => Boolean(name));
+
+                const passwordRecord: Password = {
+                  id: portal.id,
+                  service_name: portal.name,
+                  username: portal.username || '',
+                  password: portal.password || '',
+                  url: portal.portal_url || undefined,
+                  category: 'medical-portal',
+                  notes: portal.notes,
+                  owner_id: portal.patient_ids[0] ?? 'shared',
+                  shared_with: portal.patient_ids,
+                  is_favorite: false,
+                  is_shared: portal.patient_ids.length > 1,
+                  last_changed: portal.updated_at ? new Date(portal.updated_at) : new Date(),
+                  strength: undefined,
+                  created_at: portal.created_at ? new Date(portal.created_at) : new Date(),
+                  updated_at: portal.updated_at ? new Date(portal.updated_at) : new Date(),
+                  source_page: 'health',
+                };
+
+                const portalCategory: Category = {
+                  id: 'medical-portal',
+                  name: portal.doctor?.specialty || 'Medical Portal',
+                  color: '#38bdf8',
+                  module: 'passwords',
+                  created_at: '1970-01-01T00:00:00Z',
+                  updated_at: '1970-01-01T00:00:00Z',
+                  icon: undefined,
+                };
+
+                const lastAccessDisplay = portal.last_accessed
+                  ? formatInstantInTimeZone(
+                      toInstantFromNaive(portal.last_accessed, preferences.timezone),
+                      preferences.timezone,
+                      { month: 'short', day: 'numeric', year: 'numeric' }
+                    )
+                  : null;
+
+                const extraContent = (
+                  <div className="space-y-1 text-xs text-text-muted">
+                    {portal.doctor && (
+                      <p className="flex items-center gap-2 text-text-muted">
+                        <Stethoscope className="h-3.5 w-3.5" />
+                        <span>
+                          {portal.doctor.name}
+                          {portal.doctor.specialty ? ` • ${portal.doctor.specialty}` : ''}
+                        </span>
+                      </p>
+                    )}
+                    {portal.notes && (
+                      <p className="italic text-text-muted/80">{portal.notes}</p>
+                    )}
+                  </div>
+                );
+
+                const footerContent = (
+                  <div className="flex flex-col gap-1">
+                    {patientNames.length > 0 && (
+                      <span>Patients: {patientNames.join(', ')}</span>
+                    )}
+                    {lastAccessDisplay && (
+                      <span>Last accessed: {lastAccessDisplay}</span>
+                    )}
+                  </div>
+                );
+
+                return (
+                  <PasswordCard
+                    key={portal.id}
+                    password={passwordRecord}
+                    categories={[portalCategory]}
+                    users={portalUsers}
+                    subtitle={portal.doctor?.name || 'Healthcare Portal'}
+                    ownerLabelsOverride={patientNames}
+                    extraContent={extraContent}
+                    footerContent={footerContent}
+                    showFavoriteToggle={false}
+                    strengthOverride={getPasswordStrength(portal.password || '')}
+                    canManage={user?.role === 'admin'}
+                    onEdit={() => setEditingPortal(portal)}
+                    onDelete={() => handleDeletePortal(portal.id)}
+                    onOpenUrl={() => handlePortalOpen(portal.id)}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
@@ -1143,46 +1247,6 @@ function DoctorCard({
   isAdmin?: boolean;
 }) {
   const [showPassword, setShowPassword] = useState(false);
-  const [revealedPortalPasswords, setRevealedPortalPasswords] = useState<Record<string, string>>({});
-
-  const revealPortalPassword = async (portalId: string) => {
-    if (revealedPortalPasswords[portalId]) return revealedPortalPasswords[portalId];
-    try {
-      const res = await fetch('/api/secrets/reveal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity: 'medical_portal', id: portalId }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.password) {
-          setRevealedPortalPasswords(prev => ({ ...prev, [portalId]: data.password }));
-          return data.password;
-        }
-      }
-    } catch {}
-    return '';
-  };
-  const [revealedDoctorPasswords, setRevealedDoctorPasswords] = useState<Record<string, string>>({});
-
-  const revealDoctorPassword = async (doctorId: string) => {
-    if (revealedDoctorPasswords[doctorId]) return revealedDoctorPasswords[doctorId];
-    try {
-      const res = await fetch('/api/secrets/reveal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity: 'doctor', id: doctorId }),
-      });
-    if (res.ok) {
-        const data = await res.json();
-        if (data.password) {
-          setRevealedDoctorPasswords(prev => ({ ...prev, [doctorId]: data.password }));
-          return data.password;
-        }
-      }
-    } catch {}
-    return '';
-  };
   
   const patientNames = doctor.patients.map(patientId => {
     const member = familyMembers.find(m => m.id === patientId);
@@ -1773,157 +1837,6 @@ function DoctorModal({
             </div>
           </form>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PortalCard({ 
-  portal, 
-  familyMembers,
-  onEdit, 
-  onDelete, 
-  isAdmin 
-}: { 
-  portal: MedicalPortal; 
-  familyMembers: FamilyMember[];
-  onEdit: () => void; 
-  onDelete: () => void;
-  isAdmin?: boolean;
-}) {
-  const [showPassword, setShowPassword] = useState(false);
-  const { preferences } = usePreferences();
-  
-  const patientNames = portal.patient_ids.map(patientId => {
-    const member = familyMembers.find(m => m.id === patientId);
-    return member ? getFirstName(member.name) : patientId;
-  });
-  
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
-  const handlePortalClick = () => {
-    // Update last accessed time
-    fetch(`/api/medical-portals/${portal.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ last_accessed: new Date().toISOString() })
-    });
-  };
-  
-  return (
-    <div className="bg-background-secondary border border-gray-600/30 rounded-lg p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <h3 className="font-medium text-text-primary flex items-center gap-2">
-            <Globe className="h-4 w-4 text-medical" />
-            {portal.name}
-          </h3>
-          {portal.doctor && (
-            <p className="text-sm text-text-muted mt-1">
-              {portal.doctor.name} - {portal.doctor.specialty}
-            </p>
-          )}
-          
-          <div className="mt-3 space-y-2">
-            {portal.portal_url && (
-              <a
-                href={portal.portal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={handlePortalClick}
-                className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors"
-              >
-                <Globe className="h-3 w-3" />
-                Open Portal
-              </a>
-            )}
-            
-            {/* Portal Credentials */}
-            {(portal.username || portal.password) && (
-              <div className="mt-3 p-3 bg-background-primary rounded-md border border-gray-600/30">
-                <p className="text-xs text-text-muted mb-2 flex items-center gap-1">
-                  <Lock className="h-3 w-3" />
-                  Portal Credentials
-                </p>
-                {portal.username && (
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-text-primary flex items-center gap-1">
-                      <KeyRound className="h-3 w-3" />
-                      <span className="font-mono">{portal.username}</span>
-                    </p>
-                    <button
-                      onClick={() => copyToClipboard(portal.username!)}
-                      className="text-text-muted hover:text-text-primary transition-colors"
-                      title="Copy username"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
-                {portal.password && (
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-text-primary flex items-center gap-1">
-                      <Lock className="h-3 w-3" />
-                      <span className="font-mono">{'••••••••'}</span>
-                    </p>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          setShowPassword(!showPassword);
-                        }}
-                        className="text-text-muted hover:text-text-primary transition-colors"
-                        title={showPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                      </button>
-                      <button
-                        onClick={() => {
-                          /* Copy disabled when password is masked */
-                        }}
-                        className="text-text-muted hover:text-text-primary transition-colors"
-                        title="Copy password"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {portal.notes && (
-              <p className="text-sm text-text-muted/70 italic mt-2">{portal.notes}</p>
-            )}
-            
-            <div className="flex items-center justify-between mt-3">
-              <p className="text-xs text-text-muted">
-                Patients: {patientNames.join(', ')}
-              </p>
-              {portal.last_accessed && (() => { const inst = toInstantFromNaive(portal.last_accessed, preferences.timezone); return (
-                <p className="text-xs text-text-muted">Last accessed: {formatInstantInTimeZone(inst, preferences.timezone, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-              ); })()}
-            </div>
-          </div>
-        </div>
-        
-        {isAdmin && (
-          <div className="flex gap-1">
-            <button
-              onClick={onEdit}
-              className="text-text-muted hover:text-text-primary transition-colors"
-            >
-              <FileText className="h-4 w-4" />
-            </button>
-            <button
-              onClick={onDelete}
-              className="text-text-muted hover:text-urgent transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

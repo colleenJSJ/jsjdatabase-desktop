@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/contexts/user-context';
 import { ContactCard } from '@/components/academics/ContactCard';
-import { PortalCard } from '@/components/academics/PortalCard';
 import { EventCard } from '@/components/academics/EventCard';
 import { ContactModal } from '@/components/academics/ContactModal';
 import { PortalModal } from '@/components/academics/PortalModal';
@@ -13,6 +12,10 @@ import dynamic from 'next/dynamic';
 import { DocumentList } from '@/components/documents/document-list';
 import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import ApiClient from '@/lib/api/api-client';
+import { PasswordCard } from '@/components/passwords/PasswordCard';
+import { Password } from '@/lib/services/password-service-interface';
+import { Category } from '@/lib/categories/categories-client';
+import { getPasswordStrength } from '@/lib/passwords/utils';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 import { Upload } from 'lucide-react';
@@ -38,6 +41,15 @@ export default function J3AcademicsPageClient() {
   const [documentsRefreshKey, setDocumentsRefreshKey] = useState(0);
 
   const allowedChildNames = new Set(['auggie', 'claire', 'blossom']);
+
+  const academicPortalUsers = useMemo(() => {
+    const base = children.map(child => ({
+      id: child.id,
+      email: '',
+      name: child.name,
+    }));
+    return [...base, { id: 'shared', email: '', name: 'Shared' }];
+  }, [children]);
 
   const childNames = useMemo(() => [
     { id: 'auggie', name: 'Auggie' },
@@ -143,13 +155,18 @@ export default function J3AcademicsPageClient() {
       />
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-gray-600/30">
-        {(['events','contacts','portals','documents'] as const).map(tab => (
+        {([
+          { key: 'events' as const, label: 'Events' },
+          { key: 'contacts' as const, label: 'Contacts' },
+          { key: 'portals' as const, label: 'Passwords & Portals' },
+          { key: 'documents' as const, label: 'Documents' },
+        ]).map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-3 py-2 text-sm border-b-2 ${activeTab===tab ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-3 py-2 text-sm border-b-2 ${activeTab===tab.key ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
           >
-            {tab[0].toUpperCase()+tab.slice(1)}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -200,21 +217,96 @@ export default function J3AcademicsPageClient() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filtered.portals.map((p: any) => (
-                <PortalCard
-                  key={p.id}
-                  portal={p}
-                  children={filteredKids}
-                  isAdmin={user?.role === 'admin'}
-                  onEdit={() => { setEditingPortal(p); setShowPortalModal(true); }}
-                  onDelete={async () => { if (!confirm('Delete this portal?')) return; const ApiClient = (await import('@/lib/api/api-client')).default; await ApiClient.delete(`/api/academic-portals/${p.id}`); await reload(); }}
-                />
-              ))}
-              {filtered.portals.length === 0 && (
-                <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No portals</div>
-              )}
-            </div>
+            {filtered.portals.length === 0 ? (
+              <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No portals</div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {filtered.portals.map((portal: any, index) => {
+                  const portalId: string = (portal.id as string | undefined) || `portal-${index}`;
+                  const student = filteredKids.find(c => c.id === portal.child_id);
+                  const portalName: string = portal.portal_name || portal.name || 'Portal';
+                  const portalUrl: string = portal.url || portal.portal_url || '';
+                  const portalUsername: string = portal.username || '';
+                  const portalPassword: string = portal.password || '';
+                  const notes: string | undefined = portal.notes || undefined;
+
+                  const passwordRecord: Password = {
+                    id: portalId,
+                    service_name: portalName,
+                    username: portalUsername,
+                    password: portalPassword,
+                    url: portalUrl || undefined,
+                    category: 'academic-portal',
+                    notes,
+                    owner_id: portal.child_id || 'shared',
+                    shared_with: Array.isArray(portal.child_ids) ? portal.child_ids : (portal.child_id ? [portal.child_id] : []),
+                    is_favorite: false,
+                    is_shared: true,
+                    last_changed: portal.updated_at ? new Date(portal.updated_at) : new Date(),
+                    strength: undefined,
+                    created_at: portal.created_at ? new Date(portal.created_at) : new Date(),
+                    updated_at: portal.updated_at ? new Date(portal.updated_at) : new Date(),
+                    source_page: 'j3-academics',
+                  };
+
+                  const portalCategory: Category = {
+                    id: 'academic-portal',
+                    name: 'School Portal',
+                    color: '#a855f7',
+                    module: 'passwords',
+                    created_at: '1970-01-01T00:00:00Z',
+                    updated_at: '1970-01-01T00:00:00Z',
+                    icon: undefined,
+                  };
+
+                  const lastAccessDisplay = portal.last_accessed
+                    ? new Date(portal.last_accessed).toLocaleDateString()
+                    : null;
+
+                  const footerContent = (
+                    <div className="flex flex-col gap-1">
+                      {student?.name && <span>Student: {student.name}</span>}
+                      {lastAccessDisplay && <span>Last accessed: {lastAccessDisplay}</span>}
+                    </div>
+                  );
+
+                  const handlePortalOpen = async () => {
+                    if (!portal.id) return;
+                    try {
+                      await fetch(`/api/academic-portals/${portal.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          ...portal,
+                          last_accessed: new Date().toISOString(),
+                        }),
+                      });
+                    } catch (error) {
+                      console.error('Failed to update portal access time:', error);
+                    }
+                  };
+
+                  return (
+                    <PasswordCard
+                      key={portalId}
+                      password={passwordRecord}
+                      categories={[portalCategory]}
+                      users={academicPortalUsers}
+                      subtitle={student?.name || 'Academic Portal'}
+                      ownerLabelsOverride={student?.name ? [student.name] : []}
+                      extraContent={notes ? <p className="text-xs text-text-muted/80 italic">{notes}</p> : null}
+                      footerContent={footerContent}
+                      showFavoriteToggle={false}
+                      strengthOverride={getPasswordStrength(portalPassword)}
+                      canManage={user?.role === 'admin'}
+                      onEdit={() => { setEditingPortal(portal); setShowPortalModal(true); }}
+                      onDelete={async () => { if (!confirm('Delete this portal?')) return; const ApiClient = (await import('@/lib/api/api-client')).default; await ApiClient.delete(`/api/academic-portals/${portal.id}`); await reload(); }}
+                      onOpenUrl={portal.id ? handlePortalOpen : undefined}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </section>
           )}
 

@@ -17,28 +17,12 @@ import { UI } from '@/constants';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PasswordField } from '@/components/passwords/PasswordField';
+import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { usePasswordSecurity } from '@/contexts/password-security-context';
 import { smartUrlComplete, getFriendlyDomain } from '@/lib/utils/url-helper';
+import { getPasswordStrength } from '@/lib/passwords/utils';
 
 // Categories will be loaded dynamically
-
-// Helper function to determine password strength
-function getPasswordStrength(password: string): 'weak' | 'medium' | 'strong' {
-  if (!password) return 'weak';
-  
-  const hasLowerCase = /[a-z]/.test(password);
-  const hasUpperCase = /[A-Z]/.test(password);
-  const hasNumbers = /\d/.test(password);
-  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-  const isLongEnough = password.length >= 12;
-  
-  const criteriaMet = [hasLowerCase, hasUpperCase, hasNumbers, hasSpecialChar, isLongEnough]
-    .filter(Boolean).length;
-  
-  if (criteriaMet >= 4) return 'strong';
-  if (criteriaMet >= 3) return 'medium';
-  return 'weak';
-}
 
 interface UserInfo {
   id: string;
@@ -462,13 +446,14 @@ export default function PasswordsPage() {
           <p className="text-neutral-400">No passwords found</p>
         </div>
       ) : viewMode === 'card' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredPasswords.map(password => (
             <PasswordCard
               key={password.id}
               password={password}
               categories={categories}
               users={users}
+              canManage={user?.role === 'admin'}
               onEdit={() => setEditingPassword(password)}
               onDelete={() => handleDelete(password.id)}
             />
@@ -523,214 +508,6 @@ export default function PasswordsPage() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function PasswordCard({ 
-  password, 
-  onEdit, 
-  onDelete,
-  categories,
-  users 
-}: { 
-  password: Password; 
-  onEdit: () => void; 
-  onDelete: () => void;
-  categories: Category[];
-  users: UserInfo[];
-}) {
-  const { user } = useUser();
-  const { updateActivity } = usePasswordSecurity();
-  const [showPassword, setShowPassword] = useState(false);
-  const [copiedPassword, setCopiedPassword] = useState(false);
-  const [copiedUsername, setCopiedUsername] = useState(false);
-  const [copiedDetails, setCopiedDetails] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(password.is_favorite || false);
-
-  // Password is already decrypted when fetched from API
-  const decryptedPassword = password.password || '';
-  
-  const passwordStrength = getPasswordStrength(decryptedPassword);
-  const passwordAge = password.last_changed ? 
-    Math.floor((Date.now() - new Date(password.last_changed).getTime()) / (1000 * 60 * 60 * 24)) : 
-    null;
-
-  const copyToClipboard = async (text: string, type: 'password' | 'username') => {
-    try {
-      await navigator.clipboard.writeText(text);
-      if (type === 'password') {
-        setCopiedPassword(true);
-        setTimeout(() => setCopiedPassword(false), 2000);
-      } else {
-        setCopiedUsername(true);
-        setTimeout(() => setCopiedUsername(false), 2000);
-      }
-    } catch (error) {
-      console.error('Copy failed:', error);
-    }
-  };
-
-  const copyAllDetails = async () => {
-    try {
-      const parts = [
-        password.url ? `Link: ${password.url}` : null,
-        password.username ? `User: ${password.username}` : null,
-        `Password: ${decryptedPassword}`
-      ].filter(Boolean);
-      await navigator.clipboard.writeText(parts.join('\n'));
-      setCopiedDetails(true);
-      setTimeout(() => setCopiedDetails(false), 2000);
-    } catch (error) {
-      console.error('Copy failed:', error);
-    }
-  };
-
-  return (
-    <div className="bg-background-secondary border border-gray-600/30 rounded-xl p-4 hover:border-gray-500 transition-all group relative">
-      {/* Star Toggle */}
-      <button
-        onClick={() => setIsFavorite(!isFavorite)}
-        className={`absolute top-2 right-2 p-1 rounded transition-all ${
-          isFavorite
-            ? 'text-yellow-500'
-            : 'text-gray-600 hover:text-yellow-500'
-        }`}
-      >
-        <Star className="h-5 w-5" fill={isFavorite ? 'currentColor' : 'none'} />
-      </button>
-
-      {/* Title & Category */}
-      <div className="mb-3">
-        <h3 className="font-semibold text-text-primary pr-8">{(password as any).title || (password as any).service_name || 'Untitled'}</h3>
-        <div className="flex items-center gap-2 mt-2">
-          <span 
-            className="px-2 py-1 rounded-full text-xs font-medium text-white"
-            style={{ backgroundColor: categories.find(c => c.id === password.category)?.color || '#6B7280' }}
-          >
-            {categories.find(c => c.id === password.category)?.name || password.category}
-          </span>
-          <div className={`text-xs font-medium ${
-            passwordStrength === 'strong' ? 'text-green-400' :
-            passwordStrength === 'medium' ? 'text-yellow-400' :
-            'text-red-400'
-          }`}>
-            {passwordStrength} password
-          </div>
-        </div>
-      </div>
-        
-      {/* Vertical Information Display */}
-      <div className="space-y-3">
-        {/* Website URL */}
-        {password.url && (
-          <div className="flex items-center justify-between">
-            <a 
-              href={password.url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-text-primary hover:text-blue-400 transition-colors"
-            >
-              <ExternalLink className="h-4 w-4" />
-              <span>{getFriendlyDomain(password.url)}</span>
-            </a>
-          </div>
-        )}
-
-        {/* Username */}
-        {password.username && (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-text-muted text-sm">User:</span>
-              <span className="text-text-primary">{password.username}</span>
-            </div>
-            <button
-              onClick={() => copyToClipboard(password.username || '', 'username')}
-              className={`p-1 transition-colors ${
-                copiedUsername ? 'text-green-500' : 'text-text-muted hover:text-text-primary'
-              }`}
-              title="Copy username"
-            >
-              {copiedUsername ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </button>
-          </div>
-        )}
-
-        {/* Password */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-text-muted text-sm">Pass:</span>
-            <span className="text-text-primary font-mono">
-              {showPassword ? decryptedPassword : '••••••••'}
-            </span>
-            <button
-              onClick={() => {
-                setShowPassword(!showPassword);
-                if (!showPassword) {
-                  updateActivity();
-                }
-              }}
-              className="p-1 text-text-muted hover:text-text-primary transition-colors"
-              title={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          <button
-            onClick={() => copyToClipboard(decryptedPassword, 'password')}
-            className={`p-1 transition-colors ${
-              copiedPassword ? 'text-green-500' : 'text-text-muted hover:text-text-primary'
-            }`}
-            title="Copy password"
-          >
-            {copiedPassword ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          </button>
-        </div>
-      </div>
-
-      {/* Bottom metadata */}
-      <div className="mt-4 flex items-center justify-between text-xs text-text-muted">
-        <span>{passwordAge !== null ? `${passwordAge} days old` : 'Created recently'}</span>
-        {password.owner_id && (
-          <span className="px-2 py-1 bg-gray-700/50 text-text-primary rounded">
-            {password.is_shared || password.owner_id === 'shared' ? 'Shared' : 
-             users.find(u => u.id === password.owner_id)?.name || 
-             users.find(u => u.id === password.owner_id)?.email?.split('@')[0] || 
-             'Unknown'}
-          </span>
-        )}
-      </div>
-
-      {/* Actions - Always visible at bottom */}
-      <div className="mt-4 flex justify-end items-center gap-2 pt-4 border-t border-gray-600/30">
-        <button
-          onClick={copyAllDetails}
-          className={`p-2 transition-colors ${
-            copiedDetails ? 'text-green-500' : 'text-text-muted hover:text-text-primary'
-          }`}
-          title="Copy link, username, and password"
-        >
-          {copiedDetails ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-        </button>
-        {user?.role === 'admin' && (
-          <>
-            <button
-              onClick={onEdit}
-              className="p-2 text-text-muted hover:text-yellow-400 hover:bg-yellow-400/10 rounded transition-all"
-              title="Edit"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={onDelete}
-              className="p-2 text-text-muted hover:text-red-400 hover:bg-red-400/10 rounded transition-all"
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </>
-        )}
-      </div>
     </div>
   );
 }

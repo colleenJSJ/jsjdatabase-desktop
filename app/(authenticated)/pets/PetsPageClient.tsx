@@ -9,6 +9,10 @@ import PetContactModal from './PetContactModal';
 import ViewPetAppointmentModal from './ViewPetAppointmentModal';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { PawPrint, Stethoscope, Syringe, Scissors } from 'lucide-react';
+import { PasswordCard } from '@/components/passwords/PasswordCard';
+import { Category } from '@/lib/categories/categories-client';
+import { Password } from '@/lib/services/password-service-interface';
+import { getPasswordStrength } from '@/lib/passwords/utils';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -72,6 +76,15 @@ export default function PetsPageClient() {
   const [showAddContact, setShowAddContact] = useState(false);
   const [showAddPortal, setShowAddPortal] = useState(false);
   const { calendars: googleCalendars } = useGoogleCalendars();
+
+  const portalUsers = useMemo(() => {
+    const base = pets.map(pet => ({
+      id: pet.id,
+      email: '',
+      name: pet.name || 'Pet'
+    }));
+    return [...base, { id: 'shared', email: '', name: 'Shared' }];
+  }, [pets]);
 
   const loadData = useCallback(async () => {
     try {
@@ -276,7 +289,7 @@ export default function PetsPageClient() {
         {([
           { key: 'appointments', label: 'Appointments' },
           { key: 'contacts', label: 'Contacts' },
-          { key: 'portals', label: 'Portals' },
+          { key: 'portals', label: 'Passwords & Portals' },
           { key: 'documents', label: 'Documents' },
         ] as const).map(tab => (
           <button
@@ -358,14 +371,88 @@ export default function PetsPageClient() {
                 <h2 className="font-semibold text-text-primary">Portals</h2>
                 <button onClick={()=>setShowAddPortal(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Portal</button>
               </div>
-              <ul className="space-y-1 text-sm text-text-muted">
-                {filtered.portals.map((pt) => {
-                  const key = (pt.id as string | undefined) || `${pt.name ?? pt.portal_name ?? 'portal'}`;
-                  const label = (pt.name as string | undefined) || (pt.portal_name as string | undefined) || 'Portal';
-                  return <li key={key}>{label}</li>;
-                })}
-                {filtered.portals.length === 0 && <li>No portals</li>}
-              </ul>
+              {filtered.portals.length === 0 ? (
+                <div className="text-sm text-text-muted">No portals</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {filtered.portals.map((portal, index) => {
+                    const portalId = (portal.id as string | undefined) ?? `portal-${index}`;
+                    const portalName = ((portal.name as string | undefined) || (portal.portal_name as string | undefined) || 'Portal').trim();
+                    const portalUrl = (portal.portal_url as string | undefined) || (portal.url as string | undefined) || '';
+                    const portalUsername = (portal.username as string | undefined) || '';
+                    const portalPassword = (portal.password as string | undefined) || '';
+                    const notes = (portal.notes as string | undefined) || '';
+                    const rawPetIds = [
+                      ...(Array.isArray(portal.petIds) ? (portal.petIds as string[]) : []),
+                      ...(Array.isArray(portal.pets) ? (portal.pets as string[]) : []),
+                      (portal.pet_id as string | undefined)
+                    ].filter(Boolean) as string[];
+                    const uniquePetIds = Array.from(new Set(rawPetIds));
+                    const relatedPetNames = uniquePetIds
+                      .map(id => pets.find(p => p.id === id)?.name)
+                      .filter((name): name is string => Boolean(name));
+
+                    const passwordRecord: Password = {
+                      id: portalId,
+                      service_name: portalName,
+                      username: portalUsername,
+                      password: portalPassword,
+                      url: portalUrl || undefined,
+                      category: 'pet-portal',
+                      notes: notes || undefined,
+                      owner_id: uniquePetIds[0] ?? 'shared',
+                      shared_with: uniquePetIds,
+                      is_favorite: false,
+                      is_shared: uniquePetIds.length > 1,
+                      last_changed: new Date(),
+                      strength: undefined,
+                      created_at: new Date(),
+                      updated_at: new Date(),
+                      source_page: 'pets',
+                    };
+
+                    const portalCategory: Category = {
+                      id: 'pet-portal',
+                      name: 'Pet Portal',
+                      color: '#f472b6',
+                      module: 'passwords',
+                      created_at: '1970-01-01T00:00:00Z',
+                      updated_at: '1970-01-01T00:00:00Z',
+                      icon: undefined,
+                    };
+
+                    const extraContent = notes
+                      ? <p className="text-xs text-text-muted/80 italic">{notes}</p>
+                      : null;
+
+                    const footerContent = (
+                      <div className="flex flex-col gap-1">
+                        {relatedPetNames.length > 0 && (
+                          <span>Pets: {relatedPetNames.join(', ')}</span>
+                        )}
+                      </div>
+                    );
+
+                    return (
+                      <PasswordCard
+                        key={portalId}
+                        password={passwordRecord}
+                        categories={[portalCategory]}
+                        users={portalUsers}
+                        subtitle="Pet Portal"
+                        ownerLabelsOverride={relatedPetNames}
+                        extraContent={extraContent}
+                        footerContent={footerContent}
+                        showFavoriteToggle={false}
+                        strengthOverride={getPasswordStrength(portalPassword)}
+                        canManage={false}
+                        onEdit={() => {}}
+                        onDelete={() => {}}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )}
           {activeTab==='appointments' && (
