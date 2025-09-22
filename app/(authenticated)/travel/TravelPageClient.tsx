@@ -47,7 +47,6 @@ export default function TravelPageClient() {
   const [showAddContact, setShowAddContact] = useState(false);
   // Filters (match Tasks page style)
   const [search, setSearch] = useState<string>('');
-  const [showTripsList, setShowTripsList] = useState<boolean>(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [memberPrefs, setMemberPrefs] = useState<Record<string, { seat?: string; meal?: string }>>({});
   const { calendars: googleCalendars } = useGoogleCalendars();
@@ -155,6 +154,40 @@ export default function TravelPageClient() {
     return map;
   }, [data.family_members]);
 
+  const selectedTrip = useMemo(() => {
+    if (!selectedTripId) return null;
+    return (data.trips || []).find((trip: any) => trip.id === selectedTripId) || null;
+  }, [data.trips, selectedTripId]);
+
+  const tripTravelerNames = useMemo(() => {
+    if (!selectedTrip) return [] as string[];
+    if (Array.isArray(selectedTrip.traveler_names) && selectedTrip.traveler_names.length > 0) {
+      return (selectedTrip.traveler_names as string[]).filter(Boolean);
+    }
+    if (Array.isArray(selectedTrip.traveler_ids) && selectedTrip.traveler_ids.length > 0) {
+      return (selectedTrip.traveler_ids as string[])
+        .map((id) => familyMemberMap[id] || null)
+        .filter((name): name is string => Boolean(name));
+    }
+    return [] as string[];
+  }, [selectedTrip, familyMemberMap]);
+
+  const selectedTripDescription = useMemo(() => {
+    if (!selectedTrip) return '';
+    const { description, notes } = selectedTrip as { description?: string; notes?: string };
+    return (description || notes || '').toString().trim();
+  }, [selectedTrip]);
+
+  const selectedTripStartDate = useMemo(() => {
+    if (!selectedTrip || !selectedTrip.start_date) return '';
+    return formatDateTime(selectedTrip.start_date, undefined);
+  }, [selectedTrip]);
+
+  const selectedTripEndDate = useMemo(() => {
+    if (!selectedTrip || !selectedTrip.end_date) return '';
+    return formatDateTime(selectedTrip.end_date, undefined);
+  }, [selectedTrip]);
+
   // Derived filtered collections
   const filters = useMemo(() => ({ search: search.trim().toLowerCase(), tripId: selectedTripId }), [search, selectedTripId]);
   const filtered = useMemo(() => {
@@ -168,7 +201,7 @@ export default function TravelPageClient() {
     // Trips: search destination/name/notes; person filter via traveler_ids
     const trips = (data.trips || []).filter((t: any) => {
       // traveler_ids is already an array of UUIDs
-      const textBlob = [t.destination, t.name, t.notes, t.location].filter(Boolean).join(' ');
+      const textBlob = [t.destination, t.name, t.notes, t.location, t.description].filter(Boolean).join(' ');
       return matchesText(textBlob);
     });
 
@@ -351,7 +384,7 @@ export default function TravelPageClient() {
             Add Trip
           </button>
           <button
-            onClick={() => { setShowTripsList(true); setSelectedTripId(null); }}
+            onClick={() => setSelectedTripId(null)}
             className={`px-4 py-2 text-sm rounded-xl border border-gray-600/40 ${!selectedTripId ? 'bg-gray-700 text-white' : 'bg-background-secondary text-text-muted hover:text-text-primary'}`}
           >
             All Trips
@@ -359,7 +392,7 @@ export default function TravelPageClient() {
           {(data.trips || []).map((t: any) => (
             <button
               key={t.id}
-              onClick={() => { setSelectedTripId(t.id); setShowTripsList(false); }}
+              onClick={() => { setSelectedTripId(t.id); }}
               className={`px-3 py-1.5 text-sm rounded-xl border ${selectedTripId===t.id ? 'bg-primary-700/70 text-white border-primary-600' : 'bg-background-secondary text-text-muted hover:text-text-primary border-gray-600/40'}`}
               title={t.destination || t.name}
             >
@@ -394,7 +427,7 @@ export default function TravelPageClient() {
         ].map(t => (
           <button
             key={t.k}
-            onClick={() => { setActiveTab(t.k as any); setShowTripsList(false); }}
+            onClick={() => { setActiveTab(t.k as any); }}
             className={`px-3 py-2 text-sm border-b-2 ${activeTab===t.k ? 'border-primary-500 text-text-primary' : 'border-transparent text-text-muted hover:text-text-primary'}`}
           >
             {t.label}
@@ -411,25 +444,60 @@ export default function TravelPageClient() {
       ) : (
         <div className="space-y-4">
           {/* Main content by tab */}
-            {showTripsList && (
+            {selectedTripId && selectedTrip && (
               <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="font-semibold text-text-primary">Trips</h2>
-                  <span className="text-xs text-text-muted">{filtered.trips.length} total</span>
-                </div>
-                <div className="divide-y divide-gray-700/50">
-                  {filtered.trips.map((t: any) => (
-                    <div key={t.id} className="py-2 text-sm text-text-muted flex items-center justify-between">
-                      <div className="truncate text-text-primary">{t.destination || t.name}</div>
-                      <div className="flex items-center gap-2">
-                        <button className="text-xs px-2 py-1 bg-button-edit text-white rounded" onClick={() => setEditingTrip(t)}>Edit</button>
-                        <button className="text-xs px-2 py-1 bg-button-delete text-white rounded" onClick={async ()=>{ if(!confirm('Delete this trip?')) return; await ApiClient.delete(`/api/trips/${t.id}`); await refreshData(); }}>Delete</button>
-                      </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-lg font-semibold text-text-primary">
+                      {selectedTrip.destination || selectedTrip.name || 'Trip'}
+                    </h2>
+                    <div className="mt-1 text-sm text-text-muted flex flex-wrap items-center gap-3">
+                      {(selectedTripStartDate || selectedTripEndDate) && (
+                        <span className="inline-flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {selectedTripStartDate || 'TBD'}
+                          <span>–</span>
+                          {selectedTripEndDate || 'TBD'}
+                        </span>
+                      )}
+                      {selectedTrip.location && (
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5" />
+                          {selectedTrip.location}
+                        </span>
+                      )}
                     </div>
-                  ))}
-                  {(filtered.trips.length === 0) && (
-                    <div className="py-6 text-center text-text-muted">No trips</div>
-                  )}
+                    {selectedTripDescription && (
+                      <p className="mt-3 text-sm text-text-muted whitespace-pre-wrap">
+                        {selectedTripDescription}
+                      </p>
+                    )}
+                    {tripTravelerNames.length > 0 && (
+                      <div className="mt-3 text-xs text-text-muted flex items-center gap-2">
+                        <Users className="h-3.5 w-3.5" />
+                        <span>{tripTravelerNames.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      className="px-3 py-1.5 bg-button-edit text-white text-xs rounded"
+                      onClick={() => setEditingTrip(selectedTrip)}
+                    >
+                      Edit Trip
+                    </button>
+                    <button
+                      className="px-3 py-1.5 bg-button-delete text-white text-xs rounded"
+                      onClick={async () => {
+                        if (!confirm('Delete this trip?')) return;
+                        await ApiClient.delete(`/api/trips/${selectedTrip.id}`);
+                        await refreshData();
+                        setSelectedTripId(null);
+                      }}
+                    >
+                      Delete Trip
+                    </button>
+                  </div>
                 </div>
               </section>
             )}
@@ -777,16 +845,16 @@ export default function TravelPageClient() {
       )}
 
       {(showAddTrip || editingTrip) && (
-        <AddTripModal
-          familyMembers={data.family_members}
-          trip={editingTrip || undefined}
-          onClose={() => { setShowAddTrip(false); setEditingTrip(null); }}
-          onCreated={() => {
-            setShowAddTrip(false); setEditingTrip(null); setShowTripsList(true);
-            // refresh
-            refreshData();
-          }}
-        />
+      <AddTripModal
+        familyMembers={data.family_members}
+        trip={editingTrip || undefined}
+        onClose={() => { setShowAddTrip(false); setEditingTrip(null); }}
+        onCreated={() => {
+          setShowAddTrip(false);
+          setEditingTrip(null);
+          refreshData();
+        }}
+      />
       )}
 
   {/* View Travel Detail Modal */}
@@ -1190,6 +1258,7 @@ function AddTripModal({ familyMembers, onClose, onCreated, trip }: { familyMembe
   const [destination, setDestination] = useState(trip?.destination || trip?.name || '');
   const [start, setStart] = useState(trip?.start_date || ''); // yyyy-mm-dd
   const [end, setEnd] = useState(trip?.end_date || '');
+  const [description, setDescription] = useState(trip?.description || trip?.notes || '');
   const [travelerIds, setTravelerIds] = useState<string[]>(trip?.traveler_ids || []);
   const [submitting, setSubmitting] = useState(false);
   const canSubmit = destination && start && end && !submitting;
@@ -1197,7 +1266,7 @@ function AddTripModal({ familyMembers, onClose, onCreated, trip }: { familyMembe
   const submit = async () => {
     try {
       setSubmitting(true);
-      const payload = { destination, start_date: start, end_date: end, travelers: travelerIds, create_calendar_event: true };
+      const payload = { destination, start_date: start, end_date: end, travelers: travelerIds, description: description || null, create_calendar_event: true };
       const url = trip ? `/api/trips/${trip.id}` : '/api/trips';
       const res = trip ? await ApiClient.put(url, payload) : await ApiClient.post(url, payload);
       if (res.success) onCreated();
@@ -1223,6 +1292,15 @@ function AddTripModal({ familyMembers, onClose, onCreated, trip }: { familyMembe
               <input type="date" value={end} onChange={e=>setEnd(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
             </label>
           </div>
+          <label className="block text-sm">Description
+            <textarea
+              value={description}
+              onChange={e=>setDescription(e.target.value)}
+              rows={3}
+              placeholder="High-level overview, key notes, travel purpose..."
+              className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary"
+            />
+          </label>
           <TravelersPicker
             selectedIds={travelerIds}
             onChange={setTravelerIds}
