@@ -11,7 +11,7 @@ import { ListView } from '@/components/calendar/ListView';
 import { YearView } from '@/components/calendar/YearView';
 import { GanttView } from '@/components/calendar/GanttView';
 import { GoogleMapsLoader } from '@/components/calendar/GoogleMapsLoader';
-import { CreateEventModal } from '@/components/calendar/CreateEventModal';
+import { UnifiedEventModal } from '@/components/calendar/UnifiedEventModal';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { Plus, Maximize2, Minimize2 } from 'lucide-react';
 import { UnifiedSearchFilter } from '@/components/calendar/UnifiedSearchFilter';
@@ -305,10 +305,11 @@ export default function CalendarPageClient() {
       </div>
 
       {showCreateModal && selectedDate && (
-        <CreateEventModal
-          onClose={() => setShowCreateModal(false)}
+        <UnifiedEventModal
+          onClose={() => { setShowCreateModal(false); setRangePrefill(null); }}
           selectedDate={selectedDate}
           prefillData={rangePrefill || undefined}
+          categories={categories}
           onEventCreated={() => { onEventsChange(); setShowCreateModal(false); setRangePrefill(null); }}
         />
       )}

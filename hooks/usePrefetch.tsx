@@ -27,7 +27,7 @@ const componentPrefetchMap: Record<string, () => Promise<any>> = {
   '/calendar': () => Promise.all([
     import('@/components/calendar/MonthView'),
     import('@/components/calendar/WeekView'),
-    import('@/components/calendar/CreateEventModal'),
+    import('@/components/calendar/UnifiedEventModal'),
     import('date-fns'),
   ]),
   

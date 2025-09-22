@@ -82,7 +82,7 @@ export const LazyVirtualizedTaskList = dynamic(
 
 // Calendar Components (lazy loaded)
 export const LazyCreateEventModal = dynamic(
-  () => import('@/components/calendar/CreateEventModal').then(mod => ({ default: mod.CreateEventModal })),
+  () => import('@/components/calendar/UnifiedEventModal').then(mod => ({ default: mod.UnifiedEventModal })),
   {
     loading: LoadingFallback,
     ssr: false,

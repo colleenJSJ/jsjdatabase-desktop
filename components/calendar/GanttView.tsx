@@ -5,7 +5,7 @@ import { CalendarEvent, CalendarEventCategory } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { Calendar, Clock, Users, MapPin, Plus, Minus } from 'lucide-react';
 import { ViewEditEventModal } from './ViewEditEventModal';
-import { CreateEventModal } from './CreateEventModal';
+import { UnifiedEventModal } from './UnifiedEventModal';
 import { calculateTooltipPosition } from '@/lib/utils/tooltip';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isToday, isThisWeek, isThisMonth, isWithinInterval, differenceInMinutes, isSameDay, differenceInDays } from 'date-fns';
 import { getEventColor } from '@/lib/utils/event-colors';
@@ -789,12 +789,14 @@ export function GanttView({ events, categories, googleCalendars = [], user, onEv
       )}
 
       {showCreateModal && (
-        <CreateEventModal
+        <UnifiedEventModal
           categories={categories}
           onClose={() => {
             setShowCreateModal(false);
             setSelectedDateTime(null);
           }}
+          selectedDate={selectedDateTime || undefined}
+          prefillData={selectedDateTime ? { startDate: selectedDateTime, endDate: selectedDateTime, isAllDay: false } : undefined}
           onEventCreated={() => {
             setShowCreateModal(false);
             setSelectedDateTime(null);

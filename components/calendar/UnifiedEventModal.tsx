@@ -76,6 +76,14 @@ export function UnifiedEventModal({
     }
   }, [eventType]);
 
+  // Helper to format dates without timezone shifts (local wall-clock)
+  const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Base fields (common to all event types)
   const getInitialBaseData = (): BaseEventData => {
     if (prefillData) {
@@ -86,9 +94,9 @@ export function UnifiedEventModal({
       return {
         title: '',
         description: '',
-        startDate: sd.toISOString().split('T')[0],
+        startDate: formatLocalDate(sd),
         startTime: toHHMM(sd),
-        endDate: ed.toISOString().split('T')[0],
+        endDate: formatLocalDate(ed),
         endTime: toHHMM(ed),
         allDay: prefillData?.isAllDay ?? true,
         location: '',
@@ -101,7 +109,7 @@ export function UnifiedEventModal({
       };
     }
     const base = selectedDate || new Date();
-    const dateStr = base.toISOString().split('T')[0];
+    const dateStr = formatLocalDate(base);
     return {
       title: '',
       description: '',
@@ -120,8 +128,9 @@ export function UnifiedEventModal({
     };
   };
 
-  const [baseData, setBaseData] = useState<BaseEventData>(getInitialBaseData());
-  const [showTimeInputs, setShowTimeInputs] = useState<boolean>(getInitialBaseData().allDay === false);
+  const initialBaseData = getInitialBaseData();
+  const [baseData, setBaseData] = useState<BaseEventData>(initialBaseData);
+  const [showTimeInputs, setShowTimeInputs] = useState<boolean>(initialBaseData.allDay === false);
   const startDateInputRef = useRef<HTMLInputElement>(null);
   const endDateInputRef = useRef<HTMLInputElement>(null);
   // Email invitations (native Google). Default ON; user can disable to create silently.
