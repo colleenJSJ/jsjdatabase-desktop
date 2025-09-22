@@ -425,24 +425,16 @@ export default function PetsPageClient() {
                       ? <p className="text-xs text-text-muted/80 italic">{notes}</p>
                       : null;
 
-                    const footerContent = (
-                      <div className="flex flex-col gap-1">
-                        {relatedPetNames.length > 0 && (
-                          <span>Pets: {relatedPetNames.join(', ')}</span>
-                        )}
-                      </div>
-                    );
-
                     return (
                       <PasswordCard
                         key={portalId}
                         password={passwordRecord}
                         categories={[portalCategory]}
                         users={portalUsers}
+                        sourceLabel="Pets"
                         subtitle="Pet Portal"
-                        ownerLabelsOverride={relatedPetNames}
+                        assignedToLabel={relatedPetNames.length > 0 ? relatedPetNames.join(', ') : 'Shared'}
                         extraContent={extraContent}
-                        footerContent={footerContent}
                         showFavoriteToggle={false}
                         strengthOverride={getPasswordStrength(portalPassword)}
                         canManage={false}

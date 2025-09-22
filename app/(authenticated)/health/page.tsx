@@ -542,9 +542,9 @@ export default function HealthPage() {
   };
 
   const filterPortals = (portals: MedicalPortal[]) => {
-    if (selectedPerson === 'all') return portals;
-    
-    return portals.filter(portal => Array.isArray(portal.patient_ids) && portal.patient_ids.includes(selectedPerson));
+    if (filteredSelectedPerson === 'all') return portals;
+
+    return portals.filter(portal => Array.isArray(portal.patient_ids) && portal.patient_ids.includes(filteredSelectedPerson));
   };
 
   const handleDeletePortal = async (id: string) => {
@@ -560,7 +560,8 @@ export default function HealthPage() {
     }
   };
 
-  const handlePortalOpen = async (id: string) => {
+  const handlePortalOpen = async (id?: string) => {
+    if (!id) return;
     try {
       await fetch(`/api/medical-portals/${id}`, {
         method: 'PUT',
@@ -929,6 +930,7 @@ export default function HealthPage() {
                 const patientNames = patientIds
                   .map(patientId => familyMembers.find(m => m.id === patientId)?.name)
                   .filter((name): name is string => Boolean(name));
+                const assignedLabel = patientNames.length > 0 ? patientNames.join(', ') : 'Shared';
 
                 const passwordRecord: Password = {
                   id: portalId,
@@ -941,7 +943,7 @@ export default function HealthPage() {
                   owner_id: patientIds[0] ?? 'shared',
                   shared_with: patientIds,
                   is_favorite: false,
-                  is_shared: portal.patient_ids.length > 1,
+                  is_shared: patientIds.length > 1,
                   last_changed: portal.updated_at ? new Date(portal.updated_at) : new Date(),
                   strength: undefined,
                   created_at: portal.created_at ? new Date(portal.created_at) : new Date(),
@@ -950,7 +952,7 @@ export default function HealthPage() {
                 };
 
                 const portalCategory: Category = {
-                  id: `medical-portal-${portalId}`,
+                  id: 'medical-portal',
                   name: portal.doctor?.specialty || 'Medical Portal',
                   color: '#38bdf8',
                   module: 'passwords',
@@ -984,25 +986,19 @@ export default function HealthPage() {
                   </div>
                 );
 
-                const footerContent = (
-                  <div className="flex flex-col gap-1">
-                    {patientNames.length > 0 && (
-                      <span>Patients: {patientNames.join(', ')}</span>
-                    )}
-                    {lastAccessDisplay && (
-                      <span>Last accessed: {lastAccessDisplay}</span>
-                    )}
-                  </div>
-                );
+                const footerContent = lastAccessDisplay ? (
+                  <span>Last accessed: {lastAccessDisplay}</span>
+                ) : undefined;
 
                 return (
                   <PasswordCard
-                    key={portal.id}
+                    key={portalId}
                     password={passwordRecord}
                     categories={[portalCategory]}
                     users={portalUsers}
+                    sourceLabel="Health"
+                    assignedToLabel={assignedLabel}
                     subtitle={portal.doctor?.name || 'Healthcare Portal'}
-                    ownerLabelsOverride={patientNames}
                     extraContent={extraContent}
                     footerContent={footerContent}
                     showFavoriteToggle={false}

@@ -30,6 +30,54 @@ interface UserInfo {
   name?: string;
 }
 
+const formatPasswordSource = (source?: string | null): string | null => {
+  if (!source) return null;
+  const normalized = source.toLowerCase();
+  switch (normalized) {
+    case 'health':
+      return 'Health';
+    case 'pets':
+      return 'Pets';
+    case 'travel':
+      return 'Travel';
+    case 'j3-academics':
+    case 'j3_academics':
+      return 'J3 Academics';
+    case 'documents':
+      return 'Documents';
+    case 'calendar':
+      return 'Calendar';
+    case 'passwords':
+      return 'Passwords';
+    default:
+      return source
+        .split(/[-_]/)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+  }
+};
+
+const getAssignedLabel = (password: Password, users: UserInfo[]): string => {
+  const ownerIds = new Set<string>();
+  if (password.owner_id) ownerIds.add(password.owner_id);
+  const sharedWith = Array.isArray(password.shared_with)
+    ? password.shared_with
+    : [];
+  sharedWith.filter(Boolean).forEach(id => ownerIds.add(id as string));
+
+  const labels = Array.from(ownerIds).map(id => {
+    if (id === 'shared') return 'Shared';
+    const person = users.find(u => u.id === id);
+    return person?.name || person?.email?.split('@')[0] || id;
+  });
+
+  if (labels.length === 0) {
+    return password.is_shared ? 'Shared' : 'Private';
+  }
+
+  return labels.join(', ');
+};
+
 export default function PasswordsPage() {
   const { user } = useUser();
   const [passwords, setPasswords] = useState<Password[]>([]);
@@ -447,17 +495,28 @@ export default function PasswordsPage() {
         </div>
       ) : viewMode === 'card' ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredPasswords.map(password => (
-            <PasswordCard
-              key={password.id}
-              password={password}
-              categories={categories}
-              users={users}
-              canManage={user?.role === 'admin'}
-              onEdit={() => setEditingPassword(password)}
-              onDelete={() => handleDelete(password.id)}
-            />
-          ))}
+          {filteredPasswords.map(password => {
+            const assignedLabel = getAssignedLabel(password, users);
+            const sourceLabel = formatPasswordSource((password as any).source_page);
+            const notesContent = password.notes
+              ? <p className="text-xs text-text-muted/80 italic">{password.notes}</p>
+              : undefined;
+
+            return (
+              <PasswordCard
+                key={password.id}
+                password={password}
+                categories={categories}
+                users={users}
+                canManage={user?.role === 'admin'}
+                sourceLabel={sourceLabel}
+                assignedToLabel={assignedLabel}
+                extraContent={notesContent}
+                onEdit={() => setEditingPassword(password)}
+                onDelete={() => handleDelete(password.id)}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="bg-background-secondary border border-gray-600/30 rounded-lg overflow-hidden">

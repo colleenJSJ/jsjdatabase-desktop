@@ -65,6 +65,7 @@ export function UnifiedEventModal({
   const [eventType, setEventType] = useState<EventType>('general');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [googleCalendars, setGoogleCalendars] = useState<any[]>([]);
+  const [calendarManuallySelected, setCalendarManuallySelected] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; hasValidTokens?: boolean; userEmail?: string; lastSync?: string; calendarsCount?: number } | null>(null);
   const [repairing, setRepairing] = useState(false);
   const [pets, setPets] = useState<any[]>([]);
@@ -72,13 +73,13 @@ export function UnifiedEventModal({
   const [vets, setVets] = useState<any[]>([]);
   const { familyMembers, loading: familyLoading } = useFamilyMembers();
 
-  const allowedFamilyParticipants = useMemo(() =>
-    (familyMembers || []).filter(member => GENERAL_FAMILY_PARTICIPANT_NAMES.has(member.name)),
+  const allowedFamilyParticipants = useMemo(
+    () => (familyMembers || []).filter(member => GENERAL_FAMILY_PARTICIPANT_NAMES.has(member.name)),
     [familyMembers]
   );
 
-  const allowedStaffParticipants = useMemo(() =>
-    (familyMembers || []).filter(member => GENERAL_STAFF_PARTICIPANT_NAMES.has(member.name)),
+  const allowedStaffParticipants = useMemo(
+    () => (familyMembers || []).filter(member => GENERAL_STAFF_PARTICIPANT_NAMES.has(member.name)),
     [familyMembers]
   );
 
@@ -89,6 +90,36 @@ export function UnifiedEventModal({
     return set;
   }, [allowedFamilyParticipants, allowedStaffParticipants]);
 
+  const handleCalendarChange = (calendarId: string) => {
+    setCalendarManuallySelected(true);
+    setBaseData(prev => ({ ...prev, googleCalendarId: calendarId }));
+  };
+
+  const getDefaultCalendarIdForType = (type: EventType, calendars: any[]): string | null => {
+    if (!calendars || calendars.length === 0) return null;
+    const normalize = (value: string | undefined) => value?.toLowerCase() ?? '';
+    const findByName = (needle: string) =>
+      calendars.find((cal: any) => normalize(cal.name).includes(needle));
+    const primaryCalendar = calendars.find((cal: any) => cal.is_primary);
+    const fallbackCalendar = calendars[0];
+    switch (type) {
+      case 'travel': {
+        const travelCal = findByName('travel');
+        return (travelCal?.google_calendar_id) || (primaryCalendar?.google_calendar_id) || (fallbackCalendar?.google_calendar_id) || null;
+      }
+      case 'academics': {
+        const academicsCal = findByName('j3 academics');
+        return (academicsCal?.google_calendar_id) || (primaryCalendar?.google_calendar_id) || (fallbackCalendar?.google_calendar_id) || null;
+      }
+      case 'general':
+      case 'health':
+      case 'pets':
+      default: {
+        return (primaryCalendar?.google_calendar_id) || (fallbackCalendar?.google_calendar_id) || null;
+      }
+    }
+  };
+  
   useEffect(() => {
     if (eventType !== 'general') return;
     setGeneralData(prev => {
@@ -98,7 +129,27 @@ export function UnifiedEventModal({
       return { ...prev, participantIds: filtered };
     });
   }, [allowedParticipantIds, eventType]);
-  
+
+  useEffect(() => {
+    setCalendarManuallySelected(false);
+  }, [eventType]);
+
+  useEffect(() => {
+    if (googleCalendars.length === 0) return;
+    const defaultCalendarId = getDefaultCalendarIdForType(eventType, googleCalendars);
+    if (!defaultCalendarId) return;
+
+    setBaseData(prev => {
+      if (calendarManuallySelected && prev.googleCalendarId && prev.googleCalendarId !== defaultCalendarId) {
+        return prev;
+      }
+      if (prev.googleCalendarId === defaultCalendarId) {
+        return prev;
+      }
+      return { ...prev, googleCalendarId: defaultCalendarId };
+    });
+  }, [eventType, googleCalendars, calendarManuallySelected]);
+
   // Force timed behavior for travel (no all-day)
   useEffect(() => {
     if (eventType === 'travel') {
@@ -106,14 +157,6 @@ export function UnifiedEventModal({
       setShowTimeInputs(true);
     }
   }, [eventType]);
-
-  // Helper to format dates without timezone shifts (local wall-clock)
-  const formatLocalDate = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
 
   // Base fields (common to all event types)
   const getInitialBaseData = (): BaseEventData => {
@@ -125,9 +168,9 @@ export function UnifiedEventModal({
       return {
         title: '',
         description: '',
-        startDate: formatLocalDate(sd),
+        startDate: sd.toISOString().split('T')[0],
         startTime: toHHMM(sd),
-        endDate: formatLocalDate(ed),
+        endDate: ed.toISOString().split('T')[0],
         endTime: toHHMM(ed),
         allDay: prefillData?.isAllDay ?? true,
         location: '',
@@ -140,7 +183,7 @@ export function UnifiedEventModal({
       };
     }
     const base = selectedDate || new Date();
-    const dateStr = formatLocalDate(base);
+    const dateStr = base.toISOString().split('T')[0];
     return {
       title: '',
       description: '',
@@ -159,9 +202,8 @@ export function UnifiedEventModal({
     };
   };
 
-  const initialBaseData = getInitialBaseData();
-  const [baseData, setBaseData] = useState<BaseEventData>(initialBaseData);
-  const [showTimeInputs, setShowTimeInputs] = useState<boolean>(initialBaseData.allDay === false);
+  const [baseData, setBaseData] = useState<BaseEventData>(getInitialBaseData());
+  const [showTimeInputs, setShowTimeInputs] = useState<boolean>(getInitialBaseData().allDay === false);
   const startDateInputRef = useRef<HTMLInputElement>(null);
   const endDateInputRef = useRef<HTMLInputElement>(null);
   // Email invitations (native Google). Default ON; user can disable to create silently.
@@ -216,13 +258,6 @@ export function UnifiedEventModal({
       if (response.ok) {
         const data = await response.json();
         setGoogleCalendars(data.calendars || []);
-        // Set default calendar
-        if (data.calendars?.length > 0) {
-          setBaseData(prev => ({
-            ...prev,
-            googleCalendarId: data.calendars[0].google_calendar_id || data.calendars[0].id
-          }));
-        }
       }
     } catch (error) {
       console.error('Error fetching calendars:', error);
@@ -511,6 +546,41 @@ export function UnifiedEventModal({
     }
   };
   
+  const renderExternalAttendeesSection = () => (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-text-primary">
+        External Attendees
+      </label>
+      <RecentContactsAutocomplete
+        value={Array.isArray(baseData.attendees) ? baseData.attendees : (baseData.attendees ? [baseData.attendees] : [])}
+        multiple
+        onChange={(value) => {
+          const emails = Array.isArray(value)
+            ? value
+            : value
+                .split(',')
+                .map(email => email.trim())
+                .filter(email => email && email.includes('@'));
+          const uniqueEmails = Array.from(new Set(emails));
+          setBaseData({ ...baseData, attendees: uniqueEmails });
+        }}
+        placeholder="Add external attendee emails (comma-separated)..."
+      />
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="notifyByEmail"
+          checked={!notifyByEmail}
+          onChange={(e) => setNotifyByEmail(!e.target.checked)}
+          className="rounded border-gray-600 bg-gray-700"
+        />
+        <label htmlFor="notifyByEmail" className="text-sm text-text-primary">
+          Don’t send email invite
+        </label>
+      </div>
+    </div>
+  );
+
   const renderTypeSpecificFields = () => {
     switch (eventType) {
       case 'travel':
@@ -666,6 +736,7 @@ export function UnifiedEventModal({
                 <div className="space-y-3">
                   {/* Family Members */}
                   <div>
+                    <p className="text-xs text-text-muted mb-1 font-medium">Family Members</p>
                     <div className="grid grid-cols-3 gap-2">
                       {familyMembers
                         .filter(m => m.type === 'human' && m.role !== 'member')
@@ -694,6 +765,7 @@ export function UnifiedEventModal({
                   
                   {/* Staff */}
                   <div>
+                    <p className="text-xs text-text-muted mb-1 font-medium">Staff</p>
                     <div className="grid grid-cols-3 gap-2">
                       {familyMembers
                         .filter(m => m.type === 'human' && m.role === 'member')
@@ -763,6 +835,7 @@ export function UnifiedEventModal({
                 </div>
               </div>
             </div>
+            {renderExternalAttendeesSection()}
           </div>
         );
         
@@ -896,6 +969,7 @@ export function UnifiedEventModal({
                 </div>
               </div>
             </div>
+            {renderExternalAttendeesSection()}
           </div>
         );
         
@@ -1009,6 +1083,7 @@ export function UnifiedEventModal({
                 </div>
               </div>
             </div>
+            {renderExternalAttendeesSection()}
           </div>
         );
         
@@ -1125,12 +1200,77 @@ export function UnifiedEventModal({
                 />
               </div>
             </div>
+            {renderExternalAttendeesSection()}
           </div>
         );
         
       case 'general':
-        return null;
-
+        return (
+          <div className="space-y-4 border-t border-gray-600/30 pt-4">
+            <h3 className="text-sm font-medium text-text-primary">Participants</h3>
+            
+            <div className="space-y-3">
+              {/* Family Members */}
+              <div>
+                <p className="text-xs text-text-muted mb-1 font-medium">Family Members</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {familyMembers
+                    .filter(m => m.type === 'human' && m.role !== 'member')
+                    .map(member => (
+                      <label key={member.id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={generalData.participantIds?.includes(member.id) || false}
+                          onChange={(e) => {
+                            setGeneralData(prev => {
+                              const currentParticipants = prev.participantIds || [];
+                              if (e.target.checked) {
+                                return { ...prev, participantIds: [...currentParticipants, member.id] };
+                              } else {
+                                return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
+                              }
+                            });
+                          }}
+                          className="rounded border-gray-600 bg-gray-700"
+                        />
+                        <span className="text-sm text-text-primary">{member.name}</span>
+                      </label>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Staff */}
+              <div>
+                <p className="text-xs text-text-muted mb-1 font-medium">Staff</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {familyMembers
+                    .filter(m => m.type === 'human' && m.role === 'member')
+                    .map(member => (
+                      <label key={member.id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={generalData.participantIds?.includes(member.id) || false}
+                          onChange={(e) => {
+                            setGeneralData(prev => {
+                              const currentParticipants = prev.participantIds || [];
+                              if (e.target.checked) {
+                                return { ...prev, participantIds: [...currentParticipants, member.id] };
+                              } else {
+                                return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
+                              }
+                            });
+                          }}
+                          className="rounded border-gray-600 bg-gray-700"
+                        />
+                        <span className="text-sm text-text-primary">{member.name}</span>
+                      </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+        
       default:
         return null;
     }
@@ -1169,22 +1309,24 @@ export function UnifiedEventModal({
           <div className="space-y-6">
             {/* Event Type Selector */}
             <div>
-              <div className="flex flex-wrap gap-2">
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Event Type
+              </label>
+              <div className="grid grid-cols-5 gap-2">
                 {EVENT_TYPES.map(type => {
                   const Icon = type.icon;
-                  const isActive = eventType === type.value;
                   return (
                     <button
                       key={type.value}
                       onClick={() => setEventType(type.value as EventType)}
-                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                        isActive
-                          ? 'border-primary-500 bg-primary-500/10 text-text-primary'
-                          : 'border-gray-600/40 text-text-muted hover:text-text-primary hover:border-gray-600'
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors ${
+                        eventType === type.value
+                          ? 'border-blue-500 bg-blue-500/10'
+                          : 'border-gray-600/30 hover:border-gray-600'
                       }`}
                     >
-                      <Icon className={`h-4 w-4 ${isActive ? type.color : 'text-text-muted'}`} />
-                      <span>{type.label}</span>
+                      <Icon className={`h-5 w-5 ${type.color}`} />
+                      <span className="text-xs text-text-primary">{type.label}</span>
                     </button>
                   );
                 })}
@@ -1206,74 +1348,74 @@ export function UnifiedEventModal({
                     placeholder="Event title"
                   />
                 </div>
-
-                {eventType !== 'travel' && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <DateDisplay
-                        label="Start Date"
-                        date={baseData.startDate}
-                        onChange={(v) => setBaseData({ ...baseData, startDate: v })}
-                        ref={startDateInputRef}
-                      />
-                      {showTimeInputs ? (
-                        <TimeInput
-                          label="Start Time"
-                          value={baseData.startTime}
-                          onChange={(v) => setBaseData({ ...baseData, startTime: v })}
-                          required={!baseData.allDay}
-                        />
-                      ) : (
-                        <div />
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <DateDisplay
-                        label="End Date"
-                        date={baseData.endDate}
-                        onChange={(v) => setBaseData({ ...baseData, endDate: v })}
-                        minDate={baseData.startDate}
-                        ref={endDateInputRef}
-                      />
-                      {showTimeInputs ? (
-                        <TimeInput
-                          label={'End Time'}
-                          value={baseData.endTime}
-                          onChange={(v) => setBaseData({ ...baseData, endTime: v })}
-                          required={false}
-                          placeholder={'Optional'}
-                        />
-                      ) : (
-                        <div />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="allDay"
-                        checked={baseData.allDay}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          if (!checked) {
-                            setBaseData(prev => ({
-                              ...prev,
-                              allDay: false,
-                              endDate: prev.startDate,
-                            }));
-                          } else {
-                            setBaseData(prev => ({ ...prev, allDay: true }));
-                          }
-                          setShowTimeInputs(!checked);
-                        }}
-                        className="rounded border-gray-600 bg-gray-700"
-                      />
-                      <label htmlFor="allDay" className="text-sm text-text-primary">
-                        All-day event
-                      </label>
-                    </div>
-                  </div>
-                )}
               </div>
+
+              {eventType !== 'travel' && (
+                <div className={`${sectionClass} space-y-4`}>
+                  <div className="grid grid-cols-2 gap-4">
+                    <DateDisplay
+                      label="Start Date"
+                      date={baseData.startDate}
+                      onChange={(v) => setBaseData({ ...baseData, startDate: v })}
+                      ref={startDateInputRef}
+                    />
+                    {showTimeInputs ? (
+                      <TimeInput
+                        label="Start Time"
+                        value={baseData.startTime}
+                        onChange={(v) => setBaseData({ ...baseData, startTime: v })}
+                        required={!baseData.allDay}
+                      />
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <DateDisplay
+                      label="End Date"
+                      date={baseData.endDate}
+                      onChange={(v) => setBaseData({ ...baseData, endDate: v })}
+                      minDate={baseData.startDate}
+                      ref={endDateInputRef}
+                    />
+                    {showTimeInputs ? (
+                      <TimeInput
+                        label="End Time"
+                        value={baseData.endTime}
+                        onChange={(v) => setBaseData({ ...baseData, endTime: v })}
+                        required={false}
+                        placeholder="Optional"
+                      />
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="allDay"
+                      checked={baseData.allDay}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        if (!checked) {
+                          setBaseData(prev => ({
+                            ...prev,
+                            allDay: false,
+                            endDate: prev.startDate,
+                          }));
+                        } else {
+                          setBaseData(prev => ({ ...prev, allDay: true }));
+                        }
+                        setShowTimeInputs(!checked);
+                      }}
+                      className="rounded border-gray-600 bg-gray-700"
+                    />
+                    <label htmlFor="allDay" className="text-sm text-text-primary">
+                      All-day event
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {eventType !== 'travel' && (
                 <div className={sectionClass}>
@@ -1304,7 +1446,7 @@ export function UnifiedEventModal({
                 </div>
               )}
 
-              {eventType === 'general' && (
+              {eventType === 'general' ? (
                 <div className={sectionClass}>
                   <h3 className="text-sm font-medium text-text-primary">Participants</h3>
                   <div className="grid grid-cols-3 gap-2">
@@ -1331,55 +1473,21 @@ export function UnifiedEventModal({
                       <span className="text-xs text-text-muted col-span-3">No participants</span>
                     )}
                   </div>
+                  {renderExternalAttendeesSection()}
                 </div>
+              ) : (
+                <>{renderTypeSpecificFields()}</>
               )}
 
-              {eventType !== 'general' && renderTypeSpecificFields()}
-
               <div className={sectionClass}>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  External Attendees
-                </label>
-                <RecentContactsAutocomplete
-                  value={Array.isArray(baseData.attendees) ? baseData.attendees : (baseData.attendees ? [baseData.attendees] : [])}
-                  multiple
-                  onChange={(value) => {
-                    const emails = Array.isArray(value)
-                      ? value
-                      : value
-                          .split(',')
-                          .map(email => email.trim())
-                          .filter(email => email && email.includes('@'));
-                    const uniqueEmails = Array.from(new Set(emails));
-                    setBaseData({ ...baseData, attendees: uniqueEmails });
-                  }}
-                  placeholder="Add external attendee emails (comma-separated)..."
-                />
-              </div>
-
-              <div className={sectionClass}>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="notifyByEmail"
-                    checked={!notifyByEmail}
-                    onChange={(e) => setNotifyByEmail(!e.target.checked)}
-                    className="rounded border-gray-600 bg-gray-700"
-                  />
-                  <label htmlFor="notifyByEmail" className="text-sm text-text-primary">
-                    Don’t send email invite
-                  </label>
-                </div>
-
                 {googleCalendars.length > 0 && (
                   <CalendarSelector
                     calendars={googleCalendars}
                     selectedCalendarId={baseData.googleCalendarId}
-                    onCalendarChange={(id) => setBaseData({ ...baseData, googleCalendarId: id })}
+                    onCalendarChange={handleCalendarChange}
                     label="Add to Calendar"
                   />
                 )}
-                
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
                     Notes

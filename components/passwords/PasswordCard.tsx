@@ -6,8 +6,6 @@ import {
   CopyCheck,
   Eye,
   EyeOff,
-  ExternalLink,
-  Link2,
   Star,
   User
 } from 'lucide-react';
@@ -16,7 +14,7 @@ import { Password as SupabasePassword } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { smartUrlComplete, getFriendlyDomain } from '@/lib/utils/url-helper';
 import { usePasswordSecurity } from '@/contexts/password-security-context';
-import { getPasswordStrength, getPasswordAgeDays, PasswordStrength } from '@/lib/passwords/utils';
+import { getPasswordStrength, PasswordStrength } from '@/lib/passwords/utils';
 
 type UserInfo = {
   id: string;
@@ -38,6 +36,8 @@ type PasswordCardProps = {
   onDelete: () => void;
   canManage?: boolean;
   subtitle?: string | null;
+  sourceLabel?: string | null;
+  assignedToLabel?: string | null;
   ownerLabelsOverride?: string[] | null;
   extraContent?: ReactNode;
   footerContent?: ReactNode;
@@ -81,6 +81,8 @@ export function PasswordCard({
   onDelete,
   canManage = false,
   subtitle,
+  sourceLabel,
+  assignedToLabel,
   ownerLabelsOverride,
   extraContent,
   footerContent,
@@ -111,7 +113,6 @@ export function PasswordCard({
           ? String(servicePassword.last_changed)
           : undefined)
     : supabasePassword?.last_changed ?? undefined;
-  const passwordAgeDays = getPasswordAgeDays(lastChangedIso);
 
   const category = useMemo(() => categories.find(c => c.id === password.category), [categories, password.category]);
   const serviceName = useMemo(() => {
@@ -149,10 +150,7 @@ export function PasswordCard({
   const resolvedOwners = ownerLabelsOverride && ownerLabelsOverride.length > 0
     ? ownerLabelsOverride
     : ownersDisplay;
-
-  const faviconSrc = password.url
-    ? `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(password.url)}`
-    : null;
+  const assignedLabel = assignedToLabel ?? (resolvedOwners.length > 0 ? resolvedOwners.join(', ') : null);
 
   const handleCopy = async (target: CopyTarget) => {
     try {
@@ -204,47 +202,59 @@ export function PasswordCard({
         }}
       />
       <div className="relative z-10 flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-base font-semibold text-text-primary">{serviceName}</h3>
-              {showFavoriteToggle && (
-                <button
-                  onClick={() => {
-                    setIsFavorite(prev => {
-                      const next = !prev;
-                      onToggleFavorite?.(next);
-                      return next;
-                    });
-                  }}
-                  className={`rounded p-1 transition-colors ${
-                    isFavorite ? 'text-yellow-400' : 'text-text-muted hover:text-yellow-400'
-                  }`}
-                  title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {assignedLabel && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-xs text-text-muted">
+                  <User className="h-3 w-3 text-text-muted" />
+                  <span className="text-text-primary/90">{assignedLabel}</span>
+                </span>
+              )}
+              {sourceLabel && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-text-muted">
+                  From {sourceLabel}
+                </span>
+              )}
+              {category?.name && (
+                <span
+                  className="rounded-full px-2 py-1 text-xs font-medium text-white"
+                  style={{ backgroundColor: category.color || '#6366f1' }}
                 >
-                  <Star className="h-4 w-4" fill={isFavorite ? 'currentColor' : 'none'} />
-                </button>
+                  {category.name}
+                </span>
+              )}
+              {subtitle && (
+                <span className="text-xs text-text-muted/80">{subtitle}</span>
               )}
             </div>
-            {subtitle && (
-              <p className="text-xs text-text-muted/80">{subtitle}</p>
-            )}
-            {category?.name && (
-              <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{category.name}</p>
-            )}
-            {resolvedOwners.length > 0 && (
-              <div className="flex items-center gap-1 text-xs text-text-muted">
-                <User className="h-3.5 w-3.5" />
-                <span className="truncate">{resolvedOwners.join(', ')}</span>
-              </div>
-            )}
+            <div className="flex flex-col items-end gap-1">
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${strengthMeta.dotClass}`}
+                title={`${strengthMeta.label} password`}
+              />
+              <span className={`text-[10px] font-medium uppercase ${strengthMeta.textClass}`}>{strengthMeta.label}</span>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${strengthMeta.dotClass}`}
-              title={`${strengthMeta.label} password`}
-            />
-            <span className={`text-[10px] font-medium uppercase ${strengthMeta.textClass}`}>{strengthMeta.label}</span>
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-base font-semibold text-text-primary">{serviceName}</h3>
+            {showFavoriteToggle && (
+              <button
+                onClick={() => {
+                  setIsFavorite(prev => {
+                    const next = !prev;
+                    onToggleFavorite?.(next);
+                    return next;
+                  });
+                }}
+                className={`rounded p-1 transition-colors ${
+                  isFavorite ? 'text-yellow-400' : 'text-text-muted hover:text-yellow-400'
+                }`}
+                title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+              >
+                <Star className="h-4 w-4" fill={isFavorite ? 'currentColor' : 'none'} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -254,33 +264,27 @@ export function PasswordCard({
               <div className="flex flex-col gap-1 text-sm text-text-primary">
                 <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-text-muted">
                   <span>URL</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleCopy('url')}
-                      className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 text-[12px] transition-colors ${
-                        copiedTarget === 'url' ? 'border-emerald-400 text-emerald-300' : 'text-text-muted hover:border-white/20 hover:text-text-primary'
-                      }`}
-                      title="Copy URL"
-                    >
-                      {copiedTarget === 'url' ? <CopyCheck className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
-                    </button>
-                    <a
-                      href={smartUrlComplete(password.url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        onOpenUrl?.();
-                      }}
-                      className="flex h-6 w-6 items-center justify-center rounded border border-white/10 text-text-muted transition-colors hover:border-white/20 hover:text-text-primary"
-                      title="Open URL"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
+                  <button
+                    onClick={() => handleCopy('url')}
+                    className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 transition-colors ${
+                      copiedTarget === 'url' ? 'border-emerald-400 text-emerald-300' : 'text-text-muted hover:border-white/20 hover:text-text-primary'
+                    }`}
+                    title="Copy URL"
+                  >
+                    {copiedTarget === 'url' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
                 </div>
-                <span className="truncate font-mono text-[13px] text-text-primary/90">
+                <a
+                  href={smartUrlComplete(password.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    onOpenUrl?.();
+                  }}
+                  className="truncate font-mono text-[13px] text-text-primary/90 underline decoration-dotted underline-offset-4 hover:text-text-primary"
+                >
                   {getFriendlyDomain(password.url)}
-                </span>
+                </a>
               </div>
             )}
 
@@ -338,26 +342,12 @@ export function PasswordCard({
             {extraContent}
           </div>
         )}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
-          <div className="flex items-center gap-2">
-            {faviconSrc && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={faviconSrc} alt="favicon" className="h-4 w-4 rounded" />
-            )}
-            {password.url && (
-              <span className="truncate max-w-[140px]">{getFriendlyDomain(password.url)}</span>
-            )}
-          </div>
-          {typeof passwordAgeDays === 'number' && (
-            <span>{passwordAgeDays} {passwordAgeDays === 1 ? 'day' : 'days'} old</span>
-          )}
-        </div>
-
         <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs text-text-muted">
-            {footerContent ?? resolvedOwners.join(', ')}
-          </div>
+          {footerContent ? (
+            <div className="text-xs text-text-muted">{footerContent}</div>
+          ) : (
+            <span className="text-xs text-transparent">.</span>
+          )}
           <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:justify-end">
             <button
               onClick={() => handleCopy('all')}

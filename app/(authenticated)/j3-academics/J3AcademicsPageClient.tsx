@@ -263,12 +263,9 @@ export default function J3AcademicsPageClient() {
                     ? new Date(portal.last_accessed).toLocaleDateString()
                     : null;
 
-                  const footerContent = (
-                    <div className="flex flex-col gap-1">
-                      {student?.name && <span>Student: {student.name}</span>}
-                      {lastAccessDisplay && <span>Last accessed: {lastAccessDisplay}</span>}
-                    </div>
-                  );
+                  const footerContent = lastAccessDisplay ? (
+                    <span>Last accessed: {lastAccessDisplay}</span>
+                  ) : undefined;
 
                   const handlePortalOpen = async () => {
                     if (!portal.id) return;
@@ -292,8 +289,9 @@ export default function J3AcademicsPageClient() {
                       password={passwordRecord}
                       categories={[portalCategory]}
                       users={academicPortalUsers}
+                      sourceLabel="J3 Academics"
                       subtitle={student?.name || 'Academic Portal'}
-                      ownerLabelsOverride={student?.name ? [student.name] : []}
+                      assignedToLabel={student?.name || 'Shared'}
                       extraContent={notes ? <p className="text-xs text-text-muted/80 italic">{notes}</p> : null}
                       footerContent={footerContent}
                       showFavoriteToggle={false}
