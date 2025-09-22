@@ -13,7 +13,7 @@ import { Password as ServicePassword } from '@/lib/services/password-service-int
 import { Password as SupabasePassword } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { smartUrlComplete, getFriendlyDomain } from '@/lib/utils/url-helper';
-import { usePasswordSecurity } from '@/contexts/password-security-context';
+import { usePasswordSecurityOptional } from '@/contexts/password-security-context';
 import { getPasswordStrength, PasswordStrength } from '@/lib/passwords/utils';
 
 type UserInfo = {
@@ -91,7 +91,7 @@ export function PasswordCard({
   strengthOverride,
   onOpenUrl,
 }: PasswordCardProps) {
-  const { updateActivity } = usePasswordSecurity();
+  const { updateActivity } = usePasswordSecurityOptional();
   const [showPassword, setShowPassword] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState<CopyTarget | null>(null);
 

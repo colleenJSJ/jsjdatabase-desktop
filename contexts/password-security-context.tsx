@@ -116,3 +116,21 @@ export function usePasswordSecurity() {
   }
   return context;
 }
+
+const FALLBACK_SECURITY_CONTEXT: PasswordSecurityContextType = {
+  isLocked: false,
+  lastActivity: new Date(0),
+  unlock: async () => true,
+  lock: () => {},
+  updateActivity: () => {},
+  sessionTimeout: SESSION_TIMEOUT,
+};
+
+/**
+ * Same as usePasswordSecurity but safe to call when the provider is missing.
+ * Useful for places that only need the updateActivity helper and don't require
+ * the full lock/unlock experience.
+ */
+export function usePasswordSecurityOptional() {
+  return useContext(PasswordSecurityContext) ?? FALLBACK_SECURITY_CONTEXT;
+}
