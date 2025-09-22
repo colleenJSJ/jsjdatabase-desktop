@@ -117,7 +117,11 @@ export function MonthView({
         const evTz = getEventTimeZone(event, googleCalendars, calById);
         // Convert to true instants
         const startInstant = toInstantFromNaive(event.start_time, evTz);
-        const endInstant = toInstantFromNaive(event.end_time, evTz);
+        let endInstant = toInstantFromNaive(event.end_time, evTz);
+
+        if (event.all_day) {
+          endInstant = new Date(endInstant.getTime() - 1);
+        }
         // Convert instants to viewer timezone Y/M/D
         const startP = getZonedParts(startInstant, preferences.timezone);
         const endP = getZonedParts(endInstant, preferences.timezone);

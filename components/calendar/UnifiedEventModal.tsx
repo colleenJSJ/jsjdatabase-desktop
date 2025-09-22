@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Calendar, Plane, Heart, PawPrint, GraduationCap, Loader2, Users } from 'lucide-react';
 import { CalendarEventCategory, User } from '@/lib/supabase/types';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
@@ -35,6 +35,9 @@ const EVENT_TYPES = [
   { value: 'academics', label: 'Academics', icon: GraduationCap, color: 'text-purple-500' }
 ];
 
+const GENERAL_FAMILY_PARTICIPANT_NAMES = new Set(['John Johnson', 'Susan Johnson']);
+const GENERAL_STAFF_PARTICIPANT_NAMES = new Set(['Colleen Russell', 'Kate McLaren']);
+
 interface UnifiedEventModalProps {
   onClose: () => void;
   selectedDate?: Date | null;
@@ -67,6 +70,33 @@ export function UnifiedEventModal({
   const [doctors, setDoctors] = useState<any[]>([]);
   const [vets, setVets] = useState<any[]>([]);
   const { familyMembers, loading: familyLoading } = useFamilyMembers();
+
+  const allowedFamilyParticipants = useMemo(() =>
+    (familyMembers || []).filter(member => GENERAL_FAMILY_PARTICIPANT_NAMES.has(member.name)),
+    [familyMembers]
+  );
+
+  const allowedStaffParticipants = useMemo(() =>
+    (familyMembers || []).filter(member => GENERAL_STAFF_PARTICIPANT_NAMES.has(member.name)),
+    [familyMembers]
+  );
+
+  const allowedParticipantIds = useMemo(() => {
+    const set = new Set<string>();
+    allowedFamilyParticipants.forEach(member => member.id && set.add(member.id));
+    allowedStaffParticipants.forEach(member => member.id && set.add(member.id));
+    return set;
+  }, [allowedFamilyParticipants, allowedStaffParticipants]);
+
+  useEffect(() => {
+    if (eventType !== 'general') return;
+    setGeneralData(prev => {
+      const current = prev.participantIds || [];
+      const filtered = current.filter(id => allowedParticipantIds.has(id));
+      if (filtered.length === current.length) return prev;
+      return { ...prev, participantIds: filtered };
+    });
+  }, [allowedParticipantIds, eventType]);
   
   // Force timed behavior for travel (no all-day)
   useEffect(() => {
@@ -1109,28 +1139,28 @@ export function UnifiedEventModal({
               <div>
                 <p className="text-xs text-text-muted mb-1 font-medium">Family Members</p>
                 <div className="grid grid-cols-3 gap-2">
-                  {familyMembers
-                    .filter(m => m.type === 'human' && m.role !== 'member')
-                    .map(member => (
-                      <label key={member.id} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={generalData.participantIds?.includes(member.id) || false}
-                          onChange={(e) => {
-                            setGeneralData(prev => {
-                              const currentParticipants = prev.participantIds || [];
-                              if (e.target.checked) {
-                                return { ...prev, participantIds: [...currentParticipants, member.id] };
-                              } else {
-                                return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
-                              }
-                            });
-                          }}
-                          className="rounded border-gray-600 bg-gray-700"
-                        />
-                        <span className="text-sm text-text-primary">{member.name}</span>
-                      </label>
+                  {allowedFamilyParticipants.map(member => (
+                    <label key={member.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={generalData.participantIds?.includes(member.id) || false}
+                        onChange={(e) => {
+                          setGeneralData(prev => {
+                            const currentParticipants = prev.participantIds || [];
+                            if (e.target.checked) {
+                              return { ...prev, participantIds: [...currentParticipants, member.id] };
+                            }
+                            return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
+                          });
+                        }}
+                        className="rounded border-gray-600 bg-gray-700"
+                      />
+                      <span className="text-sm text-text-primary">{member.name}</span>
+                    </label>
                   ))}
+                  {allowedFamilyParticipants.length === 0 && (
+                    <span className="text-xs text-text-muted col-span-3">No participants</span>
+                  )}
                 </div>
               </div>
               
@@ -1138,28 +1168,28 @@ export function UnifiedEventModal({
               <div>
                 <p className="text-xs text-text-muted mb-1 font-medium">Staff</p>
                 <div className="grid grid-cols-3 gap-2">
-                  {familyMembers
-                    .filter(m => m.type === 'human' && m.role === 'member')
-                    .map(member => (
-                      <label key={member.id} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={generalData.participantIds?.includes(member.id) || false}
-                          onChange={(e) => {
-                            setGeneralData(prev => {
-                              const currentParticipants = prev.participantIds || [];
-                              if (e.target.checked) {
-                                return { ...prev, participantIds: [...currentParticipants, member.id] };
-                              } else {
-                                return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
-                              }
-                            });
-                          }}
-                          className="rounded border-gray-600 bg-gray-700"
-                        />
-                        <span className="text-sm text-text-primary">{member.name}</span>
-                      </label>
+                  {allowedStaffParticipants.map(member => (
+                    <label key={member.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={generalData.participantIds?.includes(member.id) || false}
+                        onChange={(e) => {
+                          setGeneralData(prev => {
+                            const currentParticipants = prev.participantIds || [];
+                            if (e.target.checked) {
+                              return { ...prev, participantIds: [...currentParticipants, member.id] };
+                            }
+                            return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
+                          });
+                        }}
+                        className="rounded border-gray-600 bg-gray-700"
+                      />
+                      <span className="text-sm text-text-primary">{member.name}</span>
+                    </label>
                   ))}
+                  {allowedStaffParticipants.length === 0 && (
+                    <span className="text-xs text-text-muted col-span-3">No staff participants</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -1337,8 +1367,18 @@ export function UnifiedEventModal({
                   External Attendees
                 </label>
                 <RecentContactsAutocomplete
-                  value={Array.isArray(baseData.attendees) ? baseData.attendees : []}
-                  onChange={(value) => setBaseData({ ...baseData, attendees: Array.isArray(value) ? value : [] })}
+                  value={Array.isArray(baseData.attendees) ? baseData.attendees : (baseData.attendees ? [baseData.attendees] : [])}
+                  multiple
+                  onChange={(value) => {
+                    const emails = Array.isArray(value)
+                      ? value
+                      : value
+                          .split(',')
+                          .map(email => email.trim())
+                          .filter(email => email && email.includes('@'));
+                    const uniqueEmails = Array.from(new Set(emails));
+                    setBaseData({ ...baseData, attendees: uniqueEmails });
+                  }}
                   placeholder="Add external attendee emails (comma-separated)..."
                 />
               </div>
