@@ -11,7 +11,7 @@ import {
   Star,
   User
 } from 'lucide-react';
-import { Password } from '@/lib/supabase/types';
+import { Password } from '@/lib/services/password-service-interface';
 import { Category } from '@/lib/categories/categories-client';
 import { smartUrlComplete, getFriendlyDomain } from '@/lib/utils/url-helper';
 import { usePasswordSecurity } from '@/contexts/password-security-context';
