@@ -107,7 +107,9 @@ export function PasswordCard({
   const lastChangedIso = servicePassword
     ? (servicePassword.last_changed instanceof Date
         ? servicePassword.last_changed.toISOString()
-        : servicePassword.last_changed?.toString())
+        : servicePassword.last_changed !== undefined
+          ? String(servicePassword.last_changed)
+          : undefined)
     : supabasePassword?.last_changed ?? undefined;
   const passwordAgeDays = getPasswordAgeDays(lastChangedIso);
 
