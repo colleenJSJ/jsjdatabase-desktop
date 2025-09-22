@@ -544,9 +544,7 @@ export default function HealthPage() {
   const filterPortals = (portals: MedicalPortal[]) => {
     if (selectedPerson === 'all') return portals;
     
-    return portals.filter(portal => 
-      portal.patient_ids.includes(selectedPerson)
-    );
+    return portals.filter(portal => Array.isArray(portal.patient_ids) && portal.patient_ids.includes(selectedPerson));
   };
 
   const handleDeletePortal = async (id: string) => {
@@ -924,21 +922,24 @@ export default function HealthPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {filteredPortals.map((portal) => {
-                const patientNames = portal.patient_ids
+              {filteredPortals.map((portal, index) => {
+                const portalId = portal.id ?? `portal-${index}`;
+                const portalName = portal.name || 'Portal';
+                const patientIds = Array.isArray(portal.patient_ids) ? portal.patient_ids : [];
+                const patientNames = patientIds
                   .map(patientId => familyMembers.find(m => m.id === patientId)?.name)
                   .filter((name): name is string => Boolean(name));
 
                 const passwordRecord: Password = {
-                  id: portal.id,
-                  service_name: portal.name,
+                  id: portalId,
+                  service_name: portalName,
                   username: portal.username || '',
                   password: portal.password || '',
                   url: portal.portal_url || undefined,
                   category: 'medical-portal',
                   notes: portal.notes,
-                  owner_id: portal.patient_ids[0] ?? 'shared',
-                  shared_with: portal.patient_ids,
+                  owner_id: patientIds[0] ?? 'shared',
+                  shared_with: patientIds,
                   is_favorite: false,
                   is_shared: portal.patient_ids.length > 1,
                   last_changed: portal.updated_at ? new Date(portal.updated_at) : new Date(),
@@ -949,7 +950,7 @@ export default function HealthPage() {
                 };
 
                 const portalCategory: Category = {
-                  id: 'medical-portal',
+                  id: `medical-portal-${portalId}`,
                   name: portal.doctor?.specialty || 'Medical Portal',
                   color: '#38bdf8',
                   module: 'passwords',
