@@ -11,7 +11,8 @@ import {
   Star,
   User
 } from 'lucide-react';
-import { Password } from '@/lib/services/password-service-interface';
+import { Password as ServicePassword } from '@/lib/services/password-service-interface';
+import { Password as SupabasePassword } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { smartUrlComplete, getFriendlyDomain } from '@/lib/utils/url-helper';
 import { usePasswordSecurity } from '@/contexts/password-security-context';
@@ -23,8 +24,14 @@ type UserInfo = {
   name?: string | null;
 };
 
+type CardPassword = ServicePassword | SupabasePassword;
+
+const isServicePassword = (value: CardPassword): value is ServicePassword => {
+  return (value as ServicePassword).service_name !== undefined;
+};
+
 type PasswordCardProps = {
-  password: Password;
+  password: CardPassword;
   categories: Category[];
   users: UserInfo[];
   onEdit: () => void;
@@ -47,8 +54,6 @@ type StrengthMeta = {
   dotClass: string;
   textClass: string;
 };
-
-type LegacyPassword = Password & { title?: string | null };
 
 const STRENGTH_META: Record<string, StrengthMeta> = {
   strong: {
@@ -87,23 +92,42 @@ export function PasswordCard({
   const { updateActivity } = usePasswordSecurity();
   const [showPassword, setShowPassword] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState<CopyTarget | null>(null);
-  const [isFavorite, setIsFavorite] = useState(password.is_favorite || false);
 
-  const legacyPassword = password as LegacyPassword;
+  const servicePassword = isServicePassword(password) ? password : null;
+  const supabasePassword = servicePassword ? null : (password as SupabasePassword);
+
+  const initialFavorite = servicePassword
+    ? servicePassword.is_favorite
+    : Boolean(supabasePassword?.is_favorite);
+  const [isFavorite, setIsFavorite] = useState(initialFavorite);
+
   const decryptedPassword = password.password || '';
   const strength = strengthOverride ?? getPasswordStrength(decryptedPassword);
   const strengthMeta = STRENGTH_META[strength];
-  const passwordAgeDays = getPasswordAgeDays(password.last_changed);
+  const lastChangedIso = servicePassword
+    ? (servicePassword.last_changed instanceof Date
+        ? servicePassword.last_changed.toISOString()
+        : servicePassword.last_changed?.toString())
+    : supabasePassword?.last_changed ?? undefined;
+  const passwordAgeDays = getPasswordAgeDays(lastChangedIso);
 
   const category = useMemo(() => categories.find(c => c.id === password.category), [categories, password.category]);
-  const serviceName = useMemo(() => legacyPassword.title?.trim() || legacyPassword.service_name || 'Untitled', [legacyPassword]);
+  const serviceName = useMemo(() => {
+    if (servicePassword) {
+      return servicePassword.service_name || 'Untitled';
+    }
+    return supabasePassword?.title?.trim() || 'Untitled';
+  }, [servicePassword, supabasePassword]);
 
   const ownersDisplay = useMemo(() => {
     const ownerIds = new Set<string>();
-    if (password.owner_id) ownerIds.add(password.owner_id);
-    const sharedWith = password.shared_with;
+    if (servicePassword?.owner_id) ownerIds.add(servicePassword.owner_id);
+    if (supabasePassword?.owner_id) ownerIds.add(supabasePassword.owner_id);
+    const sharedWith = servicePassword?.shared_with || supabasePassword?.shared_with;
     if (Array.isArray(sharedWith)) {
-      sharedWith.forEach(id => ownerIds.add(id));
+      sharedWith.forEach(id => {
+        if (id) ownerIds.add(id);
+      });
     }
 
     const labels = Array.from(ownerIds).map(id => {
@@ -113,11 +137,12 @@ export function PasswordCard({
     });
 
     if (labels.length === 0) {
-      return password.is_shared ? ['Shared'] : ['Private'];
+      const shared = servicePassword ? servicePassword.is_shared : Boolean(supabasePassword?.is_shared);
+      return shared ? ['Shared'] : ['Private'];
     }
 
     return labels;
-  }, [password, users]);
+  }, [servicePassword, supabasePassword, users]);
 
   const resolvedOwners = ownerLabelsOverride && ownerLabelsOverride.length > 0
     ? ownerLabelsOverride
