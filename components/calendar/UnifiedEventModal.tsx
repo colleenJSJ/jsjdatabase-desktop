@@ -1234,24 +1234,22 @@ export function UnifiedEventModal({
           <div className="space-y-6">
             {/* Event Type Selector */}
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                Event Type
-              </label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="flex flex-wrap gap-2">
                 {EVENT_TYPES.map(type => {
                   const Icon = type.icon;
+                  const isActive = eventType === type.value;
                   return (
                     <button
                       key={type.value}
                       onClick={() => setEventType(type.value as EventType)}
-                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors ${
-                        eventType === type.value
-                          ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-gray-600/30 hover:border-gray-600'
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                        isActive
+                          ? 'border-primary-500 bg-primary-500/10 text-text-primary'
+                          : 'border-gray-600/40 text-text-muted hover:text-text-primary hover:border-gray-600'
                       }`}
                     >
-                      <Icon className={`h-5 w-5 ${type.color}`} />
-                      <span className="text-xs text-text-primary">{type.label}</span>
+                      <Icon className={`h-4 w-4 ${isActive ? type.color : 'text-text-muted'}`} />
+                      <span>{type.label}</span>
                     </button>
                   );
                 })}
@@ -1362,6 +1360,23 @@ export function UnifiedEventModal({
               </div>
               )}
               
+              {/* Zoom meeting toggle (timed events only) */}
+              {eventType !== 'travel' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="zoomEnabled"
+                  checked={zoomEnabled}
+                  onChange={(e) => setZoomEnabled(e.target.checked)}
+                  className="rounded border-gray-600 bg-gray-700"
+                  disabled={baseData.allDay}
+                />
+                <label htmlFor="zoomEnabled" className="text-sm text-text-primary">
+                  Add Zoom meeting {baseData.allDay && '(disabled for all‑day)'}
+                </label>
+              </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-1">
                   External Attendees
@@ -1396,21 +1411,8 @@ export function UnifiedEventModal({
                 </label>
               </div>
 
-              {/* Zoom meeting toggle (timed events only) */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="zoomEnabled"
-                  checked={zoomEnabled}
-                  onChange={(e) => setZoomEnabled(e.target.checked)}
-                  className="rounded border-gray-600 bg-gray-700"
-                  disabled={baseData.allDay || eventType === 'travel'}
-                />
-                <label htmlFor="zoomEnabled" className="text-sm text-text-primary">
-                  Add Zoom meeting {baseData.allDay && '(disabled for all‑day)'}
-                </label>
-              </div>
-              
+              {renderTypeSpecificFields()}
+
               {googleCalendars.length > 0 && (
                 <CalendarSelector
                   calendars={googleCalendars}
@@ -1434,8 +1436,7 @@ export function UnifiedEventModal({
               </div>
             </div>
             
-            {/* Type-specific fields */}
-            {renderTypeSpecificFields()}
+            {/* Type-specific fields are rendered above external attendees */}
           </div>
         </div>
         
