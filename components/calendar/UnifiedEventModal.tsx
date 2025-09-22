@@ -37,6 +37,7 @@ const EVENT_TYPES = [
 
 const GENERAL_FAMILY_PARTICIPANT_NAMES = new Set(['John Johnson', 'Susan Johnson']);
 const GENERAL_STAFF_PARTICIPANT_NAMES = new Set(['Colleen Russell', 'Kate McLaren']);
+const sectionClass = 'space-y-3 rounded-xl border border-gray-600/30 bg-background-primary/40 p-4';
 
 interface UnifiedEventModalProps {
   onClose: () => void;
@@ -514,7 +515,7 @@ export function UnifiedEventModal({
     switch (eventType) {
       case 'travel':
         return (
-          <div className="space-y-4 border-t border-gray-600/30 pt-4">
+          <div className={`${sectionClass} space-y-4`}>
             <h3 className="text-sm font-medium text-text-primary">Travel Details</h3>
             
             <div className="grid grid-cols-2 gap-4">
@@ -665,7 +666,6 @@ export function UnifiedEventModal({
                 <div className="space-y-3">
                   {/* Family Members */}
                   <div>
-                    <p className="text-xs text-text-muted mb-1 font-medium">Family Members</p>
                     <div className="grid grid-cols-3 gap-2">
                       {familyMembers
                         .filter(m => m.type === 'human' && m.role !== 'member')
@@ -694,7 +694,6 @@ export function UnifiedEventModal({
                   
                   {/* Staff */}
                   <div>
-                    <p className="text-xs text-text-muted mb-1 font-medium">Staff</p>
                     <div className="grid grid-cols-3 gap-2">
                       {familyMembers
                         .filter(m => m.type === 'human' && m.role === 'member')
@@ -769,7 +768,7 @@ export function UnifiedEventModal({
         
       case 'health':
         return (
-          <div className="space-y-4 border-t border-gray-600/30 pt-4">
+          <div className={`${sectionClass} space-y-4`}>
             <h3 className="text-sm font-medium text-text-primary">Health Details</h3>
             
             <div className="grid grid-cols-2 gap-4">
@@ -902,7 +901,7 @@ export function UnifiedEventModal({
         
       case 'pets':
         return (
-          <div className="space-y-4 border-t border-gray-600/30 pt-4">
+          <div className={`${sectionClass} space-y-4`}>
             <h3 className="text-sm font-medium text-text-primary">Pets Details</h3>
             
             <div className="grid grid-cols-2 gap-4">
@@ -1015,7 +1014,7 @@ export function UnifiedEventModal({
         
       case 'academics':
         return (
-          <div className="space-y-4 border-t border-gray-600/30 pt-4">
+          <div className={`${sectionClass} space-y-4`}>
             <h3 className="text-sm font-medium text-text-primary">School Event Details</h3>
             
             <div className="grid grid-cols-2 gap-4">
@@ -1130,72 +1129,8 @@ export function UnifiedEventModal({
         );
         
       case 'general':
-        return (
-          <div className="space-y-4 border-t border-gray-600/30 pt-4">
-            <h3 className="text-sm font-medium text-text-primary">Participants</h3>
-            
-            <div className="space-y-3">
-              {/* Family Members */}
-              <div>
-                <p className="text-xs text-text-muted mb-1 font-medium">Family Members</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {allowedFamilyParticipants.map(member => (
-                    <label key={member.id} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={generalData.participantIds?.includes(member.id) || false}
-                        onChange={(e) => {
-                          setGeneralData(prev => {
-                            const currentParticipants = prev.participantIds || [];
-                            if (e.target.checked) {
-                              return { ...prev, participantIds: [...currentParticipants, member.id] };
-                            }
-                            return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
-                          });
-                        }}
-                        className="rounded border-gray-600 bg-gray-700"
-                      />
-                      <span className="text-sm text-text-primary">{member.name}</span>
-                    </label>
-                  ))}
-                  {allowedFamilyParticipants.length === 0 && (
-                    <span className="text-xs text-text-muted col-span-3">No participants</span>
-                  )}
-                </div>
-              </div>
-              
-              {/* Staff */}
-              <div>
-                <p className="text-xs text-text-muted mb-1 font-medium">Staff</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {allowedStaffParticipants.map(member => (
-                    <label key={member.id} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={generalData.participantIds?.includes(member.id) || false}
-                        onChange={(e) => {
-                          setGeneralData(prev => {
-                            const currentParticipants = prev.participantIds || [];
-                            if (e.target.checked) {
-                              return { ...prev, participantIds: [...currentParticipants, member.id] };
-                            }
-                            return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
-                          });
-                        }}
-                        className="rounded border-gray-600 bg-gray-700"
-                      />
-                      <span className="text-sm text-text-primary">{member.name}</span>
-                    </label>
-                  ))}
-                  {allowedStaffParticipants.length === 0 && (
-                    <span className="text-xs text-text-muted col-span-3">No staff participants</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-        
+        return null;
+
       default:
         return null;
     }
@@ -1258,126 +1193,150 @@ export function UnifiedEventModal({
             
             {/* Base Fields */}
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  value={baseData.title}
-                  onChange={(e) => setBaseData({ ...baseData, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
-                  placeholder="Event title"
-                />
-              </div>
-              
-              {/* Date/Time for non-Travel only */}
-              {eventType !== 'travel' && (
-              <div className="space-y-4">
-                {/* Start Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <DateDisplay
-                    label="Start Date"
-                    date={baseData.startDate}
-                    onChange={(v) => setBaseData({ ...baseData, startDate: v })}
-                    ref={startDateInputRef}
+              <div className={sectionClass}>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={baseData.title}
+                    onChange={(e) => setBaseData({ ...baseData, title: e.target.value })}
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
+                    placeholder="Event title"
                   />
-                  {showTimeInputs ? (
-                    <TimeInput
-                      label="Start Time"
-                      value={baseData.startTime}
-                      onChange={(v) => setBaseData({ ...baseData, startTime: v })}
-                      required={!baseData.allDay}
-                    />
-                  ) : (
-                    <div />
-                  )}
                 </div>
-                {/* End Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <DateDisplay
-                    label="End Date"
-                    date={baseData.endDate}
-                    onChange={(v) => setBaseData({ ...baseData, endDate: v })}
-                    minDate={baseData.startDate}
-                    ref={endDateInputRef}
-                  />
-                  {showTimeInputs ? (
-                    <TimeInput
-                      label={'End Time'}
-                      value={baseData.endTime}
-                      onChange={(v) => setBaseData({ ...baseData, endTime: v })}
-                      required={false}
-                      placeholder={'Optional'}
+
+                {eventType !== 'travel' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <DateDisplay
+                        label="Start Date"
+                        date={baseData.startDate}
+                        onChange={(v) => setBaseData({ ...baseData, startDate: v })}
+                        ref={startDateInputRef}
+                      />
+                      {showTimeInputs ? (
+                        <TimeInput
+                          label="Start Time"
+                          value={baseData.startTime}
+                          onChange={(v) => setBaseData({ ...baseData, startTime: v })}
+                          required={!baseData.allDay}
+                        />
+                      ) : (
+                        <div />
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <DateDisplay
+                        label="End Date"
+                        date={baseData.endDate}
+                        onChange={(v) => setBaseData({ ...baseData, endDate: v })}
+                        minDate={baseData.startDate}
+                        ref={endDateInputRef}
+                      />
+                      {showTimeInputs ? (
+                        <TimeInput
+                          label={'End Time'}
+                          value={baseData.endTime}
+                          onChange={(v) => setBaseData({ ...baseData, endTime: v })}
+                          required={false}
+                          placeholder={'Optional'}
+                        />
+                      ) : (
+                        <div />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="allDay"
+                        checked={baseData.allDay}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          if (!checked) {
+                            setBaseData(prev => ({
+                              ...prev,
+                              allDay: false,
+                              endDate: prev.startDate,
+                            }));
+                          } else {
+                            setBaseData(prev => ({ ...prev, allDay: true }));
+                          }
+                          setShowTimeInputs(!checked);
+                        }}
+                        className="rounded border-gray-600 bg-gray-700"
+                      />
+                      <label htmlFor="allDay" className="text-sm text-text-primary">
+                        All-day event
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {eventType !== 'travel' && (
+                <div className={sectionClass}>
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary mb-1">
+                      Location
+                    </label>
+                    <AddressAutocomplete
+                      value={baseData.location || ''}
+                      onChange={(value) => setBaseData({ ...baseData, location: value })}
+                      placeholder="Enter location..."
+                      className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
                     />
-                  ) : (
-                    <div />
-                  )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="zoomEnabled"
+                      checked={zoomEnabled}
+                      onChange={(e) => setZoomEnabled(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-700"
+                      disabled={baseData.allDay}
+                    />
+                    <label htmlFor="zoomEnabled" className="text-sm text-text-primary">
+                      Add Zoom meeting {baseData.allDay && '(disabled for all‑day)'}
+                    </label>
+                  </div>
                 </div>
-              </div>
               )}
 
-              {eventType !== 'travel' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="allDay"
-                  checked={baseData.allDay}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    // When switching from all-day to timed, keep end date aligned to start date
-                    // to avoid accidental next-day end dates.
-                    if (!checked) {
-                      setBaseData(prev => ({
-                        ...prev,
-                        allDay: false,
-                        endDate: prev.startDate,
-                      }));
-                    } else {
-                      setBaseData(prev => ({ ...prev, allDay: true }));
-                    }
-                    setShowTimeInputs(!checked);
-                  }}
-                  className="rounded border-gray-600 bg-gray-700"
-                />
-                <label htmlFor="allDay" className="text-sm text-text-primary">
-                  All-day event
-                </label>
-              </div>
+              {eventType === 'general' && (
+                <div className={sectionClass}>
+                  <h3 className="text-sm font-medium text-text-primary">Participants</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[...allowedFamilyParticipants, ...allowedStaffParticipants].map(member => (
+                      <label key={member.id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={generalData.participantIds?.includes(member.id) || false}
+                          onChange={(e) => {
+                            setGeneralData(prev => {
+                              const currentParticipants = prev.participantIds || [];
+                              if (e.target.checked) {
+                                return { ...prev, participantIds: [...currentParticipants, member.id] };
+                              }
+                              return { ...prev, participantIds: currentParticipants.filter(id => id !== member.id) };
+                            });
+                          }}
+                          className="rounded border-gray-600 bg-gray-700"
+                        />
+                        <span className="text-sm text-text-primary">{member.name}</span>
+                      </label>
+                    ))}
+                    {[...allowedFamilyParticipants, ...allowedStaffParticipants].length === 0 && (
+                      <span className="text-xs text-text-muted col-span-3">No participants</span>
+                    )}
+                  </div>
+                </div>
               )}
 
-              {eventType !== 'travel' && (
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Location
-                </label>
-                <AddressAutocomplete
-                  value={baseData.location || ''}
-                  onChange={(value) => setBaseData({ ...baseData, location: value })}
-                  placeholder="Enter location..."
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
-                />
-              </div>
-              )}
-              
-              {/* Zoom meeting toggle (timed events only) */}
-              {eventType !== 'travel' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="zoomEnabled"
-                  checked={zoomEnabled}
-                  onChange={(e) => setZoomEnabled(e.target.checked)}
-                  className="rounded border-gray-600 bg-gray-700"
-                  disabled={baseData.allDay}
-                />
-                <label htmlFor="zoomEnabled" className="text-sm text-text-primary">
-                  Add Zoom meeting {baseData.allDay && '(disabled for all‑day)'}
-                </label>
-              </div>
-              )}
+              {eventType !== 'general' && renderTypeSpecificFields()}
 
-              <div>
+              <div className={sectionClass}>
                 <label className="block text-sm font-medium text-text-primary mb-1">
                   External Attendees
                 </label>
@@ -1398,45 +1357,43 @@ export function UnifiedEventModal({
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="notifyByEmail"
-                  checked={!notifyByEmail}
-                  onChange={(e) => setNotifyByEmail(!e.target.checked)}
-                  className="rounded border-gray-600 bg-gray-700"
-                />
-                <label htmlFor="notifyByEmail" className="text-sm text-text-primary">
-                  Don’t send email invite
-                </label>
-              </div>
+              <div className={sectionClass}>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="notifyByEmail"
+                    checked={!notifyByEmail}
+                    onChange={(e) => setNotifyByEmail(!e.target.checked)}
+                    className="rounded border-gray-600 bg-gray-700"
+                  />
+                  <label htmlFor="notifyByEmail" className="text-sm text-text-primary">
+                    Don’t send email invite
+                  </label>
+                </div>
 
-              {renderTypeSpecificFields()}
-
-              {googleCalendars.length > 0 && (
-                <CalendarSelector
-                  calendars={googleCalendars}
-                  selectedCalendarId={baseData.googleCalendarId}
-                  onCalendarChange={(id) => setBaseData({ ...baseData, googleCalendarId: id })}
-                  label="Add to Calendar"
-                />
-              )}
-              
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Notes
-                </label>
-                <textarea
-                  value={baseData.description}
-                  onChange={(e) => setBaseData({ ...baseData, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
-                  rows={3}
-                  placeholder="Add notes..."
-                />
+                {googleCalendars.length > 0 && (
+                  <CalendarSelector
+                    calendars={googleCalendars}
+                    selectedCalendarId={baseData.googleCalendarId}
+                    onCalendarChange={(id) => setBaseData({ ...baseData, googleCalendarId: id })}
+                    label="Add to Calendar"
+                  />
+                )}
+                
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Notes
+                  </label>
+                  <textarea
+                    value={baseData.description}
+                    onChange={(e) => setBaseData({ ...baseData, description: e.target.value })}
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
+                    rows={3}
+                    placeholder="Add notes..."
+                  />
+                </div>
               </div>
             </div>
-            
-            {/* Type-specific fields are rendered above external attendees */}
           </div>
         </div>
         
