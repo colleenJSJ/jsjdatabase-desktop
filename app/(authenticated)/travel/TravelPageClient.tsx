@@ -523,7 +523,10 @@ export default function TravelPageClient() {
         <div className="space-y-4">
           {/* Main content by tab */}
             {selectedTripId && selectedTrip && (
-              <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
+              <section
+                className="border border-gray-600/30 rounded-xl p-4"
+                style={{ backgroundColor: '#30302e' }}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <h2 className="text-lg font-semibold text-text-primary">
@@ -582,8 +585,8 @@ export default function TravelPageClient() {
 
             {activeTab === 'transport' && (
               <>
-              <section className="bg-background-secondary border border-gray-600/30 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <h2 className="font-semibold text-text-primary">Transportation</h2>
                     <span className="text-xs text-text-muted">{filtered.details.length} items</span>
@@ -601,7 +604,8 @@ export default function TravelPageClient() {
                   {filtered.details.map((d: any) => (
                     <div
                       key={d.id}
-                      className="bg-background-primary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 cursor-pointer transition-colors"
+                      className="border border-gray-600/30 rounded-xl p-4 cursor-pointer transition-colors hover:border-gray-500"
+                      style={{ backgroundColor: '#30302e' }}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
                         if (!target.closest('button')) setViewingDetail(d);
@@ -648,11 +652,9 @@ export default function TravelPageClient() {
                     <div className="py-6 text-center text-text-muted">No transportation details</div>
                   )}
                 </div>
-                {/* Accommodations section under Transportation */}
               </section>
-              {/* Separate Accommodations module wrapper */}
-              <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4 mt-6">
-                <div className="flex items-center justify-between mb-2">
+              <section className="space-y-4 mt-6">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <h3 className="font-semibold text-text-primary">Accommodations</h3>
                     <span className="text-xs text-text-muted">{filtered.accommodations.length} total</span>
@@ -668,7 +670,11 @@ export default function TravelPageClient() {
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                   {filtered.accommodations.map((a: any) => (
-                    <div key={a.id} className="bg-background-primary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4">
+                    <div
+                      key={a.id}
+                      className="border border-gray-600/30 rounded-xl p-4 transition-colors hover:border-gray-500"
+                      style={{ backgroundColor: '#30302e' }}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-text-primary truncate">{a.hotel_name || a.name || 'Accommodation'}</div>
@@ -713,8 +719,8 @@ export default function TravelPageClient() {
             )}
 
             {activeTab === 'history' && (
-              <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
                   <h2 className="font-semibold text-text-primary">History</h2>
                 </div>
                 {(() => {
@@ -729,15 +735,24 @@ export default function TravelPageClient() {
                   }
                   items.sort((x,y) => new Date(x.date || 0).getTime() - new Date(y.date || 0).getTime());
                   return (
-                    <div className="divide-y divide-gray-700/50">
+                    <div className="grid gap-3">
                       {items.map(it => (
-                        <div key={it.id} className="py-2 text-sm flex items-center justify-between gap-3">
-                          <span className="truncate text-text-muted">
-                            <span className={`inline-block px-2 py-0.5 mr-2 rounded text-xs ${it.type==='transport'?'bg-blue-900/50 text-blue-200':'bg-emerald-900/50 text-emerald-200'}`}>{it.type==='transport'?'Transport':'Accommodation'}</span>
-                            {it.label}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-text-muted">{it.date}</span>
+                        <div
+                          key={it.id}
+                          className="border border-gray-600/30 rounded-xl p-3 text-sm"
+                          style={{ backgroundColor: '#30302e' }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex flex-col gap-1 text-text-muted min-w-0">
+                              <span className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs ${it.type==='transport'?'bg-blue-900/50 text-blue-200':'bg-emerald-900/50 text-emerald-200'}`}>
+                                {it.type==='transport'?'Transport':'Accommodation'}
+                              </span>
+                              <span className="truncate text-text-primary">{it.label}</span>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 text-xs text-text-muted whitespace-nowrap">
+                              <span>{it.date || 'Date TBD'}</span>
+                              {it.right ? <span className="text-text-primary/70">{it.right}</span> : null}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -751,8 +766,8 @@ export default function TravelPageClient() {
             )}
 
             {activeTab === 'documents' && (
-              <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <h2 className="font-semibold text-text-primary">Travel Documents</h2>
                     <span className="text-xs text-text-muted">{filtered.documents.length} total</span>
@@ -762,7 +777,7 @@ export default function TravelPageClient() {
                 {filtered.documents.length === 0 ? (
                   <div className="py-6 text-center text-text-muted">No documents</div>
                 ) : (
-                  <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-5">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-5">
                     {(filtered.documents as Document[]).map((doc) => (
                       <DocumentCard
                         key={doc.id}
@@ -779,8 +794,8 @@ export default function TravelPageClient() {
             )}
 
             {activeTab === 'contacts' && (
-              <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <h2 className="font-semibold text-text-primary">Travel Contacts</h2>
                     <span className="text-xs text-text-muted">{filtered.contacts.length} total</span>
@@ -810,7 +825,8 @@ export default function TravelPageClient() {
                       return (
                         <div
                           key={key}
-                          className="bg-background-primary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 transition-colors"
+                          className="border border-gray-600/30 rounded-xl p-4 transition-colors hover:border-gray-500"
+                          style={{ backgroundColor: '#30302e' }}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
@@ -869,8 +885,8 @@ export default function TravelPageClient() {
             )}
 
             {activeTab === 'preferences' && (
-              <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
                   <h2 className="font-semibold text-text-primary">Preferences</h2>
                   <button
                     className="px-4 py-2 bg-button-create hover:bg-button-create/90 text-white rounded-xl"
@@ -884,14 +900,18 @@ export default function TravelPageClient() {
                 </div>
                 <div className="space-y-3">
                   {data.family_members.map((m: any) => (
-                    <div key={m.id} className="bg-background-primary border border-gray-600/30 rounded-xl p-3">
+                    <div
+                      key={m.id}
+                      className="border border-gray-600/30 rounded-xl p-3"
+                      style={{ backgroundColor: '#30302e' }}
+                    >
                       <div className="text-sm font-medium text-text-primary mb-2">{m.name}</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label className="block text-sm">Seat Preference
                           <select
                             value={memberPrefs[m.id]?.seat || ''}
                             onChange={(e)=>setMemberPrefs(prev=>({ ...prev, [m.id]: { ...(prev[m.id]||{}), seat: e.target.value } }))}
-                            className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary"
+                            className="mt-1 w-full px-3 py-2 rounded border border-gray-600/40 bg-[#2a2a28] text-text-primary"
                           >
                             <option value="">No preference</option>
                             <option value="aisle">Aisle</option>
@@ -903,7 +923,7 @@ export default function TravelPageClient() {
                           <select
                             value={memberPrefs[m.id]?.meal || ''}
                             onChange={(e)=>setMemberPrefs(prev=>({ ...prev, [m.id]: { ...(prev[m.id]||{}), meal: e.target.value } }))}
-                            className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary"
+                            className="mt-1 w-full px-3 py-2 rounded border border-gray-600/40 bg-[#2a2a28] text-text-primary"
                           >
                             <option value="">No preference</option>
                             <option value="vegetarian">Vegetarian</option>

@@ -178,8 +178,8 @@ export default function J3AcademicsPageClient() {
         <>
         <div className="space-y-6">
           {activeTab==='contacts' && (
-          <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
               <h2 className="font-semibold text-text-primary">Contacts</h2>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-text-muted">{filtered.contacts.length} total</span>
@@ -200,15 +200,20 @@ export default function J3AcademicsPageClient() {
                 />
               ))}
               {filtered.contacts.length === 0 && (
-                <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No contacts</div>
+                <div
+                  className="border border-gray-600/30 rounded-xl p-4 text-center text-text-muted"
+                  style={{ backgroundColor: '#30302e' }}
+                >
+                  No contacts
+                </div>
               )}
             </div>
           </section>
           )}
 
           {activeTab==='portals' && (
-          <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
               <h2 className="font-semibold text-text-primary">Portals</h2>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-text-muted">{filtered.portals.length} total</span>
@@ -218,7 +223,12 @@ export default function J3AcademicsPageClient() {
               </div>
             </div>
             {filtered.portals.length === 0 ? (
-              <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No portals</div>
+              <div
+                className="border border-gray-600/30 rounded-xl p-4 text-center text-text-muted"
+                style={{ backgroundColor: '#30302e' }}
+              >
+                No portals
+              </div>
             ) : (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {filtered.portals.map((portal: any, index) => {
@@ -287,8 +297,8 @@ export default function J3AcademicsPageClient() {
                     <PasswordCard
                       key={portalId}
                       password={passwordRecord}
-                    categories={[portalCategory]}
-                    users={academicPortalUsers}
+                      categories={[portalCategory]}
+                      users={academicPortalUsers}
                       subtitle={student?.name || 'Academic Portal'}
                       assignedToLabel={student?.name || 'Shared'}
                       extraContent={notes ? <p className="text-xs text-text-muted/80 italic">{notes}</p> : null}
@@ -308,8 +318,8 @@ export default function J3AcademicsPageClient() {
           )}
 
           {activeTab==='events' && (
-          <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
               <h2 className="font-semibold text-text-primary">Events</h2>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-text-muted">{filtered.events.length} total</span>
@@ -331,15 +341,20 @@ export default function J3AcademicsPageClient() {
                 />
               ))}
               {filtered.events.length === 0 && (
-                <div className="bg-background-primary border border-gray-600/30 rounded-xl p-4 text-text-muted">No events</div>
+                <div
+                  className="border border-gray-600/30 rounded-xl p-4 text-center text-text-muted"
+                  style={{ backgroundColor: '#30302e' }}
+                >
+                  No events
+                </div>
               )}
             </div>
           </section>
           )}
 
           {activeTab==='documents' && (
-          <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
               <h2 className="font-semibold text-text-primary">Documents</h2>
               {user?.role === 'admin' && (
                 <div className="flex items-center gap-2">

@@ -44,7 +44,10 @@ export function ContactCard({
   };
 
   return (
-    <div className="bg-background-secondary border border-gray-600/30 rounded-lg p-4">
+    <div
+      className="border border-gray-600/30 rounded-xl p-4"
+      style={{ backgroundColor: '#30302e' }}
+    >
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <h3 className="font-medium text-text-primary flex items-center gap-2">

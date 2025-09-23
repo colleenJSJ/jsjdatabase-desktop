@@ -107,7 +107,8 @@ export function EventCard({
 
   return (
     <div 
-      className="bg-background-secondary border border-gray-600/30 rounded-xl p-4 cursor-pointer hover:border-gray-500 transition-colors"
+      className="border border-gray-600/30 rounded-xl p-4 cursor-pointer hover:border-gray-500 transition-colors"
+      style={{ backgroundColor: '#30302e' }}
       onClick={onClick}
     >
       <div className="flex items-start justify-between">
