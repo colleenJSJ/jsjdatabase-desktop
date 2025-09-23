@@ -66,6 +66,7 @@ export default function DocumentUploadModal({
     return [{ id: 'shared', name: 'Shared/Family' }, ...mapped];
   }, [baseFamilyMembers, exclusionSet]);
 
+
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
