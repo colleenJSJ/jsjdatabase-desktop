@@ -94,13 +94,11 @@ export async function POST(request: NextRequest) {
     // Convert family member IDs to user IDs for owner and shared_with
     let ownerId = body.owner_id || user.id;
     let sharedWith: string[] = [];
-    
+
     // If owner_id is a family member ID, convert to user ID
     if (body.owner_id && body.owner_id !== 'shared') {
       const ownerUserId = await resolveFamilyMemberToUser(body.owner_id);
-      if (ownerUserId) {
-        ownerId = ownerUserId;
-      }
+      ownerId = ownerUserId || user.id;
     }
     
     // Convert shared_with family member IDs to user IDs
