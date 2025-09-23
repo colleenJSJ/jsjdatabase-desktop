@@ -37,6 +37,8 @@ export interface PasswordInput {
   shared_with?: string[]
   is_favorite?: boolean
   is_shared?: boolean
+  source?: string
+  source_reference?: string
 }
 
 export interface PasswordUpdate {

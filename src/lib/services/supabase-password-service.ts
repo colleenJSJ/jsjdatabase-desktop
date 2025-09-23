@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { encryptionService } from '@/lib/encryption';
 import { normalizeUrl } from '@/lib/utils/url-helper';
@@ -124,6 +125,9 @@ export class SupabasePasswordService implements IPasswordService {
     // Handle shared passwords
     const isShared = data.is_shared || data.owner_id === 'shared';
     
+    const source = data.source ?? 'manual_password';
+    const sourceReference = data.source_reference ?? randomUUID();
+
     const row = {
       title: data.service_name || 'Untitled',
       service_name: data.service_name,
@@ -137,6 +141,8 @@ export class SupabasePasswordService implements IPasswordService {
       owner_id: isShared ? user.id : ownerId, // For shared, use creator's ID but mark as shared
       is_favorite: data.is_favorite || false,
       is_shared: isShared,
+      source,
+      source_reference: sourceReference,
       last_changed: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
