@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/app/api/_helpers/auth';
 
 export async function GET() {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const authResult = await requireAdmin();
+    if ('error' in authResult) {
+      return authResult.error;
+    }
+
     const supabase = await createServiceClient();
     
     // Fetch Susan by ID

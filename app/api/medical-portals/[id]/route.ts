@@ -2,6 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ensurePortalAndPassword, deletePortalAndPassword } from '@/lib/services/portal-password-sync';
 import { normalizeUrl } from '@/lib/utils/url-helper';
+import { decrypt } from '@/lib/encryption';
+
+const serializePortal = (portal: any) => {
+  if (!portal) return portal;
+  let decryptedPassword = portal.password;
+  if (typeof portal.password === 'string' && portal.password.length > 0) {
+    try {
+      decryptedPassword = decrypt(portal.password);
+    } catch (error) {
+      console.error('[Medical Portals API] Failed to decrypt portal password', {
+        portalId: portal.id,
+        error,
+      });
+      decryptedPassword = null;
+    }
+  }
+
+  return {
+    ...portal,
+    password: decryptedPassword,
+  };
+};
 
 export async function GET(
   request: NextRequest,
@@ -47,7 +69,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json({ portal });
+    return NextResponse.json({ portal: serializePortal(portal) });
   } catch (error) {
     console.error('Error in GET /api/medical-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -170,7 +192,7 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({ portal });
+    return NextResponse.json({ portal: serializePortal(portal) });
   } catch (error) {
     console.error('Error in PUT /api/medical-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

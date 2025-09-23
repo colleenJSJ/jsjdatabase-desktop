@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
-import { encrypt } from '@/lib/encryption';
+import { encrypt, decrypt } from '@/lib/encryption';
+
+const serializePortal = (portal: any) => {
+  if (!portal) return portal;
+  let decryptedPassword = portal.password;
+  if (typeof portal.password === 'string' && portal.password.length > 0) {
+    try {
+      decryptedPassword = decrypt(portal.password);
+    } catch (error) {
+      console.error('[Pet Portals API] Failed to decrypt portal password', {
+        portalId: portal.id,
+        error,
+      });
+      decryptedPassword = null;
+    }
+  }
+
+  return {
+    ...portal,
+    password: decryptedPassword,
+  };
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +58,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ portals: portals || [] });
+    return NextResponse.json({ portals: (portals || []).map(serializePortal) });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch pet portals' },
@@ -142,7 +163,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ portal });
+    return NextResponse.json({ portal: serializePortal(portal) });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to create pet portal' },

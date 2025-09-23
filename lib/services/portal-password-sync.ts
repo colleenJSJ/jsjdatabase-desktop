@@ -6,6 +6,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { ActivityLogger } from '@/lib/services/activity-logger';
+import { encryptionService } from '@/lib/encryption';
 
 export interface PortalPasswordSyncConfig {
   providerType: 'medical' | 'pet' | 'academic';  // Valid portal types
@@ -67,6 +68,11 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     // 1. Normalize the portal URL and extract domain
     const normalizedUrl = normalizeUrl(config.portal_url);
     const domain = extractDomain(config.portal_url);
+
+    // Encrypt the portal password before persisting to the portals table
+    const encryptedPortalPassword = config.portal_password
+      ? encryptionService.encrypt(config.portal_password)
+      : null;
     
     // 2. Dedupe and validate shared_with (ensure owner_id not in shared_with)
     const cleanSharedWith = Array.from(new Set(
@@ -97,7 +103,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
         .update({
           portal_url: normalizedUrl,
           username: config.portal_username,
-          password: config.portal_password, // Note: This should be encrypted in production
+          password: encryptedPortalPassword,
           patient_ids: [config.ownerId, ...cleanSharedWith], // All people who can access
           entity_id: config.providerId,
           notes: config.notes,
@@ -118,7 +124,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
           portal_name: `${config.providerName} Portal`,
           portal_url: normalizedUrl,
           username: config.portal_username,
-          password: config.portal_password,
+          password: encryptedPortalPassword,
           provider_name: config.providerName,
           entity_id: config.providerId,
           patient_ids: [config.ownerId, ...cleanSharedWith],

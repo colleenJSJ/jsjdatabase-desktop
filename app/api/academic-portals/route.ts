@@ -1,6 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
+import { encrypt, decrypt } from '@/lib/encryption';
+
+const serializePortal = (portal: any) => {
+  if (!portal) return portal;
+  let decryptedPassword = portal.password;
+  if (typeof portal.password === 'string' && portal.password.length > 0) {
+    try {
+      decryptedPassword = decrypt(portal.password);
+    } catch (error) {
+      console.error('[Academic Portals API] Failed to decrypt portal password', {
+        portalId: portal.id,
+        error,
+      });
+      decryptedPassword = null;
+    }
+  }
+
+  return {
+    ...portal,
+    password: decryptedPassword,
+  };
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -49,8 +71,10 @@ export async function GET(request: NextRequest) {
             return null;
           }
           
+          const serializedPortal = serializePortal(portal);
+
           return {
-            ...portal,
+            ...serializedPortal,
             children: childIds
           };
         })
@@ -82,13 +106,15 @@ export async function POST(request: NextRequest) {
     const portalUrl = url ? normalizeUrl(url) : '';
 
     // Insert the portal into unified portals table
+    const encryptedPassword = password ? encrypt(password) : null;
+
     const { data: portal, error: portalError } = await supabase
       .from('portals')
       .insert({
         portal_name: title,
         portal_url: portalUrl,
         username,
-        password,
+        password: encryptedPassword,
         notes,
         portal_type: 'academic',
         created_at: new Date().toISOString()
@@ -178,7 +204,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...portal, children: children || [] });
+    return NextResponse.json({ ...serializePortal(portal), children: children || [] });
   } catch (error) {
     console.error('Error in POST /api/academic-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
