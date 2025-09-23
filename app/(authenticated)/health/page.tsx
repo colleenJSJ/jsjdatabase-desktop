@@ -1128,6 +1128,7 @@ export default function HealthPage() {
 
       {(showPortalModal || editingPortal) && (
         <PortalModal
+          isOpen={Boolean(showPortalModal || editingPortal)}
           portal={editingPortal}
           familyMembers={familyMembers}
           doctors={doctors}
@@ -1850,12 +1851,14 @@ function DoctorModal({
 }
 
 function PortalModal({ 
+  isOpen,
   portal, 
   familyMembers,
   doctors,
   onClose, 
   onSave 
 }: { 
+  isOpen: boolean;
   portal: MedicalPortal | null; 
   familyMembers: FamilyMember[];
   doctors: Doctor[];
