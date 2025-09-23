@@ -66,6 +66,8 @@ export default function DocumentUploadModal({
     return [{ id: 'shared', name: 'Shared/Family' }, ...mapped];
   }, [baseFamilyMembers, exclusionSet]);
 
+  const modalTitle = titleOverride || 'Upload Document';
+
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -444,4 +446,3 @@ export default function DocumentUploadModal({
     </div>
   );
 }
-  const modalTitle = titleOverride || 'Upload Document';
