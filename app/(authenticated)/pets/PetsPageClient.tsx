@@ -313,7 +313,7 @@ export default function PetsPageClient() {
       ) : (
         <div className="space-y-6">
           {activeTab==='contacts' && (
-            <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4 space-y-3">
+            <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-text-primary">Contacts</h2>
                 <button onClick={()=>setShowAddContact(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Contact</button>
@@ -326,7 +326,7 @@ export default function PetsPageClient() {
                   const subtype = (contact.contact_type || contact.contact_subtype || '').toString();
                   const badgeLabel = subtype === 'vet' ? 'Vet' : 'Contact';
                   return (
-                    <div key={contact.id} className="bg-background-primary border border-gray-600/30 rounded-lg p-3 space-y-3">
+                    <div key={contact.id} className="bg-black/30 border border-gray-600/30 rounded-lg p-3 space-y-3 transition hover:border-gray-500">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-text-primary">{contact.name}</p>
@@ -371,7 +371,7 @@ export default function PetsPageClient() {
             </section>
           )}
           {activeTab==='portals' && (
-            <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
+            <section className="space-y-3">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-semibold text-text-primary">Portals</h2>
                 <button onClick={()=>setShowAddPortal(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Portal</button>
@@ -452,7 +452,7 @@ export default function PetsPageClient() {
             </section>
           )}
           {activeTab==='appointments' && (
-            <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
+            <section className="space-y-3">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-semibold text-text-primary">Upcoming Appointments</h2>
                 <button
@@ -492,7 +492,7 @@ export default function PetsPageClient() {
                     <button
                       key={appointment.id}
                       onClick={() => setSelectedAppointment(appointment)}
-                      className="text-left bg-background-primary border border-gray-600/30 hover:border-gray-500 rounded-xl p-4 transition-colors"
+                      className="text-left rounded-xl border border-gray-600/30 bg-black/30 p-4 transition-colors hover:border-gray-500"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3">
@@ -527,7 +527,7 @@ export default function PetsPageClient() {
             </section>
           )}
           {activeTab==='documents' && (
-            <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4">
+            <section>
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-semibold text-text-primary">Documents</h2>
                 <PetDocumentUpload pets={pets} selectedPetId={selectedPetId} onUploadSuccess={() => setRefreshDocs(x => x + 1)} />
