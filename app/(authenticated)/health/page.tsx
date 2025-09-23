@@ -28,6 +28,7 @@ import { getPasswordStrength } from '@/lib/passwords/utils';
 import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
 import { CredentialFormField } from '@/components/credentials/CredentialFormField';
 import { Slider } from '@/components/ui/slider';
+import { Checkbox } from '@/components/ui/checkbox';
 import { smartUrlComplete } from '@/lib/utils/url-helper';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
