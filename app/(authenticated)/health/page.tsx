@@ -170,6 +170,26 @@ const generateAppointmentSummary = (appointment: any, displayTz: string, eventTz
   return sentence;
 };
 
+const getHealthAppointmentCountdownDate = (appointment: any): string | null => {
+  if (appointment.start_time) return String(appointment.start_time);
+  if (appointment.appointment_date) {
+    const time = (appointment.appointment_time as string | undefined)?.slice(0, 8) || '00:00:00';
+    return `${appointment.appointment_date}T${time}`;
+  }
+  if (appointment.due_date) return String(appointment.due_date);
+  return null;
+};
+
+const daysUntilAppointment = (dateTime?: string | null) => {
+  if (!dateTime) return null;
+  const date = new Date(dateTime);
+  if (Number.isNaN(date.getTime())) return null;
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.ceil((startOfTarget.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+};
+
 export default function HealthPage() {
   const { user } = useUser();
   const supabase = createClient();
@@ -740,7 +760,7 @@ export default function HealthPage() {
 
       {/* Content */}
       {activeTab === 'appointments' && (
-        <section className="bg-background-secondary border border-gray-600/30 rounded-xl p-4 space-y-4">
+        <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-text-primary">
@@ -760,18 +780,20 @@ export default function HealthPage() {
           </div>
 
           {filteredAppointments.length === 0 ? (
-            <div className="bg-background-primary border border-gray-600/30 rounded-xl p-6 text-center">
-              <p className="text-text-muted">No upcoming medical appointments{selectedPerson !== 'all' && ` for ${familyMembers.find(m => m.id === selectedPerson)?.name}`}</p>
+            <div className="py-6 text-center text-text-muted">
+              No upcoming medical appointments
+              {selectedPerson !== 'all' && ` for ${familyMembers.find(m => m.id === selectedPerson)?.name}`}
             </div>
           ) : (
             <div className="grid gap-3">
               {filteredAppointments.map((appointment) => {
                 const appointmentDate = appointment.due_date ? toInstantFromNaive(appointment.due_date, (appointment as any).timezone || preferences.timezone) : null;
+                const countdown = daysUntilAppointment(getHealthAppointmentCountdownDate(appointment));
                 
                 return (
                   <div 
                     key={appointment.id} 
-                    className="bg-background-primary border border-gray-600/30 rounded-xl p-4 cursor-pointer hover:border-gray-500 transition-colors"
+                    className="border border-gray-600/30 rounded-xl bg-black/30 p-4 cursor-pointer hover:border-gray-500 transition-colors"
                     onClick={() => setSelectedAppointment({ appointment, startInEdit: false })}
                   >
                     <div className="flex items-start justify-between">
@@ -793,20 +815,25 @@ export default function HealthPage() {
                           
                           {/* Natural Language Summary */}
                           <p className="text-sm text-text-muted">
-                            {generateAppointmentSummary(appointment, preferences.timezone, (appointment as any).timezone)}
+                          {generateAppointmentSummary(appointment, preferences.timezone, (appointment as any).timezone)}
+                        </p>
+                        
+                        {/* Additional Notes */}
+                        {appointment.notes && (
+                          <p className="text-xs text-text-muted/70 mt-1">
+                            {appointment.notes}
                           </p>
-                          
-                          {/* Additional Notes */}
-                          {appointment.notes && (
-                            <p className="text-xs text-text-muted/70 mt-1">
-                              {appointment.notes}
-                            </p>
-                          )}
-                        </div>
+                        )}
+                        {countdown !== null && (
+                          <div className="mt-1 text-xs font-semibold text-travel">
+                            {countdown === 0 ? 'Today' : countdown === 1 ? '1 day' : countdown > 1 ? `${countdown} days` : `${Math.abs(countdown)} days ago`}
+                          </div>
+                        )}
                       </div>
-                      {/* Admin Controls */}
-                      {user?.role === 'admin' && (
-                        <div className="flex items-center gap-1 ml-3">
+                    </div>
+                    {/* Admin Controls */}
+                    {user?.role === 'admin' && (
+                      <div className="flex items-center gap-1 ml-3">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
