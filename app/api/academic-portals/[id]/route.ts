@@ -116,25 +116,28 @@ export async function PUT(
 
           if (childData?.parent_id) {
             const parentUserId = await resolveFamilyMemberToUser(childData.parent_id);
-            if (parentUserId) {
+            if (parentUserId && !parentUserIds.includes(parentUserId)) {
               parentUserIds.push(parentUserId);
             }
           }
         }
       }
 
+      const ownerId = parentUserIds[0] || user.id;
+      const sharedWith = parentUserIds.slice(1);
+
       await ensurePortalAndPassword({
-        portal: {
-          id,
-          portal_name: portalData.portal_name || portal.portal_name,
-          username: portalData.username,
-          password: portalData.password,
-          portal_url: portalData.portal_url || portal.portal_url,
-          notes: portalData.notes,
-          portal_type: 'academic'
-        },
-        primaryUserId: user.id,
-        sharedWithUserIds: parentUserIds
+        providerType: 'academic',
+        providerId: id,
+        providerName: portalData.portal_name || portal.portal_name,
+        portal_url: portalData.portal_url || portal.portal_url,
+        portal_username: portalData.username,
+        portal_password: portalData.password,
+        ownerId,
+        sharedWith,
+        createdBy: user.id,
+        notes: portalData.notes || portal.notes,
+        source: 'academic_portal'
       });
     }
 
