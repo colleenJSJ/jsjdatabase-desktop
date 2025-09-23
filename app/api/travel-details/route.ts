@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const enhancedDetails = filteredDetails.map(detail => ({
+    const enhancedDetails = filteredDetails.map((detail: any) => ({
       ...detail,
       // Keep original fields
       // Add combined datetime fields for frontend use
