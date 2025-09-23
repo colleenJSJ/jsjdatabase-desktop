@@ -41,12 +41,12 @@ function extractDomain(url: string): string {
  */
 function getCategoryForProviderType(providerType: string): string {
   switch (providerType) {
-    case 'medical':  
-      return 'Healthcare';  // Use existing Healthcare category
+    case 'medical':
+      return 'Health';
     case 'pet':
-      return 'Personal';    // Use Personal for pets (no pets category)
+      return 'Pets';
     case 'academic':
-      return 'Education';   // Matches existing category
+      return 'J3 Academics';
     default:
       return 'Other';       // Matches existing category
   }
