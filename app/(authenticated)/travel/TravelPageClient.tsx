@@ -75,6 +75,26 @@ const matchesSearchBlob = (searchTerm: string, ...values: Array<unknown>): boole
   return values.some(entry => matchesText(searchTerm, entry));
 };
 
+function daysUntil(date?: string | null) {
+  if (!date) return null;
+  const today = new Date();
+  const d = new Date(`${date}T00:00:00`);
+  return Math.ceil((d.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatDateTime(date?: string | null, time?: string | null) {
+  if (!date && !time) return '';
+  if (date && time) {
+    const d = new Date(`${date}T${String(time).slice(0, 8)}`);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+  if (date) {
+    const d = new Date(`${date}T00:00:00`);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+  }
+  return String(time).slice(0, 5);
+}
+
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
 export default function TravelPageClient() {
@@ -369,27 +389,7 @@ export default function TravelPageClient() {
     if (t === 'ferry') return <Ship className="w-4 h-4 text-blue-400" />;
     return <Globe className="w-4 h-4 text-blue-400" />;
   };
-  const daysUntil = (date?: string | null) => {
-    if (!date) return null;
-    const today = new Date();
-    const d = new Date(`${date}T00:00:00`);
-    const diff = Math.ceil((d.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / (1000*60*60*24));
-    return diff;
-  };
 
-  // Helpers to render dashboard-like summaries on cards
-  const formatDateTime = (date?: string | null, time?: string | null) => {
-    if (!date && !time) return '';
-    if (date && time) {
-      const d = new Date(`${date}T${String(time).slice(0,8)}`);
-      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    }
-    if (date) {
-      const d = new Date(`${date}T00:00:00`);
-      return d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
-    }
-    return String(time).slice(0,5);
-  };
   const joinNames = (names: string[]) => {
     if (names.length === 0) return 'Someone';
     if (names.length === 1) return names[0];
