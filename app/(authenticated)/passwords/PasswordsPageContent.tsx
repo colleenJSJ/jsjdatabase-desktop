@@ -16,6 +16,8 @@ import {
 import { UI } from '@/constants';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
+import { CredentialFormField } from '@/components/credentials/CredentialFormField';
 import { PasswordField } from '@/components/passwords/PasswordField';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { usePasswordSecurity } from '@/contexts/password-security-context';
@@ -935,257 +937,246 @@ function PasswordModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-neutral-800 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-4">
-            {password ? 'Edit Password' : 'Add New Password'}
-          </h2>
-          
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-1">
-                Title *
-              </label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-primary-500"
-              />
-            </div>
+    <Modal isOpen onClose={onClose} size="lg">
+      <form onSubmit={handleSubmit} className="flex flex-col">
+        <ModalHeader>
+          <div className="flex w-full items-start justify-between gap-4">
+            <ModalTitle>{password ? 'Edit Password' : 'Add New Password'}</ModalTitle>
+            <ModalCloseButton onClose={onClose} />
+          </div>
+        </ModalHeader>
 
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-1">
-                Username
-              </label>
-              <input
-                type="text"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-primary-500"
-              />
-            </div>
+        <ModalBody className="space-y-5">
+          <CredentialFormField id="password-title" label="Title" required>
+            <input
+              id="password-title"
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              required
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
 
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-1">
-                Password *
-              </label>
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 pr-10 bg-neutral-700 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-primary-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-neutral-400 hover:text-white"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
+          <CredentialFormField id="password-username" label="Username">
+            <input
+              id="password-username"
+              type="text"
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+
+          <CredentialFormField id="password-value" label="Password" required>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  id="password-value"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                  className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 pr-10 text-white focus:outline-none focus:border-primary-500"
+                />
                 <button
                   type="button"
-                  onClick={generatePassword}
-                  className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 border border-neutral-600 rounded-md text-white transition-colors"
-                  title="Generate password"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 transition hover:text-white"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  <Key className="h-4 w-4" />
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              
-              {/* Password Generator Options */}
-              <div className="mt-2 p-4 bg-neutral-700 rounded-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Password Length: {passwordLength}</span>
-                  <Slider 
-                    value={passwordLength}
-                    onValueChange={(value) => setPasswordLength(value[0])}
-                    min={8}
-                    max={32}
-                    step={1}
-                    className="w-32"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="flex items-center gap-2">
-                    <Checkbox 
-                      checked={includeUppercase}
-                      onCheckedChange={(checked) => setIncludeUppercase(!!checked)}
-                    />
-                    <span className="text-sm text-neutral-300">Uppercase</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <Checkbox 
-                      checked={includeLowercase}
-                      onCheckedChange={(checked) => setIncludeLowercase(!!checked)}
-                    />
-                    <span className="text-sm text-neutral-300">Lowercase</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <Checkbox 
-                      checked={includeNumbers}
-                      onCheckedChange={(checked) => setIncludeNumbers(!!checked)}
-                    />
-                    <span className="text-sm text-neutral-300">Numbers</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <Checkbox 
-                      checked={includeSymbols}
-                      onCheckedChange={(checked) => setIncludeSymbols(!!checked)}
-                    />
-                    <span className="text-sm text-neutral-300">Symbols</span>
-                  </label>
-                </div>
-                <div className="mt-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-neutral-300">Strength:</span>
-                    <span className={`text-sm capitalize ${
-                      passwordStrength === 'strong' ? 'text-green-500' :
-                      passwordStrength === 'medium' ? 'text-yellow-500' :
-                      'text-red-500'
-                    }`}>
-                      {passwordStrength}
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-neutral-600 rounded">
-                    <div 
-                      className={`h-full rounded transition-all ${
-                        passwordStrength === 'strong' ? 'bg-green-500 w-full' :
-                        passwordStrength === 'medium' ? 'bg-yellow-500 w-2/3' :
-                        'bg-red-500 w-1/3'
-                      }`}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-1">
-                URL
-              </label>
-              <input
-                type="text"
-                value={formData.url}
-                onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                placeholder="example.com or https://example.com"
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-primary-500"
-              />
-              {formData.url && (
-                <p className="text-sm text-neutral-400 mt-1">
-                  Will be saved as: {smartUrlComplete(formData.url)}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-1">
-                Category
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value as PasswordCategory })}
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-primary-500"
-              >
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Owners (who can access this password)
-              </label>
-              <div className="space-y-2 max-h-48 overflow-y-auto p-3 bg-neutral-700 border border-neutral-600 rounded-md">
-                {/* Show all family members with checkboxes */}
-                {familyMembers.map(member => {
-                  const memberId = member.id;
-                  const memberName = member.name || member.email?.split('@')[0] || 'Unknown';
-                  const memberType = member.type === 'pet' ? '🐾' : member.is_child ? '👶' : '👤';
-                  
-                  return (
-                    <label key={memberId} className="flex items-center gap-2 cursor-pointer hover:bg-neutral-600 p-1 rounded">
-                      <Checkbox
-                        checked={formData.shared_with.includes(memberId)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setFormData({
-                              ...formData,
-                              shared_with: [...formData.shared_with, memberId]
-                            });
-                          } else {
-                            setFormData({
-                              ...formData,
-                              shared_with: formData.shared_with.filter(id => id !== memberId)
-                            });
-                          }
-                        }}
-                      />
-                      <span className="text-sm text-neutral-200">
-                        {memberType} {memberName}
-                        {member.email && <span className="text-neutral-400 ml-1">({member.email})</span>}
-                      </span>
-                    </label>
-                  );
-                })}
-                
-                {/* Add a Select All / Deselect All option */}
-                <div className="border-t border-neutral-500 mt-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (formData.shared_with.length === familyMembers.length) {
-                        setFormData({ ...formData, shared_with: [] });
-                      } else {
-                        setFormData({ ...formData, shared_with: familyMembers.map(m => m.id) });
-                      }
-                    }}
-                    className="text-xs text-primary-400 hover:text-primary-300"
-                  >
-                    {formData.shared_with.length === familyMembers.length ? 'Deselect All' : 'Select All'}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-1">
-                Notes
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={3}
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-primary-500"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                type="submit"
-                disabled={loading || !formData.title || !formData.password}
-                className="flex-1 py-2 px-4 bg-button-create hover:bg-button-create/90 disabled:bg-neutral-600 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
-              >
-                {loading ? 'Saving...' : 'Save'}
-              </button>
               <button
                 type="button"
-                onClick={onClose}
-                className="flex-1 py-2 px-4 bg-neutral-700 hover:bg-neutral-600 text-white font-medium rounded-md transition-colors"
+                onClick={generatePassword}
+                className="rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white transition-colors hover:bg-neutral-600"
+                title="Generate password"
               >
-                Cancel
+                <Key className="h-4 w-4" />
               </button>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
+
+            <div className="mt-2 space-y-3 rounded-lg bg-neutral-700 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-neutral-300">Password Length: {passwordLength}</span>
+                <Slider
+                  value={passwordLength}
+                  onValueChange={(value) => setPasswordLength(value[0])}
+                  min={8}
+                  max={32}
+                  step={1}
+                  className="w-32"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2">
+                  <Checkbox
+                    checked={includeUppercase}
+                    onCheckedChange={(checked) => setIncludeUppercase(!!checked)}
+                  />
+                  <span className="text-sm text-neutral-300">Uppercase</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <Checkbox
+                    checked={includeLowercase}
+                    onCheckedChange={(checked) => setIncludeLowercase(!!checked)}
+                  />
+                  <span className="text-sm text-neutral-300">Lowercase</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <Checkbox
+                    checked={includeNumbers}
+                    onCheckedChange={(checked) => setIncludeNumbers(!!checked)}
+                  />
+                  <span className="text-sm text-neutral-300">Numbers</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <Checkbox
+                    checked={includeSymbols}
+                    onCheckedChange={(checked) => setIncludeSymbols(!!checked)}
+                  />
+                  <span className="text-sm text-neutral-300">Symbols</span>
+                </label>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm text-neutral-300">Strength:</span>
+                  <span
+                    className={`text-sm capitalize ${
+                      passwordStrength === 'strong'
+                        ? 'text-green-500'
+                        : passwordStrength === 'medium'
+                        ? 'text-yellow-500'
+                        : 'text-red-500'
+                    }`}
+                  >
+                    {passwordStrength}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded bg-neutral-600">
+                  <div
+                    className={`h-full rounded transition-all ${
+                      passwordStrength === 'strong'
+                        ? 'w-full bg-green-500'
+                        : passwordStrength === 'medium'
+                        ? 'w-2/3 bg-yellow-500'
+                        : 'w-1/3 bg-red-500'
+                    }`}
+                  />
+                </div>
+              </div>
+            </div>
+          </CredentialFormField>
+
+          <CredentialFormField
+            id="password-url"
+            label="URL"
+            helperText={formData.url ? `Will be saved as: ${smartUrlComplete(formData.url)}` : undefined}
+          >
+            <input
+              id="password-url"
+              type="text"
+              value={formData.url}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+              placeholder="example.com or https://example.com"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+
+          <CredentialFormField id="password-category" label="Category">
+            <select
+              id="password-category"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value as PasswordCategory })}
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            >
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </CredentialFormField>
+
+          <CredentialFormField label="Owners (who can access this password)">
+            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
+              {familyMembers.map(member => {
+                const memberId = member.id;
+                const memberName = member.name || member.email?.split('@')[0] || 'Unknown';
+                const memberType = member.type === 'pet' ? '🐾' : member.is_child ? '👶' : '👤';
+
+                return (
+                  <label key={memberId} className="flex items-center gap-2 rounded p-1 transition hover:bg-neutral-600">
+                    <Checkbox
+                      checked={formData.shared_with.includes(memberId)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setFormData({
+                            ...formData,
+                            shared_with: [...formData.shared_with, memberId]
+                          });
+                        } else {
+                          setFormData({
+                            ...formData,
+                            shared_with: formData.shared_with.filter((id: string) => id !== memberId)
+                          });
+                        }
+                      }}
+                    />
+                    <span className="text-sm text-neutral-200">
+                      {memberType} {memberName}
+                      {member.email && <span className="ml-1 text-neutral-400">({member.email})</span>}
+                    </span>
+                  </label>
+                );
+              })}
+
+              <div className="border-t border-neutral-500 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (formData.shared_with.length === familyMembers.length) {
+                      setFormData({ ...formData, shared_with: [] });
+                    } else {
+                      setFormData({ ...formData, shared_with: familyMembers.map(m => m.id) });
+                    }
+                  }}
+                  className="text-xs text-primary-400 transition hover:text-primary-300"
+                >
+                  {formData.shared_with.length === familyMembers.length ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+            </div>
+          </CredentialFormField>
+
+          <CredentialFormField id="password-notes" label="Notes">
+            <textarea
+              id="password-notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={3}
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+        </ModalBody>
+
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-md border border-neutral-600 bg-neutral-700 px-4 py-2 text-white transition-colors hover:bg-neutral-600"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !formData.title || !formData.password}
+            className="flex-1 rounded-md bg-button-create px-4 py-2 text-white transition-colors hover:bg-button-create/90 disabled:cursor-not-allowed disabled:bg-neutral-600"
+          >
+            {loading ? 'Saving...' : 'Save'}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
