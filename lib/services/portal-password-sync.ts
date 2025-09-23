@@ -162,10 +162,6 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     
     // For password creation, we'll use direct Supabase insert to avoid interface issues
     let password;
-    
-    // Import encryption service
-    const { encryptionService } = await import('@/lib/encryption');
-    
     const source = config.source || config.providerType;
     const sourcePage = config.sourcePage || source;
 
