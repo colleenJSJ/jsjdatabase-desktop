@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Eye, EyeOff, Users } from 'lucide-react';
+import { Eye, EyeOff, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
+import { CredentialFormField } from '@/components/credentials/CredentialFormField';
 
 interface PortalModalProps {
   isOpen: boolean;
@@ -100,105 +102,89 @@ export function PortalModal({
     setFormData({ ...formData, password });
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-background-secondary rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-600/30">
-        <div className="flex justify-between items-center p-6 border-b border-gray-600/30">
-          <h2 className="text-xl font-semibold text-gray-100">
-            {editingPortal ? 'Edit Portal' : 'Add Portal'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-300"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg" ariaLabel="Portal form">
+      <form onSubmit={handleSubmit} className="flex flex-col">
+        <ModalHeader>
+          <div className="flex w-full items-start justify-between gap-4">
+            <ModalTitle>{editingPortal ? 'Edit Portal' : 'Add Portal'}</ModalTitle>
+            <ModalCloseButton onClose={onClose} />
+          </div>
+        </ModalHeader>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              <Users className="inline h-4 w-4 mr-1" />
-              Associated Children
-            </label>
-            <div className="space-y-2 border border-gray-600/30 rounded-md p-3 bg-background-primary">
-              {children.map((child) => (
+        <ModalBody className="space-y-5">
+          <CredentialFormField
+            id="portal-children"
+            label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Children</span>}
+            description={children.length === 0 ? 'No children available' : undefined}
+          >
+            <div className="space-y-2 rounded-md border border-gray-600/30 bg-background-primary p-3">
+              {children.map(child => (
                 <div key={child.id} className="flex items-center gap-2">
                   <Checkbox
                     id={`portal-child-${child.id}`}
                     checked={formData.children.includes(child.id)}
-                    onCheckedChange={(checked) => 
-                      handleChildToggle(child.id, checked as boolean)
-                    }
+                    onCheckedChange={checked => handleChildToggle(child.id, Boolean(checked))}
                   />
                   <label
                     htmlFor={`portal-child-${child.id}`}
-                    className="text-sm font-medium text-gray-300 cursor-pointer"
+                    className="cursor-pointer text-sm font-medium text-gray-300"
                   >
                     {child.name}
                   </label>
                 </div>
               ))}
             </div>
-          </div>
+          </CredentialFormField>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Portal Name *
-            </label>
+          <CredentialFormField id="portal-name" label="Portal Name" required>
             <Input
+              id="portal-name"
               value={formData.portal_name}
               onChange={(e) => setFormData({ ...formData, portal_name: e.target.value })}
               required
               placeholder="e.g., PowerSchool, Canvas, Google Classroom"
-              className="bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+              className="bg-background-primary border border-gray-600/30 text-text-primary"
             />
-          </div>
+          </CredentialFormField>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Portal URL
-            </label>
+          <CredentialFormField id="portal-url" label="Portal URL">
             <Input
+              id="portal-url"
               type="text"
               value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               placeholder="e.g., canvas.com or https://canvas.com"
-              className="bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+              className="bg-background-primary border border-gray-600/30 text-text-primary"
             />
-          </div>
+          </CredentialFormField>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Username
-            </label>
+          <CredentialFormField id="portal-username" label="Username">
             <Input
+              id="portal-username"
               value={formData.username}
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               placeholder="Username or email"
-              className="bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+              className="bg-background-primary border border-gray-600/30 text-text-primary"
             />
-          </div>
+          </CredentialFormField>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Password
-            </label>
+          <CredentialFormField id="portal-password" label="Password">
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
+                  id="portal-password"
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="Password"
-                  className="bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                  className="bg-background-primary border border-gray-600/30 pr-10 text-text-primary"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-300"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -212,51 +198,46 @@ export function PortalModal({
                 Generate
               </Button>
             </div>
-          </div>
+          </CredentialFormField>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Notes
-            </label>
+          <CredentialFormField id="portal-notes" label="Notes">
             <textarea
+              id="portal-notes"
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-gray-700"
+              className="w-full rounded-md border border-gray-600/30 bg-background-primary px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
               rows={3}
               placeholder="Additional information..."
             />
-          </div>
+          </CredentialFormField>
 
           <div className="flex items-center gap-2">
             <Checkbox
               id="sync-passwords"
               checked={syncToPasswords}
-              onCheckedChange={(checked) => setSyncToPasswords(checked as boolean)}
+              onCheckedChange={(checked) => setSyncToPasswords(Boolean(checked))}
             />
-            <label
-              htmlFor="sync-passwords"
-              className="text-sm font-medium text-gray-300 cursor-pointer"
-            >
+            <label htmlFor="sync-passwords" className="cursor-pointer text-sm font-medium text-gray-300">
               Sync to Passwords page
             </label>
           </div>
+        </ModalBody>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="border-gray-600 text-gray-300 hover:bg-gray-800"
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting} className="bg-button-create hover:bg-button-create/90 text-white">
-              {isSubmitting ? 'Saving...' : editingPortal ? 'Update' : 'Add'} Portal
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter className="gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="border-gray-600 text-gray-300 hover:bg-gray-800"
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting} className="bg-button-create text-white hover:bg-button-create/90">
+            {isSubmitting ? 'Saving...' : editingPortal ? 'Update' : 'Add'} Portal
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }

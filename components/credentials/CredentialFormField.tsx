@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 type CredentialFormFieldProps = {
   id?: string;
-  label: string;
+  label: ReactNode;
   children: ReactNode;
   required?: boolean;
   helperText?: ReactNode;
