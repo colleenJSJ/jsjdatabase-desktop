@@ -287,9 +287,8 @@ export default function J3AcademicsPageClient() {
                     <PasswordCard
                       key={portalId}
                       password={passwordRecord}
-                      categories={[portalCategory]}
-                      users={academicPortalUsers}
-                      sourceLabel="J3 Academics"
+                    categories={[portalCategory]}
+                    users={academicPortalUsers}
                       subtitle={student?.name || 'Academic Portal'}
                       assignedToLabel={student?.name || 'Shared'}
                       extraContent={notes ? <p className="text-xs text-text-muted/80 italic">{notes}</p> : null}

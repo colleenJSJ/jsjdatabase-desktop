@@ -1009,7 +1009,6 @@ export default function HealthPage() {
                     password={passwordRecord}
                     categories={[portalCategory]}
                     users={portalUsers}
-                    sourceLabel="Health"
                     assignedToLabel={assignedLabel}
                     subtitle={portal.doctor?.name || 'Healthcare Portal'}
                     extraContent={extraContent}

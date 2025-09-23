@@ -434,9 +434,8 @@ export default function PetsPageClient() {
                       <PasswordCard
                         key={portalId}
                         password={passwordRecord}
-                        categories={[portalCategory]}
-                        users={portalUsers}
-                        sourceLabel="Pets"
+                    categories={[portalCategory]}
+                    users={portalUsers}
                         subtitle="Pet Portal"
                         assignedToLabel={relatedPetNames.length > 0 ? relatedPetNames.join(', ') : 'Shared'}
                         extraContent={extraContent}
