@@ -1028,7 +1028,7 @@ export default function HealthPage() {
                   className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
                 >
                   <Upload className="h-4 w-4" />
-                  Upload Health Document
+                  Upload Health Doc
                 </button>
                 {showDocumentUploadModal && (
                   <DocumentUploadModal
@@ -1042,7 +1042,7 @@ export default function HealthPage() {
                     initialRelatedTo={selectedPerson !== 'all' ? [selectedPerson] : []}
                     excludedPersonNames={['Colleen Russell', 'Kate McLaren']}
                     hideAssignInfo
-                    titleOverride="Upload Health Document"
+                    titleOverride="Upload Health Doc"
                   />
                 )}
               </>
