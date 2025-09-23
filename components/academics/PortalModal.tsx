@@ -118,7 +118,7 @@ export function PortalModal({
             label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Children</span>}
             description={children.length === 0 ? 'No children available' : undefined}
           >
-            <div className="space-y-2 rounded-md border border-gray-600/30 bg-background-primary p-3">
+            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
               {children.map(child => (
                 <div key={child.id} className="flex items-center gap-2">
                   <Checkbox
@@ -128,7 +128,7 @@ export function PortalModal({
                   />
                   <label
                     htmlFor={`portal-child-${child.id}`}
-                    className="cursor-pointer text-sm font-medium text-gray-300"
+                    className="cursor-pointer text-sm text-neutral-200"
                   >
                     {child.name}
                   </label>
@@ -144,7 +144,7 @@ export function PortalModal({
               onChange={(e) => setFormData({ ...formData, portal_name: e.target.value })}
               required
               placeholder="e.g., PowerSchool, Canvas, Google Classroom"
-              className="bg-background-primary border border-gray-600/30 text-text-primary"
+              className="border border-neutral-600 bg-neutral-700 text-white focus:border-primary-500"
             />
           </CredentialFormField>
 
@@ -155,7 +155,7 @@ export function PortalModal({
               value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               placeholder="e.g., canvas.com or https://canvas.com"
-              className="bg-background-primary border border-gray-600/30 text-text-primary"
+              className="border border-neutral-600 bg-neutral-700 text-white focus:border-primary-500"
             />
           </CredentialFormField>
 
@@ -165,7 +165,7 @@ export function PortalModal({
               value={formData.username}
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               placeholder="Username or email"
-              className="bg-background-primary border border-gray-600/30 text-text-primary"
+              className="border border-neutral-600 bg-neutral-700 text-white focus:border-primary-500"
             />
           </CredentialFormField>
 
@@ -178,7 +178,7 @@ export function PortalModal({
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="Password"
-                  className="bg-background-primary border border-gray-600/30 pr-10 text-text-primary"
+                  className="border border-neutral-600 bg-neutral-700 pr-10 text-white focus:border-primary-500"
                 />
                 <button
                   type="button"
@@ -193,7 +193,7 @@ export function PortalModal({
                 type="button"
                 variant="outline"
                 onClick={generatePassword}
-                className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                className="border-neutral-600 bg-neutral-700 text-neutral-200 hover:bg-neutral-600"
               >
                 Generate
               </Button>
@@ -205,7 +205,7 @@ export function PortalModal({
               id="portal-notes"
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full rounded-md border border-gray-600/30 bg-background-primary px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
               rows={3}
               placeholder="Additional information..."
             />
@@ -217,25 +217,28 @@ export function PortalModal({
               checked={syncToPasswords}
               onCheckedChange={(checked) => setSyncToPasswords(Boolean(checked))}
             />
-            <label htmlFor="sync-passwords" className="cursor-pointer text-sm font-medium text-gray-300">
+            <label htmlFor="sync-passwords" className="cursor-pointer text-sm text-neutral-200">
               Sync to Passwords page
             </label>
           </div>
         </ModalBody>
 
         <ModalFooter className="gap-3">
-          <Button
+          <button
             type="button"
-            variant="outline"
             onClick={onClose}
             disabled={isSubmitting}
-            className="border-gray-600 text-gray-300 hover:bg-gray-800"
+            className="flex-1 rounded-md border border-neutral-600 bg-neutral-700 px-4 py-2 text-white transition-colors hover:bg-neutral-600 disabled:cursor-not-allowed disabled:opacity-70 sm:flex-initial"
           >
             Cancel
-          </Button>
-          <Button type="submit" disabled={isSubmitting} className="bg-button-create text-white hover:bg-button-create/90">
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex-1 rounded-md bg-button-create px-4 py-2 text-white transition-colors hover:bg-button-create/90 disabled:cursor-not-allowed disabled:bg-neutral-600 sm:flex-initial"
+          >
             {isSubmitting ? 'Saving...' : editingPortal ? 'Update' : 'Add'} Portal
-          </Button>
+          </button>
         </ModalFooter>
       </form>
     </Modal>
