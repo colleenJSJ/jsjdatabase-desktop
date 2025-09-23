@@ -29,18 +29,16 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    let query = supabase
+    let baseQuery = supabase
       .from('travel_details')
-      .select('*')
-      .order('travel_date', { ascending: true })
-      .order('departure_time', { ascending: true });
+      .select('*');
 
     if (tripId && tripId !== 'all') {
-      query = query.eq('trip_id', tripId);
+      baseQuery = baseQuery.eq('trip_id', tripId);
     }
 
-    query = await applyPersonFilter({
-      query,
+    const filteredQuery = await applyPersonFilter({
+      query: baseQuery,
       selectedPerson: selectedParam,
       userId: user.id,
       module: 'travel_details',
@@ -48,7 +46,9 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    const { data: details, error } = await query;
+    const { data: details, error } = await filteredQuery
+      .order('travel_date', { ascending: true })
+      .order('departure_time', { ascending: true });
 
     if (error) {
       console.error('[Travel Details API] Supabase query failed', error);
