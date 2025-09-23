@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { syncToPasswords, children, url, ...portalData } = body;
+    const { children, url, ...portalData } = body;
 
     // Map url to portal_url for database compatibility
     if (url) {

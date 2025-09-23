@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Users } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
 import { CredentialFormField } from '@/components/credentials/CredentialFormField';
@@ -35,7 +33,6 @@ export function PortalModal({
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [syncToPasswords, setSyncToPasswords] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -48,7 +45,6 @@ export function PortalModal({
         password: editingPortal.password || '',
         notes: editingPortal.notes || ''
       });
-      setSyncToPasswords(false); // Don't auto-sync when editing
     } else {
       setFormData({
         children: selectedChild !== 'all' ? [selectedChild] : [],
@@ -58,7 +54,6 @@ export function PortalModal({
         password: '',
         notes: ''
       });
-      setSyncToPasswords(true);
     }
   }, [editingPortal, selectedChild]);
 
@@ -73,7 +68,7 @@ export function PortalModal({
         normalizedUrl = 'https://' + normalizedUrl;
       }
       
-      await onSubmit({ ...formData, url: normalizedUrl, syncToPasswords });
+      await onSubmit({ ...formData, url: normalizedUrl });
       onClose();
     } catch (error) {
       console.error('Error submitting portal:', error);
@@ -138,47 +133,47 @@ export function PortalModal({
           </CredentialFormField>
 
           <CredentialFormField id="portal-name" label="Portal Name" required>
-            <Input
+            <input
               id="portal-name"
               value={formData.portal_name}
               onChange={(e) => setFormData({ ...formData, portal_name: e.target.value })}
               required
               placeholder="e.g., PowerSchool, Canvas, Google Classroom"
-              className="border border-neutral-600 bg-neutral-700 text-white focus:border-primary-500"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
             />
           </CredentialFormField>
 
           <CredentialFormField id="portal-url" label="Portal URL">
-            <Input
+            <input
               id="portal-url"
               type="text"
               value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               placeholder="e.g., canvas.com or https://canvas.com"
-              className="border border-neutral-600 bg-neutral-700 text-white focus:border-primary-500"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
             />
           </CredentialFormField>
 
           <CredentialFormField id="portal-username" label="Username">
-            <Input
+            <input
               id="portal-username"
               value={formData.username}
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               placeholder="Username or email"
-              className="border border-neutral-600 bg-neutral-700 text-white focus:border-primary-500"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
             />
           </CredentialFormField>
 
           <CredentialFormField id="portal-password" label="Password">
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Input
+                <input
                   id="portal-password"
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="Password"
-                  className="border border-neutral-600 bg-neutral-700 pr-10 text-white focus:border-primary-500"
+                  className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 pr-10 text-white focus:outline-none focus:border-primary-500"
                 />
                 <button
                   type="button"
@@ -189,14 +184,13 @@ export function PortalModal({
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <Button
+              <button
                 type="button"
-                variant="outline"
                 onClick={generatePassword}
-                className="border-neutral-600 bg-neutral-700 text-neutral-200 hover:bg-neutral-600"
+                className="rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white transition-colors hover:bg-neutral-600"
               >
                 Generate
-              </Button>
+              </button>
             </div>
           </CredentialFormField>
 
@@ -210,17 +204,6 @@ export function PortalModal({
               placeholder="Additional information..."
             />
           </CredentialFormField>
-
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="sync-passwords"
-              checked={syncToPasswords}
-              onCheckedChange={(checked) => setSyncToPasswords(Boolean(checked))}
-            />
-            <label htmlFor="sync-passwords" className="cursor-pointer text-sm text-neutral-200">
-              Sync to Passwords page
-            </label>
-          </div>
         </ModalBody>
 
         <ModalFooter className="gap-3">

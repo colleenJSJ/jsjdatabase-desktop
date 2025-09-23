@@ -54,7 +54,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { syncToPasswords, children, url, ...portalData } = body;
+    const { children, url, ...portalData } = body;
 
     // Map url to portal_url for database compatibility
     if (url) {
@@ -100,45 +100,42 @@ export async function PUT(
       }
     }
 
-    // Update password if it exists and sync is requested
-    if (syncToPasswords && portal) {
-      // First check if password entry exists
-      const { data: existingPassword } = await supabase
-        .from('passwords')
-        .select('id')
-        .eq('source_reference', id)
-        .eq('source_page', 'J3 Academics')
-        .single();
+    if (portal && portalData.username && portalData.password) {
+      const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
+      const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
 
-      if (existingPassword) {
-        // Update existing password
-        await supabase
-          .from('passwords')
-          .update({
-            platform: `Academic: ${portalData.portal_name}`,
-            username: portalData.username,
-            password: portalData.password,
-            website_url: portalData.url,
-            notes: portalData.notes
-          })
-          .eq('id', existingPassword.id);
-      } else {
-        // Create new password entry
-        await supabase
-          .from('passwords')
-          .insert({
-            child_id: portalData.child_id,
-            platform: `Academic: ${portalData.portal_name}`,
-            username: portalData.username,
-            password: portalData.password,
-            category: 'Education',
-            website_url: portalData.url,
-            notes: portalData.notes,
-            source_page: 'J3 Academics',
-            source_reference: portal.id,
-            created_at: new Date().toISOString()
-          });
+      const parentUserIds: string[] = [];
+
+      if (children && children.length > 0) {
+        for (const childId of children) {
+          const { data: childData } = await supabase
+            .from('family_members')
+            .select('parent_id')
+            .eq('id', childId)
+            .single();
+
+          if (childData?.parent_id) {
+            const parentUserId = await resolveFamilyMemberToUser(childData.parent_id);
+            if (parentUserId) {
+              parentUserIds.push(parentUserId);
+            }
+          }
+        }
       }
+
+      await ensurePortalAndPassword({
+        portal: {
+          id,
+          portal_name: portalData.portal_name || portal.portal_name,
+          username: portalData.username,
+          password: portalData.password,
+          portal_url: portalData.portal_url || portal.portal_url,
+          notes: portalData.notes,
+          portal_type: 'academic'
+        },
+        primaryUserId: user.id,
+        sharedWithUserIds: parentUserIds
+      });
     }
 
     return NextResponse.json({ ...portal, children: children || [] });
