@@ -16,6 +16,8 @@ interface DocumentUploadModalProps {
   defaultCategory?: string;
   includePets?: boolean;
   initialRelatedTo?: string[];
+  excludedPersonNames?: string[];
+  hideAssignInfo?: boolean;
 }
 
 export default function DocumentUploadModal({
@@ -25,7 +27,9 @@ export default function DocumentUploadModal({
   sourceId,
   defaultCategory,
   includePets = false,
-  initialRelatedTo = []
+  initialRelatedTo = [],
+  excludedPersonNames = [],
+  hideAssignInfo = false,
 }: DocumentUploadModalProps) {
   const { user } = useUser();
   const [file, setFile] = useState<File | null>(null);
@@ -42,14 +46,23 @@ export default function DocumentUploadModal({
   const [categories, setCategories] = useState<Category[]>([]);
   const { members: baseFamilyMembers } = useFamilyMembers({ includePets });
 
+  const exclusionSet = useMemo(() => new Set(
+    excludedPersonNames.map(name => name.trim().toLowerCase()).filter(Boolean)
+  ), [excludedPersonNames]);
+
   const personOptions = useMemo(() => {
-    const mapped = baseFamilyMembers.map((member) => ({
+    const filtered = baseFamilyMembers.filter((member) => {
+      const normalizedName = (member.display_name || member.name || '').trim().toLowerCase();
+      return !exclusionSet.has(normalizedName);
+    });
+
+    const mapped = filtered.map((member) => ({
       id: member.id,
       name: member.display_name || member.name,
       type: member.type,
     }));
     return [{ id: 'shared', name: 'Shared/Family' }, ...mapped];
-  }, [baseFamilyMembers]);
+  }, [baseFamilyMembers, exclusionSet]);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -337,9 +350,11 @@ export default function DocumentUploadModal({
                   ))}
                 </div>
               </div>
-              <p className="text-xs text-text-muted mt-1">
-                Assigning tags who this document relates to; all users can still view every document.
-              </p>
+              {!hideAssignInfo && (
+                <p className="text-xs text-text-muted mt-1">
+                  Assigning tags who this document relates to; all users can still view every document.
+                </p>
+              )}
             </div>
 
             {/* Tags */}

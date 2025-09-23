@@ -1028,7 +1028,7 @@ export default function HealthPage() {
                   className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
                 >
                   <Upload className="h-4 w-4" />
-                  Upload Medical Record
+                  Upload Health Document
                 </button>
                 {showDocumentUploadModal && (
                   <DocumentUploadModal
@@ -1038,18 +1038,23 @@ export default function HealthPage() {
                       setRefreshDocuments(prev => prev + 1);
                     }}
                     sourcePage="health"
-                    defaultCategory="Medical"
+                    defaultCategory="Health"
                     initialRelatedTo={selectedPerson !== 'all' ? [selectedPerson] : []}
+                    excludedPersonNames={['Colleen Russell', 'Kate McLaren']}
+                    hideAssignInfo
                   />
                 )}
               </>
             )}
           </div>
           <DocumentList 
-            category="Medical" 
             sourcePage="Health" 
             key={refreshDocuments}
             selectedPerson={selectedPerson !== 'all' ? familyMembers.find(m => m.id === selectedPerson)?.name : undefined}
+            filterFn={(doc) => {
+              const category = doc.category?.toLowerCase();
+              return category === 'health' || category === 'medical';
+            }}
           />
         </div>
       )}
