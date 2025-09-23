@@ -33,6 +33,14 @@ import { smartUrlComplete } from '@/lib/utils/url-helper';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
+const EXCLUDED_HEALTH_PATIENTS = new Set(['colleen', 'kate']);
+
+const isExcludedHealthPatient = (name?: string | null) => {
+  if (!name) return false;
+  const first = name.trim().split(' ')[0].toLowerCase();
+  return EXCLUDED_HEALTH_PATIENTS.has(first);
+};
+
 interface Medication {
   id: string;
   name: string;
@@ -1883,7 +1891,14 @@ function PortalModal({
   const [includeNumbers, setIncludeNumbers] = useState(true);
   const [includeSymbols, setIncludeSymbols] = useState(true);
 
+  const eligibleFamilyMembers = useMemo(
+    () => familyMembers.filter(member => !isExcludedHealthPatient(member.name)),
+    [familyMembers]
+  );
+
   useEffect(() => {
+    const allowedIds = new Set(eligibleFamilyMembers.map(member => member.id));
+
     if (portal) {
       setFormData({
         title: portal.name || '',
@@ -1892,7 +1907,7 @@ function PortalModal({
         password: portal.password || '',
         url: portal.portal_url || '',
         notes: portal.notes || '',
-        patientIds: portal.patient_ids || [],
+        patientIds: (portal.patient_ids || []).filter(id => allowedIds.has(id)),
       });
     } else {
       setFormData({
@@ -1902,10 +1917,10 @@ function PortalModal({
         password: '',
         url: '',
         notes: '',
-        patientIds: familyMembers.length === 1 ? [familyMembers[0].id] : [],
+        patientIds: eligibleFamilyMembers.length === 1 ? [eligibleFamilyMembers[0].id] : [],
       });
     }
-  }, [portal, familyMembers]);
+  }, [portal, eligibleFamilyMembers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2142,7 +2157,7 @@ function PortalModal({
             label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Patients</span>}
           >
             <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
-              {familyMembers.map(member => (
+              {eligibleFamilyMembers.map(member => (
                 <label key={member.id} className="flex items-center gap-2 rounded p-1 transition hover:bg-neutral-600">
                   <Checkbox
                     id={`medical-patient-${member.id}`}
@@ -2152,6 +2167,9 @@ function PortalModal({
                   <span className="text-sm text-neutral-200">{getFirstName(member.name)}</span>
                 </label>
               ))}
+              {!eligibleFamilyMembers.length && (
+                <p className="text-sm text-neutral-400">No eligible patients available.</p>
+              )}
             </div>
           </CredentialFormField>
 
