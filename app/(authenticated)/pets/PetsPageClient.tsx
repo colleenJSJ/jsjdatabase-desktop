@@ -492,7 +492,8 @@ export default function PetsPageClient() {
                     <button
                       key={appointment.id}
                       onClick={() => setSelectedAppointment(appointment)}
-                      className="text-left rounded-xl border border-gray-600/30 bg-black/30 p-4 transition-colors hover:border-gray-500"
+                      className="text-left rounded-xl border border-gray-600/30 p-4 transition-colors hover:border-gray-500"
+                      style={{ backgroundColor: '#30302e' }}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3">

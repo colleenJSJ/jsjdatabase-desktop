@@ -793,7 +793,8 @@ export default function HealthPage() {
                 return (
                   <div 
                     key={appointment.id} 
-                    className="border border-gray-600/30 rounded-xl bg-black/30 p-4 cursor-pointer hover:border-gray-500 transition-colors"
+                    className="border border-gray-600/30 rounded-xl p-4 cursor-pointer hover:border-gray-500 transition-colors"
+                    style={{ backgroundColor: '#30302e' }}
                     onClick={() => setSelectedAppointment({ appointment, startInEdit: false })}
                   >
                     <div className="flex items-start justify-between">
