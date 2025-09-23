@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
 import { buildInternalApiHeaders } from '@/lib/utils/auth-helpers';
-import { applyPersonFilter } from '@/app/api/_helpers/apply-person-filter';
 import { resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
 import { buildTravelVisibilityContext, shouldIncludeTravelRecord } from '@/lib/travel/visibility';
 import { normalizeTravelerIds } from '@/lib/travel/travelers';
@@ -19,9 +18,6 @@ export async function GET(request: NextRequest) {
     const selectedPerson = searchParams.get('selected_person') || undefined;
     const isAdmin = user.role === 'admin';
 
-    const shouldFilterByPerson = Boolean(selectedPerson && selectedPerson !== 'all');
-    const selectedParam = shouldFilterByPerson ? undefined : selectedPerson;
-
     const visibilityContext = await buildTravelVisibilityContext({
       supabase,
       userId: user.id,
@@ -29,26 +25,17 @@ export async function GET(request: NextRequest) {
       isAdmin,
     });
 
-    let baseQuery = supabase
+    let query = supabase
       .from('travel_details')
-      .select('*');
-
-    if (tripId && tripId !== 'all') {
-      baseQuery = baseQuery.eq('trip_id', tripId);
-    }
-
-    const filteredQuery = await applyPersonFilter({
-      query: baseQuery,
-      selectedPerson: selectedParam,
-      userId: user.id,
-      module: 'travel_details',
-      columnName: 'travelers',
-      isAdmin,
-    });
-
-    const { data: details, error } = await filteredQuery
+      .select('*')
       .order('travel_date', { ascending: true })
       .order('departure_time', { ascending: true });
+
+    if (tripId && tripId !== 'all') {
+      query = query.eq('trip_id', tripId);
+    }
+
+    const { data: details, error } = await query;
 
     if (error) {
       console.error('[Travel Details API] Supabase query failed', error);
