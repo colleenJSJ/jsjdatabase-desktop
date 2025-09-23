@@ -8,7 +8,7 @@ import PetAppointmentModal from './PetAppointmentModal';
 import PetContactModal from './PetContactModal';
 import ViewPetAppointmentModal from './ViewPetAppointmentModal';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
-import { PawPrint, Stethoscope, Syringe, Scissors } from 'lucide-react';
+import { PawPrint, Stethoscope, Syringe, Scissors, Eye, EyeOff } from 'lucide-react';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { Category } from '@/lib/categories/categories-client';
 import { Password } from '@/lib/services/password-service-interface';
