@@ -738,7 +738,7 @@ export default function HealthPage() {
             {user?.role === 'admin' && (
               <button
                 onClick={() => setShowAppointmentModal(true)}
-                className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
+                className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/95 text-white rounded-xl transition-colors"
               >
                 <Plus className="h-4 w-4" />
                 Add Appointment
