@@ -168,7 +168,8 @@ export async function POST(request: NextRequest) {
         sharedWith,
         createdBy: user.id,
         notes: notes || `Academic portal for ${title}`,
-        source: 'academic_portal'
+        source: 'academic_portal',
+        sourcePage: 'j3-academics'
       });
       
       if (!syncResult.success) {

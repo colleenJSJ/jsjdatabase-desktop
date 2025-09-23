@@ -164,7 +164,8 @@ export async function PUT(
           sharedWith,
           createdBy: user.id,
           notes: notes ?? portal.notes ?? `Portal for ${title ?? portal.portal_name}`,
-          source: 'medical_portal'
+          source: 'medical_portal',
+          sourcePage: 'health'
         });
       }
     }

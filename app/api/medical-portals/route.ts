@@ -174,7 +174,8 @@ export async function POST(request: NextRequest) {
         sharedWith,
         createdBy: user.id,
         notes: notes || portal.notes || `Portal for ${title}`,
-        source: 'medical_portal'
+        source: 'medical_portal',
+        sourcePage: 'health'
       });
       
       if (!syncResult.success) {

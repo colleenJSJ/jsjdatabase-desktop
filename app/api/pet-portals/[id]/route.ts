@@ -125,7 +125,8 @@ export async function PUT(
         sharedWith,
         createdBy: user.id,
         notes: notes ?? portal.notes ?? `Portal for ${(title ?? portal.portal_name) || portal.provider_name}`,
-        source: 'pet_portal'
+        source: 'pet_portal',
+        sourcePage: 'pets'
       });
     }
 

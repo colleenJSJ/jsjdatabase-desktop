@@ -132,7 +132,8 @@ export async function POST(request: NextRequest) {
         sharedWith,
         createdBy: user.id,
         notes: notes || `Pet portal for ${title}`,
-        source: 'pet_portal'
+        source: 'pet_portal',
+        sourcePage: 'pets'
       });
       
       if (!syncResult.success) {

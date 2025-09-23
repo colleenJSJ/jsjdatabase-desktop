@@ -144,7 +144,8 @@ export async function PUT(
         sharedWith,
         createdBy: user.id,
         notes: notes || portal.notes,
-        source: 'academic_portal'
+        source: 'academic_portal',
+        sourcePage: 'j3-academics'
       });
     }
 

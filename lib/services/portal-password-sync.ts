@@ -19,6 +19,7 @@ export interface PortalPasswordSyncConfig {
   createdBy: string; // User creating/updating the record
   notes?: string;
   source?: string; // Source of the data (e.g., 'health', 'pets')
+  sourcePage?: string; // Optional source page for display (e.g., 'health', 'pets')
 }
 
 /**
@@ -159,6 +160,9 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     // Import encryption service
     const { encryptionService } = await import('@/lib/encryption');
     
+    const source = config.source || config.providerType;
+    const sourcePage = config.sourcePage || source;
+
     // Prepare password data for direct database insert
     const passwordData = {
       service_name: config.providerName,
@@ -172,7 +176,8 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       owner_id: config.ownerId,
       shared_with: cleanSharedWith, // Array of UUIDs
       is_shared: cleanSharedWith.length > 0,
-      source: config.source || config.providerType,
+      source,
+      source_page: sourcePage,
       source_reference: portal.id, // Link to portal record
       tags: [],
       is_favorite: false,
