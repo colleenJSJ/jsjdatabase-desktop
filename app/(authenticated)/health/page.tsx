@@ -1042,6 +1042,7 @@ export default function HealthPage() {
                     initialRelatedTo={selectedPerson !== 'all' ? [selectedPerson] : []}
                     excludedPersonNames={['Colleen Russell', 'Kate McLaren']}
                     hideAssignInfo
+                    titleOverride="Upload Health Document"
                   />
                 )}
               </>

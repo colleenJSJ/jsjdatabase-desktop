@@ -18,6 +18,7 @@ interface DocumentUploadModalProps {
   initialRelatedTo?: string[];
   excludedPersonNames?: string[];
   hideAssignInfo?: boolean;
+  titleOverride?: string;
 }
 
 export default function DocumentUploadModal({
@@ -30,6 +31,7 @@ export default function DocumentUploadModal({
   initialRelatedTo = [],
   excludedPersonNames = [],
   hideAssignInfo = false,
+  titleOverride,
 }: DocumentUploadModalProps) {
   const { user } = useUser();
   const [file, setFile] = useState<File | null>(null);
@@ -225,7 +227,7 @@ export default function DocumentUploadModal({
       <div className="bg-background-secondary rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-600/30">
         <div className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-text-primary">Upload Document</h2>
+            <h2 className="text-xl font-bold text-text-primary">{modalTitle}</h2>
             <button
               onClick={onClose}
               className="text-text-muted hover:text-text-primary transition-colors"
@@ -441,3 +443,4 @@ export default function DocumentUploadModal({
     </div>
   );
 }
+  const modalTitle = titleOverride || 'Upload Document';
