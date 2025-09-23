@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { normalizeUrl } from '@/lib/utils/url-helper';
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,21 +78,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { children, url, ...portalData } = body;
-
-    // Map url to portal_url for database compatibility
-    if (url) {
-      portalData.portal_url = url;
-    }
-    
-    // Remove child_id from portalData as we'll use junction table
-    delete portalData.child_id;
+    const { children, url, title, username, password, notes } = body;
+    const portalUrl = url ? normalizeUrl(url) : '';
 
     // Insert the portal into unified portals table
     const { data: portal, error: portalError } = await supabase
       .from('portals')
       .insert({
-        ...portalData,
+        portal_name: title,
+        portal_url: portalUrl,
+        username,
+        password,
+        notes,
         portal_type: 'academic',
         created_at: new Date().toISOString()
       })
@@ -120,7 +118,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Sync portal credentials to passwords table using the better sync function
-    if (portal && (portalData.username && portalData.password)) {
+    if (portal && username && password) {
       const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
       
@@ -162,14 +160,14 @@ export async function POST(request: NextRequest) {
       const syncResult = await ensurePortalAndPassword({
         providerType: 'academic',
         providerId: portal.id,
-        providerName: portal.portal_name,
-        portal_url: portal.portal_url,
-        portal_username: portal.username,
-        portal_password: portal.password,
+        providerName: title,
+        portal_url: portalUrl,
+        portal_username: username,
+        portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: portal.notes || `Academic portal for ${portal.portal_name}`,
+        notes: notes || `Academic portal for ${title}`,
         source: 'academic_portal'
       });
       

@@ -5,6 +5,9 @@ import { Eye, EyeOff, Users } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
 import { CredentialFormField } from '@/components/credentials/CredentialFormField';
+import { Slider } from '@/components/ui/slider';
+import { smartUrlComplete } from '@/lib/utils/url-helper';
+import { getPasswordStrength } from '@/lib/passwords/utils';
 
 interface PortalModalProps {
   isOpen: boolean;
@@ -24,34 +27,39 @@ export function PortalModal({
   selectedChild
 }: PortalModalProps) {
   const [formData, setFormData] = useState({
-    children: selectedChild !== 'all' ? [selectedChild] : [],
-    portal_name: '',
-    url: '',
+    title: '',
     username: '',
     password: '',
+    url: '',
+    children: selectedChild !== 'all' ? [selectedChild] : [],
     notes: ''
   });
 
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [passwordLength, setPasswordLength] = useState(16);
+  const [includeUppercase, setIncludeUppercase] = useState(true);
+  const [includeLowercase, setIncludeLowercase] = useState(true);
+  const [includeNumbers, setIncludeNumbers] = useState(true);
+  const [includeSymbols, setIncludeSymbols] = useState(true);
 
   useEffect(() => {
     if (editingPortal) {
       setFormData({
-        children: editingPortal.children || [],
-        portal_name: editingPortal.portal_name || '',
-        url: editingPortal.portal_url || editingPortal.url || '',
+        title: editingPortal.portal_name || editingPortal.title || '',
         username: editingPortal.username || '',
         password: editingPortal.password || '',
+        url: editingPortal.portal_url || editingPortal.url || '',
+        children: editingPortal.children || [],
         notes: editingPortal.notes || ''
       });
     } else {
       setFormData({
-        children: selectedChild !== 'all' ? [selectedChild] : [],
-        portal_name: '',
-        url: '',
+        title: '',
         username: '',
         password: '',
+        url: '',
+        children: selectedChild !== 'all' ? [selectedChild] : [],
         notes: ''
       });
     }
@@ -68,7 +76,14 @@ export function PortalModal({
         normalizedUrl = 'https://' + normalizedUrl;
       }
       
-      await onSubmit({ ...formData, url: normalizedUrl });
+      await onSubmit({
+        title: formData.title,
+        username: formData.username,
+        password: formData.password,
+        url: normalizedUrl,
+        children: formData.children,
+        notes: formData.notes
+      });
       onClose();
     } catch (error) {
       console.error('Error submitting portal:', error);
@@ -89,13 +104,24 @@ export function PortalModal({
   };
 
   const generatePassword = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let charset = '';
+    if (includeLowercase) charset += 'abcdefghijklmnopqrstuvwxyz';
+    if (includeUppercase) charset += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if (includeNumbers) charset += '0123456789';
+    if (includeSymbols) charset += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+    if (!charset) {
+      charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    }
+
     let password = '';
-    for (let i = 0; i < 16; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < passwordLength; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
     }
     setFormData({ ...formData, password });
   };
+
+  const passwordStrength = getPasswordStrength(formData.password || '');
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" ariaLabel="Portal form">
@@ -108,48 +134,14 @@ export function PortalModal({
         </ModalHeader>
 
         <ModalBody className="space-y-5">
-          <CredentialFormField
-            id="portal-children"
-            label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Children</span>}
-            description={children.length === 0 ? 'No children available' : undefined}
-          >
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
-              {children.map(child => (
-                <div key={child.id} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`portal-child-${child.id}`}
-                    checked={formData.children.includes(child.id)}
-                    onCheckedChange={checked => handleChildToggle(child.id, Boolean(checked))}
-                  />
-                  <label
-                    htmlFor={`portal-child-${child.id}`}
-                    className="cursor-pointer text-sm text-neutral-200"
-                  >
-                    {child.name}
-                  </label>
-                </div>
-              ))}
-            </div>
-          </CredentialFormField>
-
-          <CredentialFormField id="portal-name" label="Portal Name" required>
+          <CredentialFormField id="portal-title" label="Title" required>
             <input
-              id="portal-name"
-              value={formData.portal_name}
-              onChange={(e) => setFormData({ ...formData, portal_name: e.target.value })}
-              required
-              placeholder="e.g., PowerSchool, Canvas, Google Classroom"
-              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
-            />
-          </CredentialFormField>
-
-          <CredentialFormField id="portal-url" label="Portal URL">
-            <input
-              id="portal-url"
+              id="portal-title"
               type="text"
-              value={formData.url}
-              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-              placeholder="e.g., canvas.com or https://canvas.com"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              required
+              placeholder="e.g., Canvas Portal"
               className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
             />
           </CredentialFormField>
@@ -191,6 +183,110 @@ export function PortalModal({
               >
                 Generate
               </button>
+            </div>
+          </CredentialFormField>
+
+          <div className="space-y-3 rounded-xl border border-neutral-600 bg-neutral-800/60 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-neutral-300">Password Length: {passwordLength}</span>
+              <Slider
+                value={passwordLength}
+                onValueChange={(value) => setPasswordLength(value[0])}
+                min={8}
+                max={32}
+                step={1}
+                className="w-32"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeUppercase}
+                  onCheckedChange={(checked) => setIncludeUppercase(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Uppercase</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeLowercase}
+                  onCheckedChange={(checked) => setIncludeLowercase(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Lowercase</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeNumbers}
+                  onCheckedChange={(checked) => setIncludeNumbers(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Numbers</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeSymbols}
+                  onCheckedChange={(checked) => setIncludeSymbols(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Symbols</span>
+              </label>
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm text-neutral-300">Strength:</span>
+                <span
+                  className={`text-sm capitalize ${
+                    passwordStrength === 'strong'
+                      ? 'text-green-500'
+                      : passwordStrength === 'medium'
+                      ? 'text-yellow-500'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {passwordStrength}
+                </span>
+              </div>
+              <div className="h-2 w-full rounded bg-neutral-600">
+                <div
+                  className={`h-full rounded transition-all ${
+                    passwordStrength === 'strong'
+                      ? 'w-full bg-green-500'
+                      : passwordStrength === 'medium'
+                      ? 'w-2/3 bg-yellow-500'
+                      : 'w-1/3 bg-red-500'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+
+          <CredentialFormField
+            id="portal-url"
+            label="URL"
+            helperText={formData.url ? `Will be saved as: ${smartUrlComplete(formData.url)}` : undefined}
+          >
+            <input
+              id="portal-url"
+              type="text"
+              value={formData.url}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+              placeholder="example.com or https://example.com"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+
+          <CredentialFormField
+            id="portal-children"
+            label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Children</span>}
+          >
+            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
+              {children.map(child => (
+                <label key={child.id} className="flex items-center gap-2 rounded p-1 transition hover:bg-neutral-600">
+                  <Checkbox
+                    id={`portal-child-${child.id}`}
+                    checked={formData.children.includes(child.id)}
+                    onCheckedChange={checked => handleChildToggle(child.id, Boolean(checked))}
+                  />
+                  <span className="text-sm text-neutral-200">{child.name}</span>
+                </label>
+              ))}
             </div>
           </CredentialFormField>
 

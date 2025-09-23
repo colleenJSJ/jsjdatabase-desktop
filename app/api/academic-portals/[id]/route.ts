@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { normalizeUrl } from '@/lib/utils/url-helper';
 
 export async function GET(
   request: NextRequest,
@@ -54,20 +55,26 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { children, url, ...portalData } = body;
+    const { children, url, title, username, password, notes } = body;
 
     // Map url to portal_url for database compatibility
-    if (url) {
-      portalData.portal_url = url;
-    }
-    
-    // Remove child_id from portalData as we'll use junction table
-    delete portalData.child_id;
-
+    const portalUrl = url ? normalizeUrl(url) : undefined;
     // Update the portal
+    const updates: Record<string, unknown> = {
+      portal_name: title,
+      username,
+      password,
+      notes,
+      updated_at: new Date().toISOString()
+    };
+
+    if (portalUrl !== undefined) {
+      updates.portal_url = portalUrl;
+    }
+
     const { data: portal, error: portalError } = await supabase
       .from('j3_academics_portals')
-      .update(portalData)
+      .update(updates)
       .eq('id', id)
       .select()
       .single();
@@ -100,7 +107,7 @@ export async function PUT(
       }
     }
 
-    if (portal && portalData.username && portalData.password) {
+    if (portal && username && password) {
       const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
 
@@ -129,14 +136,14 @@ export async function PUT(
       await ensurePortalAndPassword({
         providerType: 'academic',
         providerId: id,
-        providerName: portalData.portal_name || portal.portal_name,
-        portal_url: portalData.portal_url || portal.portal_url,
-        portal_username: portalData.username,
-        portal_password: portalData.password,
+        providerName: title || portal.portal_name,
+        portal_url: portalUrl || portal.portal_url,
+        portal_username: username,
+        portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: portalData.notes || portal.notes,
+        notes: notes || portal.notes,
         source: 'academic_portal'
       });
     }
