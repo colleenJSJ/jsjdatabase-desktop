@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveFamilyMemberToUser, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
+import { normalizeUrl } from '@/lib/utils/url-helper';
 
 export async function GET(request: NextRequest) {
   try {
@@ -96,22 +97,29 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const { title, doctorId, username, password, url, notes, patientIds } = body;
 
-    // Validate required fields
-    if (!body.name) {
+    if (!title) {
       return NextResponse.json({ error: 'Portal name is required' }, { status: 400 });
     }
 
-    // Create portal data for unified portals table
+    const normalizedUrl = url ? normalizeUrl(url) : null;
+    const encryptedPassword = password
+      ? await (async () => {
+          const { encrypt } = await import('@/lib/encryption');
+          return encrypt(password);
+        })()
+      : null;
+
     const portalData = {
       portal_type: 'medical',
-      portal_name: body.name,
-      portal_url: body.portal_url || null,
-      entity_id: body.doctor_id || null, // doctor_id maps to entity_id
-      username: body.username || null,
-      password: body.password ? (await (async () => { const { encrypt } = await import('@/lib/encryption'); return encrypt(body.password); })()) : null,
-      notes: body.notes || null,
-      patient_ids: body.patient_ids || [],
+      portal_name: title,
+      portal_url: normalizedUrl,
+      entity_id: doctorId || null,
+      username: username || null,
+      password: encryptedPassword,
+      notes: notes || null,
+      patient_ids: patientIds || [],
       created_by: user.id
     };
 
@@ -132,7 +140,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Sync portal credentials to passwords table using the better sync function
-    if (portal && (portalData.username && portalData.password)) {
+    if (portal && username && password) {
       const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
       
@@ -158,14 +166,14 @@ export async function POST(request: NextRequest) {
       const syncResult = await ensurePortalAndPassword({
         providerType: 'medical',
         providerId: portal.entity_id || portal.id,
-        providerName: portal.portal_name,
-        portal_url: portal.portal_url,
-        portal_username: portal.username,
-        portal_password: portal.password,
+        providerName: title,
+        portal_url: normalizedUrl || portal.portal_url,
+        portal_username: username,
+        portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: portal.notes || `Portal for ${portal.portal_name}`,
+        notes: notes || portal.notes || `Portal for ${title}`,
         source: 'medical_portal'
       });
       

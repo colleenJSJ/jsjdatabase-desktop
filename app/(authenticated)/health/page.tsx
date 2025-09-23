@@ -25,6 +25,10 @@ import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { Category } from '@/lib/categories/categories-client';
 import { Password } from '@/lib/services/password-service-interface';
 import { getPasswordStrength } from '@/lib/passwords/utils';
+import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
+import { CredentialFormField } from '@/components/credentials/CredentialFormField';
+import { Slider } from '@/components/ui/slider';
+import { smartUrlComplete } from '@/lib/utils/url-helper';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -1859,188 +1863,324 @@ function PortalModal({
   onSave: (portal: MedicalPortal) => void;
 }) {
   const [formData, setFormData] = useState({
-    name: portal?.name || '',
-    portal_url: portal?.portal_url || '',
-    doctor_id: portal?.doctor_id || '',
+    title: portal?.name || '',
+    doctorId: portal?.doctor_id || '',
     username: portal?.username || '',
     password: portal?.password || '',
+    url: portal?.portal_url || '',
     notes: portal?.notes || '',
-    patient_ids: portal?.patient_ids || [],
+    patientIds: portal?.patient_ids || [],
   });
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordLength, setPasswordLength] = useState(16);
+  const [includeUppercase, setIncludeUppercase] = useState(true);
+  const [includeLowercase, setIncludeLowercase] = useState(true);
+  const [includeNumbers, setIncludeNumbers] = useState(true);
+  const [includeSymbols, setIncludeSymbols] = useState(true);
+
+  useEffect(() => {
+    if (portal) {
+      setFormData({
+        title: portal.name || '',
+        doctorId: portal.doctor_id || '',
+        username: portal.username || '',
+        password: portal.password || '',
+        url: portal.portal_url || '',
+        notes: portal.notes || '',
+        patientIds: portal.patient_ids || [],
+      });
+    } else {
+      setFormData({
+        title: '',
+        doctorId: '',
+        username: '',
+        password: '',
+        url: '',
+        notes: '',
+        patientIds: familyMembers.length === 1 ? [familyMembers[0].id] : [],
+      });
+    }
+  }, [portal, familyMembers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setIsSubmitting(true);
 
     try {
-      const url = portal ? `/api/medical-portals/${portal.id}` : '/api/medical-portals';
-      const response = await fetch(url, {
+      const endpoint = portal ? `/api/medical-portals/${portal.id}` : '/api/medical-portals';
+      const response = await fetch(endpoint, {
         method: portal ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...formData,
-          portal_url: formData.portal_url ? normalizeUrl(formData.portal_url) : null,
+          title: formData.title,
+          doctorId: formData.doctorId,
+          username: formData.username,
+          password: formData.password,
+          url: formData.url,
+          notes: formData.notes,
+          patientIds: formData.patientIds,
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        onSave(data.portal);
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        console.error('Failed to save portal:', errorData);
-        alert(errorData.error || 'Failed to save portal');
+        throw new Error(errorData.error || 'Failed to save portal');
       }
+
+      const data = await response.json();
+      onSave(data.portal);
+      onClose();
     } catch (error) {
       console.error('Error saving portal:', error);
       alert('Failed to save portal. Please try again.');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
+  const handlePatientToggle = (patientId: string, checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      patientIds: checked
+        ? [...prev.patientIds, patientId]
+        : prev.patientIds.filter(id => id !== patientId),
+    }));
+  };
+
+  const generatePassword = () => {
+    let charset = '';
+    if (includeLowercase) charset += 'abcdefghijklmnopqrstuvwxyz';
+    if (includeUppercase) charset += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if (includeNumbers) charset += '0123456789';
+    if (includeSymbols) charset += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+    if (!charset) {
+      charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    }
+
+    let password = '';
+    for (let i = 0; i < passwordLength; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    setFormData(prev => ({ ...prev, password }));
+  };
+
+  const passwordStrength = getPasswordStrength(formData.password || '');
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-background-secondary rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto border border-gray-600/30">
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-text-primary mb-4">
-            {portal ? 'Edit Portal' : 'Add Medical Portal'}
-          </h2>
-          
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Portal Name *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                placeholder="e.g., MyChart, Patient Portal"
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-            </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg" ariaLabel="Medical portal form">
+      <form onSubmit={handleSubmit} className="flex flex-col">
+        <ModalHeader>
+          <div className="flex w-full items-start justify-between gap-4">
+            <ModalTitle>{portal ? 'Edit Medical Portal' : 'Add Medical Portal'}</ModalTitle>
+            <ModalCloseButton onClose={onClose} />
+          </div>
+        </ModalHeader>
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Portal URL
-              </label>
-              <input
-                type="text"
-                value={formData.portal_url}
-                onChange={(e) => setFormData({ ...formData, portal_url: e.target.value })}
-                placeholder="portal.example.com"
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-            </div>
+        <ModalBody className="space-y-5">
+          <CredentialFormField id="medical-portal-title" label="Title" required>
+            <input
+              id="medical-portal-title"
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              required
+              placeholder="e.g., MyChart Portal"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Associated Doctor
-              </label>
-              <select
-                value={formData.doctor_id}
-                onChange={(e) => setFormData({ ...formData, doctor_id: e.target.value })}
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              >
-                <option value="">Select doctor (optional)</option>
-                {doctors.map(doctor => (
-                  <option key={doctor.id} value={doctor.id}>
-                    {doctor.name} - {doctor.specialty}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <CredentialFormField id="medical-portal-doctor" label="Associated Doctor">
+            <select
+              id="medical-portal-doctor"
+              value={formData.doctorId}
+              onChange={(e) => setFormData({ ...formData, doctorId: e.target.value })}
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            >
+              <option value="">Select doctor (optional)</option>
+              {doctors.map(doctor => (
+                <option key={doctor.id} value={doctor.id}>
+                  {doctor.name} {doctor.specialty ? `- ${doctor.specialty}` : ''}
+                </option>
+              ))}
+            </select>
+          </CredentialFormField>
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Username
-              </label>
-              <input
-                type="text"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-            </div>
+          <CredentialFormField id="medical-portal-username" label="Username">
+            <input
+              id="medical-portal-username"
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              placeholder="Username or email"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-              {formData.username && formData.password && (
-                <p className="text-xs text-text-muted mt-1">
-                  This will automatically be saved to your password manager
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Patients *
-              </label>
-              <div className="space-y-2">
-                {familyMembers.map(member => (
-                  <label key={member.id} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      value={member.id}
-                      checked={formData.patient_ids.includes(member.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setFormData({ ...formData, patient_ids: [...formData.patient_ids, member.id] });
-                        } else {
-                          setFormData({ ...formData, patient_ids: formData.patient_ids.filter(p => p !== member.id) });
-                        }
-                      }}
-                      className="rounded border-neutral-600 bg-neutral-700 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="text-sm text-text-primary">{getFirstName(member.name)}</span>
-                  </label>
-                ))}
+          <CredentialFormField id="medical-portal-password" label="Password">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  id="medical-portal-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Password"
+                  className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 pr-10 text-white focus:outline-none focus:border-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(prev => !prev)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 transition hover:text-white"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Notes
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={3}
-                placeholder="Any additional information about this portal"
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                type="submit"
-                disabled={loading || !formData.name || formData.patient_ids.length === 0}
-                className="flex-1 py-2 px-4 bg-button-create hover:bg-button-create/90 disabled:bg-gray-700/50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
-              >
-                {loading ? 'Saving...' : 'Save'}
-              </button>
               <button
                 type="button"
-                onClick={onClose}
-                className="flex-1 py-2 px-4 bg-background-primary hover:bg-background-primary/80 text-text-primary font-medium rounded-md border border-gray-600/30 transition-colors"
+                onClick={generatePassword}
+                className="rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white transition-colors hover:bg-neutral-600"
               >
-                Cancel
+                Generate
               </button>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
+          </CredentialFormField>
+
+          <div className="space-y-3 rounded-xl border border-neutral-600 bg-neutral-800/60 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-neutral-300">Password Length: {passwordLength}</span>
+              <Slider
+                value={passwordLength}
+                onValueChange={(value) => setPasswordLength(value[0])}
+                min={8}
+                max={32}
+                step={1}
+                className="w-32"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeUppercase}
+                  onCheckedChange={(checked) => setIncludeUppercase(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Uppercase</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeLowercase}
+                  onCheckedChange={(checked) => setIncludeLowercase(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Lowercase</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeNumbers}
+                  onCheckedChange={(checked) => setIncludeNumbers(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Numbers</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeSymbols}
+                  onCheckedChange={(checked) => setIncludeSymbols(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Symbols</span>
+              </label>
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm text-neutral-300">Strength:</span>
+                <span
+                  className={`text-sm capitalize ${
+                    passwordStrength === 'strong'
+                      ? 'text-green-500'
+                      : passwordStrength === 'medium'
+                      ? 'text-yellow-500'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {passwordStrength}
+                </span>
+              </div>
+              <div className="h-2 w-full rounded bg-neutral-600">
+                <div
+                  className={`h-full rounded transition-all ${
+                    passwordStrength === 'strong'
+                      ? 'w-full bg-green-500'
+                      : passwordStrength === 'medium'
+                      ? 'w-2/3 bg-yellow-500'
+                      : 'w-1/3 bg-red-500'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+
+          <CredentialFormField
+            id="medical-portal-url"
+            label="URL"
+            helperText={formData.url ? `Will be saved as: ${smartUrlComplete(formData.url)}` : undefined}
+          >
+            <input
+              id="medical-portal-url"
+              type="text"
+              value={formData.url}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+              placeholder="example.com or https://example.com"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+
+          <CredentialFormField
+            id="medical-portal-patients"
+            label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Patients</span>}
+          >
+            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
+              {familyMembers.map(member => (
+                <label key={member.id} className="flex items-center gap-2 rounded p-1 transition hover:bg-neutral-600">
+                  <Checkbox
+                    id={`medical-patient-${member.id}`}
+                    checked={formData.patientIds.includes(member.id)}
+                    onCheckedChange={(checked) => handlePatientToggle(member.id, Boolean(checked))}
+                  />
+                  <span className="text-sm text-neutral-200">{getFirstName(member.name)}</span>
+                </label>
+              ))}
+            </div>
+          </CredentialFormField>
+
+          <CredentialFormField id="medical-portal-notes" label="Notes">
+            <textarea
+              id="medical-portal-notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={3}
+              placeholder="Any additional information about this portal"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+        </ModalBody>
+
+        <ModalFooter className="gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex-1 rounded-md border border-neutral-600 bg-neutral-700 px-4 py-2 text-white transition-colors hover:bg-neutral-600 disabled:cursor-not-allowed disabled:opacity-70 sm:flex-initial"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || !formData.title || formData.patientIds.length === 0}
+            className="flex-1 rounded-md bg-button-create px-4 py-2 text-white transition-colors hover:bg-button-create/90 disabled:cursor-not-allowed disabled:bg-neutral-600 sm:flex-initial"
+          >
+            {isSubmitting ? 'Saving...' : 'Save'}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }

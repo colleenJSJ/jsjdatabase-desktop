@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { ensurePortalAndPassword } from '@/lib/services/portal-password-sync';
-import { deletePortalAndPassword } from '@/lib/services/portal-password-sync';
+import { ensurePortalAndPassword, deletePortalAndPassword } from '@/lib/services/portal-password-sync';
+import { normalizeUrl } from '@/lib/utils/url-helper';
 
 export async function GET(
   request: NextRequest,
@@ -80,26 +80,38 @@ export async function PUT(
     }
 
     const body = await request.json();
+    const { title, doctorId, username, password, url, notes, patientIds } = body;
 
-    // Update portal data
-    const updateData: any = {
+    const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString()
     };
 
-    // Only update provided fields (map to unified portals schema)
-    if (body.name !== undefined) updateData.portal_name = body.name;
-    if (body.portal_url !== undefined) updateData.portal_url = body.portal_url;
-    if (body.doctor_id !== undefined) updateData.entity_id = body.doctor_id;
-    if (body.username !== undefined) updateData.username = body.username;
-    if (body.password !== undefined) updateData.password = body.password;
-    if (body.notes !== undefined) updateData.notes = body.notes;
-    if (body.patient_ids !== undefined) updateData.patient_ids = body.patient_ids;
-    if (body.last_accessed !== undefined) updateData.last_accessed = body.last_accessed;
+    if (title !== undefined) updates.portal_name = title;
+    if (doctorId !== undefined) updates.entity_id = doctorId || null;
+    if (username !== undefined) updates.username = username || null;
+    if (notes !== undefined) updates.notes = notes || null;
+    if (patientIds !== undefined) updates.patient_ids = patientIds;
 
-    // Update portal in unified portals table
+    let normalizedUrl: string | null | undefined;
+    if (url !== undefined) {
+      normalizedUrl = url ? normalizeUrl(url) : null;
+      updates.portal_url = normalizedUrl;
+    }
+
+    let plainPassword: string | null | undefined = undefined;
+    if (password !== undefined) {
+      plainPassword = password;
+      updates.password = password
+        ? await (async () => {
+            const { encrypt } = await import('@/lib/encryption');
+            return encrypt(password);
+          })()
+        : null;
+    }
+
     const { data: portal, error: updateError } = await supabase
       .from('portals')
-      .update(updateData)
+      .update(updates)
       .eq('id', id)
       .eq('portal_type', 'medical')
       .select(`
@@ -117,32 +129,44 @@ export async function PUT(
       return NextResponse.json({ error: 'Portal not found' }, { status: 404 });
     }
 
-    // Sync updated portal credentials to passwords table
-    if (portal && (updateData.username !== undefined || updateData.password !== undefined || updateData.portal_url !== undefined)) {
-      // Convert patient_ids (family members) to user ids
+    if (portal) {
+      const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
       const patientUserIds: string[] = [];
       if (Array.isArray(portal.patient_ids)) {
-        const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
         for (const fm of portal.patient_ids) {
           const u = await resolveFamilyMemberToUser(String(fm));
           if (u) patientUserIds.push(u);
         }
       }
+
       const ownerId = patientUserIds[0] || user.id;
       const sharedWith = patientUserIds.slice(1);
-      await ensurePortalAndPassword({
-        providerType: 'medical',
-        providerId: portal.entity_id || portal.id,
-        providerName: portal.portal_name,
-        portal_url: portal.portal_url,
-        portal_username: portal.username,
-        portal_password: portal.password,
-        ownerId,
-        sharedWith,
-        createdBy: user.id,
-        notes: portal.notes || `Portal for ${portal.portal_name}`,
-        source: 'medical_portal'
-      });
+
+      let portalPassword = plainPassword ?? null;
+      if (portalPassword == null && portal.password) {
+        try {
+          const { decrypt } = await import('@/lib/encryption');
+          portalPassword = decrypt(portal.password);
+        } catch (error) {
+          console.error('[Medical Portals] Failed to decrypt existing password', error);
+        }
+      }
+
+      if (portalPassword && (username || portal.username || plainPassword !== undefined || normalizedUrl !== undefined)) {
+        await ensurePortalAndPassword({
+          providerType: 'medical',
+          providerId: portal.entity_id || portal.id,
+          providerName: title ?? portal.portal_name,
+          portal_url: normalizedUrl ?? portal.portal_url,
+          portal_username: (username ?? portal.username) || '',
+          portal_password: portalPassword,
+          ownerId,
+          sharedWith,
+          createdBy: user.id,
+          notes: notes ?? portal.notes ?? `Portal for ${title ?? portal.portal_name}`,
+          source: 'medical_portal'
+        });
+      }
     }
 
     return NextResponse.json({ portal });
