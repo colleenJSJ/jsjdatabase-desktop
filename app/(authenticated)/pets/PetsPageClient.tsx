@@ -562,7 +562,12 @@ export default function PetsPageClient() {
         />
       )}
       {showAddPortal && (
-        <AddPetPortalModal onClose={()=>setShowAddPortal(false)} onSaved={()=>{ setShowAddPortal(false); }} />
+        <AddPetPortalModal
+          pets={pets}
+          selectedPetId={selectedPetId}
+          onClose={() => setShowAddPortal(false)}
+          onSaved={loadData}
+        />
       )}
       {selectedAppointment && (
         <ViewPetAppointmentModal
