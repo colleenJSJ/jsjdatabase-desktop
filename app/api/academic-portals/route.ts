@@ -71,10 +71,8 @@ export async function GET(request: NextRequest) {
             return null;
           }
           
-          const serializedPortal = serializePortal(portal);
-
           return {
-            ...serializedPortal,
+            ...serializePortal(portal),
             children: childIds
           };
         })
@@ -82,10 +80,10 @@ export async function GET(request: NextRequest) {
       
       // Filter out null values (portals that don't match the childId filter)
       const filteredPortals = portalsWithChildren.filter(p => p !== null);
-      return NextResponse.json(filteredPortals);
+      return NextResponse.json({ portals: filteredPortals });
     }
 
-    return NextResponse.json([]);
+    return NextResponse.json({ portals: [] });
   } catch (error) {
     console.error('Error in GET /api/academic-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
