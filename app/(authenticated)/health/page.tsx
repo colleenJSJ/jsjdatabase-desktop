@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { 
   Calendar, Pill, FileText, Plus, 
   Clock, Phone, Globe, MapPin, X,
-  Eye, EyeOff, Copy, Mail, Lock, KeyRound, Edit2, Trash2, Upload, Stethoscope
+  Eye, EyeOff, Copy, Mail, Lock, KeyRound, Edit2, Trash2, Upload, Stethoscope, Users
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Task } from '@/lib/supabase/types';
