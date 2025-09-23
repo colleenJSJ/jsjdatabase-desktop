@@ -13,6 +13,11 @@ import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { Category } from '@/lib/categories/categories-client';
 import { Password } from '@/lib/services/password-service-interface';
 import { getPasswordStrength } from '@/lib/passwords/utils';
+import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
+import { CredentialFormField } from '@/components/credentials/CredentialFormField';
+import { Slider } from '@/components/ui/slider';
+import { Checkbox } from '@/components/ui/checkbox';
+import { smartUrlComplete } from '@/lib/utils/url-helper';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -571,49 +576,301 @@ export default function PetsPageClient() {
   );
 }
 
-function AddPetPortalModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState('');
-  const [portalUrl, setPortalUrl] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const submit = async () => {
-    try {
-      setSubmitting(true);
-      const payload = { name, portal_url: portalUrl, username, password };
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-      const res = await ApiClient.post('/api/pet-portals', payload);
-      if (res.success) onSaved();
-    } finally { setSubmitting(false); }
+function AddPetPortalModal({
+  pets,
+  selectedPetId,
+  onClose,
+  onSaved,
+}: {
+  pets: { id: string; name?: string | null }[];
+  selectedPetId: string;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [formData, setFormData] = useState({
+    title: '',
+    petId: '',
+    username: '',
+    password: '',
+    url: '',
+    notes: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordLength, setPasswordLength] = useState(16);
+  const [includeUppercase, setIncludeUppercase] = useState(true);
+  const [includeLowercase, setIncludeLowercase] = useState(true);
+  const [includeNumbers, setIncludeNumbers] = useState(true);
+  const [includeSymbols, setIncludeSymbols] = useState(true);
+
+  useEffect(() => {
+    const defaultPetId = (() => {
+      if (selectedPetId !== 'all' && pets.some(pet => pet.id === selectedPetId)) {
+        return selectedPetId;
+      }
+      return pets[0]?.id || '';
+    })();
+
+    setFormData({
+      title: '',
+      petId: defaultPetId,
+      username: '',
+      password: '',
+      url: '',
+      notes: '',
+    });
+  }, [pets, selectedPetId]);
+
+  const passwordStrength = getPasswordStrength(formData.password || '');
+
+  const generatePassword = () => {
+    let charset = '';
+    if (includeLowercase) charset += 'abcdefghijklmnopqrstuvwxyz';
+    if (includeUppercase) charset += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if (includeNumbers) charset += '0123456789';
+    if (includeSymbols) charset += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+    if (!charset) {
+      charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    }
+
+    let password = '';
+    for (let i = 0; i < passwordLength; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    setFormData(prev => ({ ...prev, password }));
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title || !formData.petId) {
+      alert('Please enter a title and select a pet.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/pet-portals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formData.title,
+          petId: formData.petId,
+          username: formData.username,
+          password: formData.password,
+          url: formData.url,
+          notes: formData.notes,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save portal');
+      }
+
+      await onSaved();
+      onClose();
+    } catch (error) {
+      console.error('Error saving pet portal:', error);
+      alert('Failed to save portal. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-background-secondary rounded-xl w-full max-w-md border border-gray-600/30">
-        <div className="p-4 border-b border-gray-600/30 flex items-center justify-between">
-          <div className="font-semibold text-text-primary">Add Portal</div>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary">✕</button>
-        </div>
-        <div className="p-4 space-y-3">
-          <label className="block text-sm">Name
-            <input value={name} onChange={e=>setName(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-          </label>
-          <label className="block text-sm">Portal URL
-            <input value={portalUrl} onChange={e=>setPortalUrl(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">Username
-              <input value={username} onChange={e=>setUsername(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-            </label>
-            <label className="block text-sm">Password
-              <input value={password} onChange={e=>setPassword(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-            </label>
+    <Modal isOpen onClose={onClose} size="lg" ariaLabel="Add pet portal">
+      <form onSubmit={handleSubmit} className="flex flex-col">
+        <ModalHeader>
+          <div className="flex w-full items-start justify-between gap-4">
+            <ModalTitle>Add Pet Portal</ModalTitle>
+            <ModalCloseButton onClose={onClose} />
           </div>
-        </div>
-        <div className="p-4 border-t border-gray-600/30 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="px-3 py-2 bg-button-create disabled:bg-gray-700 text-white rounded">{submitting ? 'Saving...' : 'Save'}</button>
-        </div>
-      </div>
-    </div>
+        </ModalHeader>
+
+        <ModalBody className="space-y-5">
+          <CredentialFormField id="pet-portal-title" label="Title" required>
+            <input
+              id="pet-portal-title"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              required
+              placeholder="e.g., Vet Portal"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+
+          <CredentialFormField id="pet-portal-pet" label="Pet" required>
+            <select
+              id="pet-portal-pet"
+              value={formData.petId}
+              onChange={(e) => setFormData({ ...formData, petId: e.target.value })}
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            >
+              {pets.length === 0 && <option value="">No pets available</option>}
+              {pets.map(pet => (
+                <option key={pet.id} value={pet.id}>
+                  {pet.name || 'Pet'}
+                </option>
+              ))}
+            </select>
+          </CredentialFormField>
+
+          <CredentialFormField id="pet-portal-username" label="Username">
+            <input
+              id="pet-portal-username"
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              placeholder="Username or email"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+
+          <CredentialFormField id="pet-portal-password" label="Password">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  id="pet-portal-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Password"
+                  className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 pr-10 text-white focus:outline-none focus:border-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(prev => !prev)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 transition hover:text-white"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={generatePassword}
+                className="rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white transition-colors hover:bg-neutral-600"
+              >
+                Generate
+              </button>
+            </div>
+          </CredentialFormField>
+
+          <div className="space-y-3 rounded-xl border border-neutral-600 bg-neutral-800/60 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-neutral-300">Password Length: {passwordLength}</span>
+              <Slider
+                value={passwordLength}
+                onValueChange={(value) => setPasswordLength(value[0])}
+                min={8}
+                max={32}
+                step={1}
+                className="w-32"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeUppercase}
+                  onCheckedChange={(checked) => setIncludeUppercase(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Uppercase</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeLowercase}
+                  onCheckedChange={(checked) => setIncludeLowercase(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Lowercase</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeNumbers}
+                  onCheckedChange={(checked) => setIncludeNumbers(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Numbers</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={includeSymbols}
+                  onCheckedChange={(checked) => setIncludeSymbols(Boolean(checked))}
+                />
+                <span className="text-sm text-neutral-300">Symbols</span>
+              </label>
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm text-neutral-300">Strength:</span>
+                <span
+                  className={`text-sm capitalize ${
+                    passwordStrength === 'strong'
+                      ? 'text-green-500'
+                      : passwordStrength === 'medium'
+                      ? 'text-yellow-500'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {passwordStrength}
+                </span>
+              </div>
+              <div className="h-2 w-full rounded bg-neutral-600">
+                <div
+                  className={`h-full rounded transition-all ${
+                    passwordStrength === 'strong'
+                      ? 'w-full bg-green-500'
+                      : passwordStrength === 'medium'
+                      ? 'w-2/3 bg-yellow-500'
+                      : 'w-1/3 bg-red-500'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+
+          <CredentialFormField
+            id="pet-portal-url"
+            label="URL"
+            helperText={formData.url ? `Will be saved as: ${smartUrlComplete(formData.url)}` : undefined}
+          >
+            <input
+              id="pet-portal-url"
+              value={formData.url}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+              placeholder="example.com or https://example.com"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+
+          <CredentialFormField id="pet-portal-notes" label="Notes">
+            <textarea
+              id="pet-portal-notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={3}
+              placeholder="Any additional information about this portal"
+              className="w-full rounded-md border border-neutral-600 bg-neutral-700 px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+            />
+          </CredentialFormField>
+        </ModalBody>
+
+        <ModalFooter className="gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex-1 rounded-md border border-neutral-600 bg-neutral-700 px-4 py-2 text-white transition-colors hover:bg-neutral-600 disabled:cursor-not-allowed disabled:opacity-70 sm:flex-initial"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || !formData.title || !formData.petId}
+            className="flex-1 rounded-md bg-button-create px-4 py-2 text-white transition-colors hover:bg-button-create/90 disabled:cursor-not-allowed disabled:bg-neutral-600 sm:flex-initial"
+          >
+            {isSubmitting ? 'Saving...' : 'Save'}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }

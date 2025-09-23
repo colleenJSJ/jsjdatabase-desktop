@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { normalizeUrl } from '@/lib/utils/url-helper';
+import { encrypt } from '@/lib/encryption';
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,6 +50,11 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
+    const { title, petId, username, password, url, notes } = body;
+
+    if (!title || !petId) {
+      return NextResponse.json({ error: 'Portal name and pet are required' }, { status: 400 });
+    }
 
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -55,17 +62,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Don't include is_active in portal data if the column doesn't exist
+    const normalizedUrl = url ? normalizeUrl(url) : null;
+    const encryptedPassword = password ? encrypt(password) : null;
+
     const portalData = {
       portal_type: 'pet',
-      portal_name: body.portal_name,
-      portal_url: body.portal_url,
-      entity_id: body.pet_id, // pet_id maps to entity_id
-      username: body.username,
-      password: body.password ? (await (async () => { const { encrypt } = await import('@/lib/encryption'); return encrypt(body.password); })()) : null,
-      provider_name: body.provider_name,
-      notes: body.notes,
-      created_by: user.id
+      portal_name: title,
+      portal_url: normalizedUrl,
+      entity_id: petId,
+      username: username || null,
+      password: encryptedPassword,
+      provider_name: title,
+      notes: notes || null,
+      created_by: user.id,
     };
 
     const { data: portal, error } = await supabase
@@ -78,8 +87,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Sync portal credentials to passwords table using the better sync function
-    if (portal && (body.username && body.password)) {
+    // Sync portal credentials to passwords table using the shared helper
+    if (portal && password) {
       const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
       
@@ -87,12 +96,12 @@ export async function POST(request: NextRequest) {
       // We need to find the pet's owner(s)
       let petOwnerUserIds: string[] = [];
       
-      if (body.pet_id) {
+      if (petId) {
         // Get the pet's parent (owner) information
         const { data: petData } = await supabase
           .from('family_members')
           .select('parent_id')
-          .eq('id', body.pet_id)
+          .eq('id', petId)
           .eq('type', 'pet')
           .single();
         
@@ -112,24 +121,17 @@ export async function POST(request: NextRequest) {
       const ownerId = petOwnerUserIds[0] || user.id;
       const sharedWith = petOwnerUserIds.slice(1);
       
-      console.log('[Pet Portals API] Syncing portal to password:', {
-        portal_id: portal.id,
-        pet_id: body.pet_id,
-        owner: ownerId,
-        shared: sharedWith
-      });
-      
       const syncResult = await ensurePortalAndPassword({
         providerType: 'pet',
         providerId: portal.id,
-        providerName: portal.portal_name || portal.provider_name,
-        portal_url: portal.portal_url,
-        portal_username: portal.username,
-        portal_password: portal.password,
+        providerName: title,
+        portal_url: normalizedUrl || '',
+        portal_username: username || '',
+        portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: portal.notes || `Pet portal for ${portal.portal_name || portal.provider_name}`,
+        notes: notes || `Pet portal for ${title}`,
         source: 'pet_portal'
       });
       
