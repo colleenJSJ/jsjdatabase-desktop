@@ -10,7 +10,6 @@ import ViewPetAppointmentModal from './ViewPetAppointmentModal';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { PawPrint, Stethoscope, Syringe, Scissors, Eye, EyeOff } from 'lucide-react';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
-import { Category } from '@/lib/categories/categories-client';
 import { Password } from '@/lib/services/password-service-interface';
 import { getPasswordStrength } from '@/lib/passwords/utils';
 import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
@@ -387,44 +386,33 @@ export default function PetsPageClient() {
                     const portalUsername = (portal.username as string | undefined) || '';
                     const portalPassword = (portal.password as string | undefined) || '';
                     const notes = (portal.notes as string | undefined) || '';
-                    const rawPetIds = [
-                      ...(Array.isArray(portal.petIds) ? (portal.petIds as string[]) : []),
-                      ...(Array.isArray(portal.pets) ? (portal.pets as string[]) : []),
-                      (portal.pet_id as string | undefined)
-                    ].filter(Boolean) as string[];
-                    const uniquePetIds = Array.from(new Set(rawPetIds));
-                    const relatedPetNames = uniquePetIds
-                      .map(id => pets.find(p => p.id === id)?.name)
-                      .filter((name): name is string => Boolean(name));
+                  const rawPetIds = [
+                    typeof portal.entity_id === 'string' ? portal.entity_id : undefined,
+                    (portal.pet_id as string | undefined)
+                  ].filter(Boolean) as string[];
+                  const uniquePetIds = Array.from(new Set(rawPetIds));
+                  const relatedPetNames = uniquePetIds
+                    .map(id => pets.find(p => p.id === id)?.name)
+                    .filter((name): name is string => Boolean(name));
 
-                    const passwordRecord: Password = {
-                      id: portalId,
-                      service_name: portalName,
-                      username: portalUsername,
-                      password: portalPassword,
-                      url: portalUrl || undefined,
-                      category: 'pet-portal',
-                      notes: notes || undefined,
-                      owner_id: uniquePetIds[0] ?? 'shared',
-                      shared_with: uniquePetIds,
-                      is_favorite: false,
-                      is_shared: uniquePetIds.length > 1,
-                      last_changed: new Date(),
-                      strength: undefined,
-                      created_at: new Date(),
-                      updated_at: new Date(),
-                      source_page: 'pets',
-                    };
-
-                    const portalCategory: Category = {
-                      id: 'pet-portal',
-                      name: 'Pet Portal',
-                      color: '#f472b6',
-                      module: 'passwords',
-                      created_at: '1970-01-01T00:00:00Z',
-                      updated_at: '1970-01-01T00:00:00Z',
-                      icon: undefined,
-                    };
+                  const passwordRecord: Password = {
+                    id: portalId,
+                    service_name: portalName,
+                    username: portalUsername,
+                    password: portalPassword,
+                    url: portalUrl || undefined,
+                    category: 'pet-portal',
+                    notes: notes || undefined,
+                    owner_id: 'shared',
+                    shared_with: uniquePetIds,
+                    is_favorite: false,
+                    is_shared: uniquePetIds.length > 1,
+                    last_changed: new Date(),
+                    strength: undefined,
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                    source_page: 'pets',
+                  };
 
                     const extraContent = notes
                       ? <p className="text-xs text-text-muted/80 italic">{notes}</p>
@@ -434,9 +422,9 @@ export default function PetsPageClient() {
                       <PasswordCard
                         key={portalId}
                         password={passwordRecord}
-                    categories={[portalCategory]}
-                    users={portalUsers}
-                        subtitle="Pet Portal"
+                        categories={[]}
+                        users={portalUsers}
+                        subtitle={null}
                         assignedToLabel={relatedPetNames.length > 0 ? relatedPetNames.join(', ') : 'Shared'}
                         extraContent={extraContent}
                         showFavoriteToggle={false}

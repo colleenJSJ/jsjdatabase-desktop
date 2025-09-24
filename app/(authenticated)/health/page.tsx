@@ -77,6 +77,7 @@ interface FamilyMember {
   email?: string;
   is_child: boolean;
   created_at: string;
+  user_id?: string | null;
 }
 
 interface MedicalPortal {
@@ -969,7 +970,12 @@ export default function HealthPage() {
                 const portalName = portal.name || 'Portal';
                 const patientIds = Array.isArray(portal.patient_ids) ? portal.patient_ids : [];
                 const patientNames = patientIds
-                  .map(patientId => familyMembers.find(m => m.id === patientId)?.name)
+                  .map(patientId => {
+                    const matchById = familyMembers.find(m => m.id === patientId);
+                    if (matchById) return matchById.name;
+                    const matchByUser = familyMembers.find(m => m.user_id === patientId);
+                    return matchByUser?.name;
+                  })
                   .filter((name): name is string => Boolean(name));
                 const assignedLabel = patientNames.length > 0 ? patientNames.join(', ') : 'Shared';
 
@@ -981,7 +987,7 @@ export default function HealthPage() {
                   url: portal.portal_url || undefined,
                   category: 'medical-portal',
                   notes: portal.notes,
-                  owner_id: patientIds[0] ?? 'shared',
+                  owner_id: 'shared',
                   shared_with: patientIds,
                   is_favorite: false,
                   is_shared: patientIds.length > 1,

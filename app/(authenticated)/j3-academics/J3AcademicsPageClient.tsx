@@ -14,7 +14,6 @@ import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import ApiClient from '@/lib/api/api-client';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { Password } from '@/lib/services/password-service-interface';
-import { Category } from '@/lib/categories/categories-client';
 import { getPasswordStrength } from '@/lib/passwords/utils';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
@@ -239,6 +238,16 @@ export default function J3AcademicsPageClient() {
                   const portalUsername: string = portal.username || '';
                   const portalPassword: string = portal.password || '';
                   const notes: string | undefined = portal.notes || undefined;
+                  const childIds = Array.isArray(portal.children)
+                    ? (portal.children as string[])
+                    : Array.isArray(portal.child_ids)
+                      ? (portal.child_ids as string[])
+                      : portal.child_id
+                        ? [portal.child_id]
+                        : [];
+                  const childNames = childIds
+                    .map(childId => filteredKids.find(c => c.id === childId)?.name)
+                    .filter((name): name is string => Boolean(name));
 
                   const passwordRecord: Password = {
                     id: portalId,
@@ -248,25 +257,15 @@ export default function J3AcademicsPageClient() {
                     url: portalUrl || undefined,
                     category: 'academic-portal',
                     notes,
-                    owner_id: portal.child_id || 'shared',
-                    shared_with: Array.isArray(portal.child_ids) ? portal.child_ids : (portal.child_id ? [portal.child_id] : []),
+                    owner_id: 'shared',
+                    shared_with: childIds,
                     is_favorite: false,
-                    is_shared: true,
+                    is_shared: childIds.length > 1,
                     last_changed: portal.updated_at ? new Date(portal.updated_at) : new Date(),
                     strength: undefined,
                     created_at: portal.created_at ? new Date(portal.created_at) : new Date(),
                     updated_at: portal.updated_at ? new Date(portal.updated_at) : new Date(),
                     source_page: 'j3-academics',
-                  };
-
-                  const portalCategory: Category = {
-                    id: 'academic-portal',
-                    name: 'School Portal',
-                    color: '#a855f7',
-                    module: 'passwords',
-                    created_at: '1970-01-01T00:00:00Z',
-                    updated_at: '1970-01-01T00:00:00Z',
-                    icon: undefined,
                   };
 
                   const lastAccessDisplay = portal.last_accessed
@@ -297,10 +296,10 @@ export default function J3AcademicsPageClient() {
                     <PasswordCard
                       key={portalId}
                       password={passwordRecord}
-                      categories={[portalCategory]}
+                      categories={[]}
                       users={academicPortalUsers}
-                      subtitle={student?.name || 'Academic Portal'}
-                      assignedToLabel={student?.name || 'Shared'}
+                      subtitle={null}
+                      assignedToLabel={childNames.length > 0 ? childNames.join(', ') : student?.name || 'Shared'}
                       extraContent={notes ? <p className="text-xs text-text-muted/80 italic">{notes}</p> : null}
                       footerContent={footerContent}
                       showFavoriteToggle={false}
