@@ -440,64 +440,6 @@ export async function POST(request: NextRequest) {
       console.log('[Calendar API POST] Skipping Google sync');
     }
 
-    // Optionally send ICS invites if requested and we have email recipients
-    try {
-      const sendInvites = (event && (event.send_invites === true)) || false;
-      if (sendInvites) {
-        const { sendIcsInvite } = await import('@/lib/google/gmail-invite');
-        const { buildIcs, buildInviteHtml } = await import('@/lib/utils/ics-builder');
-        const recipients: string[] = [];
-        if (Array.isArray(newEvent.attendees)) {
-          newEvent.attendees.forEach((a: string) => { if (a && a.includes('@')) recipients.push(a); });
-        }
-        const extra = newEvent.metadata?.additional_attendees;
-        if (Array.isArray(extra)) extra.forEach((e: string) => { if (e && e.includes('@')) recipients.push(e); });
-        if (recipients.length > 0) {
-          const organizerEmail = user.email || 'no-reply@example.com';
-          const organizerName = (user as any).user_metadata?.name || organizerEmail.split('@')[0] || 'Organizer';
-          const uid = newEvent.id;
-          const location = newEvent.meeting_link || newEvent.location || undefined;
-          const ics = buildIcs({
-            uid,
-            title: newEvent.title,
-            description: newEvent.description || undefined,
-            location,
-            url: undefined,
-            start: newEvent.start_time,
-            end: newEvent.end_time,
-            organizerEmail,
-            organizerName,
-            attendees: recipients.map(email => ({ email })),
-            sequence: 0
-          });
-          const html = buildInviteHtml({
-            title: newEvent.title,
-            start: newEvent.start_time,
-            end: newEvent.end_time,
-            timezone: undefined,
-            location,
-            description: newEvent.description || undefined,
-            detailsUrl: undefined,
-            mapUrl: (location && location.startsWith('http')) ? location : (newEvent.location ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(newEvent.location)}` : undefined)
-          });
-          await sendIcsInvite({
-            userId: user.id,
-            fromEmail: organizerEmail,
-            fromName: organizerName,
-            to: recipients,
-            subject: newEvent.title,
-            textBody: newEvent.description || 'Event invitation',
-            htmlBody: html,
-            icsContent: ics,
-            method: 'REQUEST'
-          });
-          console.log('[Calendar API POST] ICS invites sent to:', recipients);
-        }
-      }
-    } catch (inviteError) {
-      console.error('[Calendar API POST] ICS invite error:', inviteError);
-    }
-
     return NextResponse.json({ event: newEvent });
   } catch (error) {
     console.error('[Calendar API POST] === UNCAUGHT ERROR ===');
