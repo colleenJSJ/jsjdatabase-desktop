@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         query = query.in('id', ids);
       } else {
         // No events for this child
-        return NextResponse.json([]);
+        return NextResponse.json({ events: [] });
       }
     }
 
@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
           };
         })
       );
-      return NextResponse.json(eventsWithAttendees);
+      return NextResponse.json({ events: eventsWithAttendees });
     }
 
-    return NextResponse.json(events || []);
+    return NextResponse.json({ events: events || [] });
   } catch (error) {
     console.error('Error in GET /api/academic-events:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...event, attendees: attendees || [] });
+    return NextResponse.json({ event: { ...event, attendees: attendees || [] } });
   } catch (error) {
     console.error('Error in POST /api/academic-events:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

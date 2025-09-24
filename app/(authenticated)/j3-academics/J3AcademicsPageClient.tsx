@@ -328,7 +328,7 @@ export default function J3AcademicsPageClient() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="space-y-3">
               {filtered.events.map((ev: any) => (
                 <EventCard
                   key={ev.id}
@@ -342,7 +342,7 @@ export default function J3AcademicsPageClient() {
               ))}
               {filtered.events.length === 0 && (
                 <div
-                  className="border border-gray-600/30 rounded-xl p-4 text-center text-text-muted"
+                  className="rounded-xl border border-gray-600/30 p-4 text-center text-text-muted"
                   style={{ backgroundColor: '#30302e' }}
                 >
                   No events
