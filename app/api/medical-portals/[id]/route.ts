@@ -163,6 +163,9 @@ export async function PUT(
 
       const ownerId = patientUserIds[0] || user.id;
       const sharedWith = patientUserIds.slice(1);
+      const patientFamilyIds = Array.isArray(portal.patient_ids)
+        ? (portal.patient_ids as string[]).filter((id): id is string => Boolean(id))
+        : [];
 
       let portalPassword = plainPassword ?? null;
       if (portalPassword == null && portal.password) {
@@ -187,7 +190,8 @@ export async function PUT(
           createdBy: user.id,
           notes: notes ?? portal.notes ?? `Portal for ${title ?? portal.portal_name}`,
           source: 'medical_portal',
-          sourcePage: 'health'
+          sourcePage: 'health',
+          entityIds: patientFamilyIds
         });
       }
     }

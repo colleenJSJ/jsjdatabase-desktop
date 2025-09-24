@@ -193,7 +193,8 @@ export async function POST(request: NextRequest) {
         createdBy: user.id,
         notes: notes || `Academic portal for ${title}`,
         source: 'academic_portal',
-        sourcePage: 'j3-academics'
+        sourcePage: 'j3-academics',
+        entityIds: Array.isArray(children) ? children.filter((id: string) => Boolean(id)) : []
       });
       
       if (!syncResult.success) {

@@ -59,7 +59,29 @@ const formatPasswordSource = (source?: string | null): string | null => {
   }
 };
 
-const getAssignedLabel = (password: Password, users: UserInfo[]): string => {
+const getAssignedLabel = (
+  password: Password,
+  users: UserInfo[],
+  familyMembers: Array<{ id: string; name?: string }>
+): string => {
+  const familyMemberMap = new Map<string, string>();
+  familyMembers.forEach(member => {
+    if (member?.id) {
+      familyMemberMap.set(member.id, member.name || member.id);
+    }
+  });
+
+  const familyTags = Array.isArray((password as any).tags)
+    ? ((password as any).tags as string[]).filter(tag => tag.startsWith('family:'))
+    : [];
+  const familyLabels = familyTags
+    .map(tag => familyMemberMap.get(tag.replace('family:', '')))
+    .filter((label): label is string => Boolean(label));
+
+  if (familyLabels.length > 0) {
+    return Array.from(new Set(familyLabels)).join(', ');
+  }
+
   const ownerIds = new Set<string>();
   if (password.owner_id) ownerIds.add(password.owner_id);
   const sharedWith = Array.isArray(password.shared_with)
@@ -251,11 +273,17 @@ export default function PasswordsPage() {
                          (password.username?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
                          (password.notes?.toLowerCase().includes(searchTerm.toLowerCase()) || false);
     const matchesCategory = selectedCategory === 'all' || password.category === selectedCategory;
+    const familyTagIds = Array.isArray((password as any).tags)
+      ? ((password as any).tags as string[])
+          .filter(tag => tag.startsWith('family:'))
+          .map(tag => tag.replace('family:', ''))
+      : [];
     const matchesOwner = selectedOwner === 'all' || 
                         (selectedOwner === 'shared' && (password.is_shared || (password.shared_with && password.shared_with.length > 1))) ||
                         (selectedOwner !== 'all' && selectedOwner !== 'shared' && 
                          (password.owner_id === selectedOwner || 
-                          (password.shared_with && password.shared_with.includes(selectedOwner))));
+                          (password.shared_with && password.shared_with.includes(selectedOwner)) ||
+                          familyTagIds.includes(selectedOwner)));
     const matchesFavorites = !showFavorites || password.is_favorite;
     const matchesExpiring = !showExpiring || 
                            (password.last_changed && 
@@ -498,7 +526,7 @@ export default function PasswordsPage() {
       ) : viewMode === 'card' ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredPasswords.map(password => {
-            const assignedLabel = getAssignedLabel(password, users);
+            const assignedLabel = getAssignedLabel(password, users, familyMembers);
             const sourceLabel = formatPasswordSource((password as any).source_page);
             const notesContent = password.notes
               ? <p className="text-xs text-text-muted/80 italic">{password.notes}</p>
@@ -541,6 +569,7 @@ export default function PasswordsPage() {
                   password={password}
                   categories={categories}
                   users={users}
+                  familyMembers={familyMembers}
                   onEdit={() => setEditingPassword(password)}
                   onDelete={() => handleDelete(password.id)}
                 />
@@ -579,13 +608,15 @@ function PasswordListItem({
   onEdit, 
   onDelete,
   categories,
-  users
+  users,
+  familyMembers
 }: { 
   password: Password; 
   onEdit: () => void; 
   onDelete: () => void;
   categories: Category[];
   users: UserInfo[];
+  familyMembers: any[];
 }) {
   const { user } = useUser();
   const { updateActivity } = usePasswordSecurity();
@@ -635,22 +666,8 @@ function PasswordListItem({
     }
   };
 
-  const ownerIds = new Set<string>();
-  if (password.owner_id) ownerIds.add(password.owner_id);
-  const shared = (password as any).shared_with as string[] | undefined;
-  if (Array.isArray(shared)) {
-    shared.forEach(id => ownerIds.add(id));
-  }
-  const ownerLabels = Array.from(ownerIds)
-    .map(id => {
-      if (id === 'shared') return 'Shared';
-      const person = users.find(u => u.id === id);
-      return person?.name || person?.email?.split('@')[0] || id;
-    })
-    .filter(Boolean);
-  const ownersDisplay = ownerLabels.length === 0
-    ? (password.is_shared ? ['Shared'] : ['Private'])
-    : ownerLabels;
+  const assignedLabel = getAssignedLabel(password, users, familyMembers);
+  const ownersDisplay = assignedLabel.split(',').map(label => label.trim()).filter(Boolean);
 
   const strengthColor = passwordStrength === 'strong'
     ? 'text-green-400'

@@ -15,12 +15,13 @@ export interface PortalPasswordSyncConfig {
   portal_url: string;
   portal_username: string;
   portal_password: string;
-  ownerId: string; // Primary owner (patient, pet owner, etc.)
-  sharedWith: string[]; // Additional family members who need access
+  ownerId: string; // Primary owner (user id)
+  sharedWith: string[]; // Additional users who need access
   createdBy: string; // User creating/updating the record
   notes?: string;
   source?: string; // Source of the data (e.g., 'health', 'pets')
   sourcePage?: string; // Optional source page for display (e.g., 'health', 'pets')
+  entityIds?: string[]; // Related family member ids (pets, patients, students)
 }
 
 /**
@@ -166,6 +167,9 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     const sourcePage = config.sourcePage || source;
 
     // Prepare password data for direct database insert
+    const entityIds = Array.from(new Set((config.entityIds || []).filter(Boolean)));
+    const entityTags = entityIds.length > 0 ? entityIds.map(id => `family:${id}`) : undefined;
+
     const passwordData = {
       service_name: config.providerName,
       title: `${config.providerName} Portal`,
@@ -181,7 +185,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       source,
       source_page: sourcePage,
       source_reference: portal.id, // Link to portal record
-      tags: [],
+      tags: entityTags ?? [],
       is_favorite: false,
       created_by: config.createdBy,
       created_at: new Date().toISOString(),
@@ -191,10 +195,19 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     
     if (existingPassword) {
       // Update existing password directly in database
+      const existingTagsRaw = Array.isArray(existingPassword.tags)
+        ? (existingPassword.tags as string[])
+        : [];
+      const existingNonFamilyTags = existingTagsRaw.filter(tag => !tag.startsWith('family:'));
+      const mergedTags = entityTags
+        ? Array.from(new Set([...existingNonFamilyTags, ...entityTags]))
+        : existingTagsRaw;
+
       const { data: updatedPassword, error: updateError } = await supabase
         .from('passwords')
         .update({
           ...passwordData,
+          tags: mergedTags,
           created_at: existingPassword.created_at, // Keep original creation date
         })
         .eq('id', existingPassword.id)

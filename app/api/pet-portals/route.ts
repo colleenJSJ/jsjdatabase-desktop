@@ -142,6 +142,12 @@ export async function POST(request: NextRequest) {
       const ownerId = petOwnerUserIds[0] || user.id;
       const sharedWith = petOwnerUserIds.slice(1);
       
+      const entityIds = Array.isArray(uniquePetIds) && uniquePetIds.length > 0
+        ? uniquePetIds
+        : petId
+          ? [petId]
+          : [];
+
       const syncResult = await ensurePortalAndPassword({
         providerType: 'pet',
         providerId: portal.id,
@@ -154,7 +160,8 @@ export async function POST(request: NextRequest) {
         createdBy: user.id,
         notes: notes || `Pet portal for ${title}`,
         source: 'pet_portal',
-        sourcePage: 'pets'
+        sourcePage: 'pets',
+        entityIds
       });
       
       if (!syncResult.success) {

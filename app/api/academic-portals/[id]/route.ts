@@ -157,6 +157,7 @@ export async function PUT(
 
       const ownerId = parentUserIds[0] || user.id;
       const sharedWith = parentUserIds.slice(1);
+      const childIds = Array.isArray(children) ? children.filter((childId: string) => Boolean(childId)) : [];
 
       await ensurePortalAndPassword({
         providerType: 'academic',
@@ -170,7 +171,8 @@ export async function PUT(
         createdBy: user.id,
         notes: notes || portal.notes,
         source: 'academic_portal',
-        sourcePage: 'j3-academics'
+        sourcePage: 'j3-academics',
+        entityIds: childIds
       });
     }
 

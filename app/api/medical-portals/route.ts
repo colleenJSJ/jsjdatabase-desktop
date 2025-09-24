@@ -175,6 +175,10 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      const patientFamilyIds = Array.isArray(portal.patient_ids)
+        ? (portal.patient_ids as string[]).filter((id): id is string => Boolean(id))
+        : [];
+
       // First patient becomes owner, rest are shared_with
       const ownerId = patientUserIds[0] || user.id;
       const sharedWith = patientUserIds.slice(1);
@@ -197,7 +201,8 @@ export async function POST(request: NextRequest) {
         createdBy: user.id,
         notes: notes || portal.notes || `Portal for ${title}`,
         source: 'medical_portal',
-        sourcePage: 'health'
+        sourcePage: 'health',
+        entityIds: patientFamilyIds
       });
       
       if (!syncResult.success) {
