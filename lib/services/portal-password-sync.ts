@@ -76,8 +76,12 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       : null;
     
     // 2. Dedupe and validate shared_with (ensure owner_id not in shared_with)
+    const sharedCandidates = [...config.sharedWith];
+    if (config.createdBy && config.createdBy !== config.ownerId) {
+      sharedCandidates.push(config.createdBy);
+    }
     const cleanSharedWith = Array.from(new Set(
-      config.sharedWith.filter(id => id && id !== config.ownerId)
+      sharedCandidates.filter(id => id && id !== config.ownerId)
     ));
     
     // 3. Upsert Portal record
