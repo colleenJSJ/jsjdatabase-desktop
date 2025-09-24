@@ -3,7 +3,7 @@
  * Ensures portals and passwords stay in sync when credentials are created/updated
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { ActivityLogger } from '@/lib/services/activity-logger';
 import { encryptionService } from '@/lib/encryption';
@@ -64,6 +64,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
   error?: string;
 }> {
   const supabase = await createClient();
+  const serviceSupabase = await createServiceClient();
   
   try {
     // 1. Normalize the portal URL and extract domain
@@ -152,7 +153,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     };
     
     // Check if password exists
-    const { data: existingPasswords, error: passwordSearchError } = await supabase
+    const { data: existingPasswords, error: passwordSearchError } = await serviceSupabase
       .from('passwords')
       .select('*')
       .eq('owner_id', passwordKey.owner_id)
@@ -207,7 +208,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
         ? Array.from(new Set([...existingNonFamilyTags, ...entityTags]))
         : existingTagsRaw;
 
-      const { data: updatedPassword, error: updateError } = await supabase
+      const { data: updatedPassword, error: updateError } = await serviceSupabase
         .from('passwords')
         .update({
           ...passwordData,
@@ -233,7 +234,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
           notes: passwordData.notes ? '[REDACTED]' : null
         });
         
-        const { data: newPassword, error: createError } = await supabase
+        const { data: newPassword, error: createError } = await serviceSupabase
           .from('passwords')
           .insert(passwordData)
           .select()
