@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Sync portal credentials to passwords table using the better sync function
-    if (portal && username && password) {
+    if (portal && password) {
       const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
       
