@@ -316,11 +316,15 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
 
         let newPassword;
 
+        const maskedNotes = passwordDataBase.notes !== undefined
+          ? (passwordDataBase.notes ? '[REDACTED]' : null)
+          : undefined;
+
         if (serviceSupabase) {
           console.log('[Portal-Password Sync] Creating password with service client:', {
             ...passwordInsert,
             password: '[REDACTED]',
-            notes: passwordInsert.notes ? '[REDACTED]' : null
+            ...(maskedNotes !== undefined ? { notes: maskedNotes } : {}),
           });
 
           const { data, error: createError } = await serviceSupabase
@@ -348,7 +352,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
           console.log('[Portal-Password Sync] Creating password with fallback client:', {
             ...fallbackInsert,
             password: '[REDACTED]',
-            notes: fallbackInsert.notes ? '[REDACTED]' : null
+            ...(maskedNotes !== undefined ? { notes: maskedNotes } : {}),
           });
 
           const { data, error: fallbackError } = await supabase
