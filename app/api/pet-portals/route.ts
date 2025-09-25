@@ -89,11 +89,11 @@ export async function POST(request: NextRequest) {
     const portalData = {
       portal_type: 'pet',
       portal_name: title,
+      provider_name: title,
       portal_url: normalizedUrl,
       entity_id: petId,
       username: username || null,
       password: encryptedPassword,
-      provider_name: title,
       notes: notes || null,
       created_by: user.id,
     };

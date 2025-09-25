@@ -30,6 +30,7 @@ import { CredentialFormField } from '@/components/credentials/CredentialFormFiel
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { smartUrlComplete } from '@/lib/utils/url-helper';
+import type { PortalRecord } from '@/types/portals';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -80,19 +81,8 @@ interface FamilyMember {
   user_id?: string | null;
 }
 
-interface MedicalPortal {
-  id: string;
-  name: string;
-  portal_url?: string;
-  doctor_id?: string;
-  username?: string;
-  password?: string;
-  notes?: string;
-  patient_ids: string[];
-  last_accessed?: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
+interface MedicalPortal extends PortalRecord {
+  doctor_id?: string | null;
   doctor?: {
     id: string;
     name: string;
@@ -965,9 +955,9 @@ export default function HealthPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {filteredPortals.map((portal, index) => {
-                const portalId = portal.id ?? `portal-${index}`;
-                const portalName = portal.name || 'Portal';
+              {filteredPortals.map((portal) => {
+                const portalId = portal.id;
+                const portalName = (portal.portal_name || portal.provider_name || 'Portal').trim();
                 const patientIds = Array.isArray(portal.patient_ids) ? portal.patient_ids : [];
                 const patientNames = patientIds
                   .map(patientId => {
@@ -986,7 +976,7 @@ export default function HealthPage() {
                   password: portal.password || '',
                   url: portal.portal_url || undefined,
                   category: 'medical-portal',
-                  notes: portal.notes,
+                  notes: portal.notes || undefined,
                   owner_id: 'shared',
                   shared_with: patientIds,
                   is_favorite: false,
@@ -1908,7 +1898,7 @@ function PortalModal({
   onSave: (portal: MedicalPortal) => void;
 }) {
   const [formData, setFormData] = useState({
-    title: portal?.name || '',
+    title: (portal?.portal_name || portal?.provider_name || ''),
     doctorId: portal?.doctor_id || '',
     username: portal?.username || '',
     password: portal?.password || '',
@@ -1934,7 +1924,7 @@ function PortalModal({
 
     if (portal) {
       setFormData({
-        title: portal.name || '',
+        title: (portal.portal_name || portal.provider_name || ''),
         doctorId: portal.doctor_id || '',
         username: portal.username || '',
         password: portal.password || '',

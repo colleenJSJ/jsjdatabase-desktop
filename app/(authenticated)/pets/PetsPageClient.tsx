@@ -18,6 +18,7 @@ import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { smartUrlComplete } from '@/lib/utils/url-helper';
 import { useUser } from '@/contexts/user-context';
+import type { PortalRecord } from '@/types/portals';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -46,7 +47,6 @@ export default function PetsPageClient() {
     description?: string;
     [key: string]: unknown;
   };
-  type PetPortal = { id?: string; name?: string; portal_name?: string; [key: string]: unknown };
   type PetAppointment = {
     id: string;
     title?: string;
@@ -71,7 +71,7 @@ export default function PetsPageClient() {
   const [pets, setPets] = useState<Pet[]>([]);
   const [contacts, setContacts] = useState<PetContact[]>([]);
   const [vets, setVets] = useState<PetContact[]>([]);
-  const [portals, setPortals] = useState<PetPortal[]>([]);
+  const [portals, setPortals] = useState<PortalRecord[]>([]);
   const [appointments, setAppointments] = useState<PetAppointment[]>([]);
   const [refreshDocs, setRefreshDocs] = useState(0);
   const [search, setSearch] = useState('');
@@ -81,7 +81,6 @@ export default function PetsPageClient() {
   const [selectedAppointment, setSelectedAppointment] = useState<PetAppointment | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showAddPortal, setShowAddPortal] = useState(false);
-  const [editingPortal, setEditingPortal] = useState<PetPortal | null>(null);
   const { calendars: googleCalendars } = useGoogleCalendars();
 
   const portalUsers = useMemo(() => {
@@ -93,6 +92,18 @@ export default function PetsPageClient() {
     return [...base, { id: 'shared', email: '', name: 'Shared' }];
   }, [pets]);
   const canManagePortals = user?.role === 'admin';
+
+  const handleDeletePortal = useCallback(async (portalId?: string) => {
+    if (!portalId) return;
+    if (!confirm('Delete this pet portal?')) return;
+    const ApiClient = (await import('@/lib/api/api-client')).default;
+    const response = await ApiClient.delete(`/api/pet-portals/${portalId}`);
+    if (!response.success) {
+      alert(response.error || 'Failed to delete portal');
+      return;
+    }
+    await loadData();
+  }, [loadData]);
 
   const loadData = useCallback(async () => {
     try {
@@ -142,18 +153,6 @@ export default function PetsPageClient() {
       setLoading(false);
     }
   }, []);
-
-  const handleDeletePortal = useCallback(async (portalId?: string) => {
-    if (!portalId) return;
-    if (!confirm('Delete this pet portal?')) return;
-    const ApiClient = (await import('@/lib/api/api-client')).default;
-    const response = await ApiClient.delete(`/api/pet-portals/${portalId}`);
-    if (!response.success) {
-      alert(response.error || 'Failed to delete portal');
-      return;
-    }
-    await loadData();
-  }, [loadData]);
 
   useEffect(() => {
     loadData();
@@ -269,15 +268,10 @@ export default function PetsPageClient() {
         return (contact.description || '').toLowerCase().includes(petName);
       }),
     portals: portals
-      .filter(pt => ((pt.name as string | undefined) || (pt.portal_name as string | undefined) || '').toLowerCase().includes(term))
+      .filter(pt => (pt.portal_name || pt.provider_name || '').toLowerCase().includes(term))
       .filter(pt => {
         if (selectedPetId === 'all') return true;
-        const descriptionText = (pt.description as string | undefined)?.toLowerCase() || '';
-        const petName = pets.find(x => x.id === selectedPetId)?.name?.toLowerCase() || '';
-        const idMatches = [pt.pet_id, ...(Array.isArray(pt.petIds) ? pt.petIds : []), ...(Array.isArray(pt.pets) ? pt.pets : [])]
-          .filter(Boolean)
-          .some((value) => value === selectedPetId);
-        return idMatches || descriptionText.includes(petName);
+        return pt.entity_id === selectedPetId;
       }),
     appointments: appointments
       .filter(a => ((a.title || a.description || '') as string).toLowerCase().includes(term))
@@ -395,40 +389,39 @@ export default function PetsPageClient() {
                 <div className="text-sm text-text-muted">No portals</div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {filtered.portals.map((portal, index) => {
-                    const portalId = (portal.id as string | undefined) ?? `portal-${index}`;
-                    const portalName = ((portal.name as string | undefined) || (portal.portal_name as string | undefined) || 'Portal').trim();
-                    const portalUrl = (portal.portal_url as string | undefined) || (portal.url as string | undefined) || '';
-                    const portalUsername = (portal.username as string | undefined) || '';
-                    const portalPassword = (portal.password as string | undefined) || '';
-                    const notes = (portal.notes as string | undefined) || '';
-                  const rawPetIds = [
-                    typeof portal.entity_id === 'string' ? portal.entity_id : undefined,
-                    (portal.pet_id as string | undefined)
-                  ].filter(Boolean) as string[];
-                  const uniquePetIds = Array.from(new Set(rawPetIds));
-                  const relatedPetNames = uniquePetIds
-                    .map(id => pets.find(p => p.id === id)?.name)
-                    .filter((name): name is string => Boolean(name));
+                  {filtered.portals.map((portal) => {
+                    const portalId = portal.id;
+                    const portalName = (portal.portal_name || portal.provider_name || 'Portal').trim();
+                    const portalUrl = portal.portal_url || '';
+                    const portalUsername = portal.username || '';
+                    const portalPassword = portal.password || '';
+                    const notes = portal.notes || '';
+                    const rawPetIds = [
+                      typeof portal.entity_id === 'string' ? portal.entity_id : undefined
+                    ].filter(Boolean) as string[];
+                    const uniquePetIds = Array.from(new Set(rawPetIds));
+                    const relatedPetNames = uniquePetIds
+                      .map(id => pets.find(p => p.id === id)?.name)
+                      .filter((name): name is string => Boolean(name));
 
-                  const passwordRecord: Password = {
-                    id: portalId,
-                    service_name: portalName,
-                    username: portalUsername,
-                    password: portalPassword,
-                    url: portalUrl || undefined,
-                    category: 'pet-portal',
-                    notes: notes || undefined,
-                    owner_id: 'shared',
-                    shared_with: uniquePetIds,
-                    is_favorite: false,
-                    is_shared: uniquePetIds.length > 1,
-                    last_changed: new Date(),
-                    strength: undefined,
-                    created_at: new Date(),
-                    updated_at: new Date(),
-                    source_page: 'pets',
-                  };
+                    const passwordRecord: Password = {
+                      id: portalId,
+                      service_name: portalName,
+                      username: portalUsername,
+                      password: portalPassword,
+                      url: portalUrl || undefined,
+                      category: 'pet-portal',
+                      notes: notes || undefined,
+                      owner_id: 'shared',
+                      shared_with: uniquePetIds,
+                      is_favorite: false,
+                      is_shared: uniquePetIds.length > 1,
+                      last_changed: new Date(),
+                      strength: undefined,
+                      created_at: new Date(),
+                      updated_at: new Date(),
+                      source_page: 'pets',
+                    };
 
                     const extraContent = notes
                       ? <p className="text-xs text-text-muted/80 italic">{notes}</p>
@@ -455,7 +448,7 @@ export default function PetsPageClient() {
                     );
                   })}
                 </div>
-              )}
+                    )}
             </section>
           )}
           {activeTab==='appointments' && (

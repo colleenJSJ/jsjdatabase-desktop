@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
     const portalData = {
       portal_type: 'medical',
       portal_name: title,
+      provider_name: title,
       portal_url: normalizedUrl,
       entity_id: doctorId || null,
       username: username || null,

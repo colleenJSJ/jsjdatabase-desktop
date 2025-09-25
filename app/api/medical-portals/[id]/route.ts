@@ -108,7 +108,10 @@ export async function PUT(
       updated_at: new Date().toISOString()
     };
 
-    if (title !== undefined) updates.portal_name = title;
+    if (title !== undefined) {
+      updates.portal_name = title;
+      updates.provider_name = title;
+    }
     if (doctorId !== undefined) updates.entity_id = doctorId || null;
     if (username !== undefined) updates.username = username || null;
     if (notes !== undefined) updates.notes = notes || null;

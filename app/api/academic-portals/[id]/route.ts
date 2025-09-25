@@ -1,5 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { normalizeUrl } from '@/lib/utils/url-helper';
+import { encrypt, decrypt } from '@/lib/encryption';
+
+const serializePortal = (portal: any) => {
+  if (!portal) return portal;
+  let decryptedPassword = portal.password;
+  if (typeof portal.password === 'string' && portal.password.length > 0) {
+    try {
+      decryptedPassword = decrypt(portal.password);
+    } catch (error) {
+      console.error('[Academic Portals API] Failed to decrypt portal password', {
+        portalId: portal.id,
+        error,
+      });
+      decryptedPassword = null;
+    }
+  }
+
+  return {
+    ...portal,
+    password: decryptedPassword,
+  };
+};
 
 export async function GET(
   request: NextRequest,
@@ -15,9 +38,10 @@ export async function GET(
     }
 
     const { data: portal, error } = await supabase
-      .from('j3_academics_portals')
+      .from('portals')
       .select('*')
       .eq('id', id)
+      .eq('portal_type', 'academic')
       .single();
 
     if (error) {
@@ -33,7 +57,7 @@ export async function GET(
     
     const childIds = children?.map(c => c.child_id) || [];
 
-    return NextResponse.json({ ...portal, children: childIds });
+    return NextResponse.json({ ...serializePortal(portal), children: childIds });
   } catch (error) {
     console.error('Error in GET /api/academic-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -54,21 +78,41 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { syncToPasswords, children, url, ...portalData } = body;
+    const { children, url, title, username, password, notes } = body;
 
     // Map url to portal_url for database compatibility
-    if (url) {
-      portalData.portal_url = url;
-    }
-    
-    // Remove child_id from portalData as we'll use junction table
-    delete portalData.child_id;
-
+    const portalUrl = url ? normalizeUrl(url) : undefined;
     // Update the portal
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (title !== undefined) {
+      updates.portal_name = title;
+      updates.provider_name = title;
+    }
+
+    if (username !== undefined) {
+      updates.username = username || null;
+    }
+
+    if (notes !== undefined) {
+      updates.notes = notes || null;
+    }
+
+    if (password !== undefined) {
+      updates.password = password ? encrypt(password) : null;
+    }
+
+    if (portalUrl !== undefined) {
+      updates.portal_url = portalUrl;
+    }
+
     const { data: portal, error: portalError } = await supabase
-      .from('j3_academics_portals')
-      .update(portalData)
+      .from('portals')
+      .update(updates)
       .eq('id', id)
+      .eq('portal_type', 'academic')
       .select()
       .single();
 
@@ -100,48 +144,51 @@ export async function PUT(
       }
     }
 
-    // Update password if it exists and sync is requested
-    if (syncToPasswords && portal) {
-      // First check if password entry exists
-      const { data: existingPassword } = await supabase
-        .from('passwords')
-        .select('id')
-        .eq('source_reference', id)
-        .eq('source_page', 'J3 Academics')
-        .single();
+    if (portal && username && password) {
+      const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
+      const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
 
-      if (existingPassword) {
-        // Update existing password
-        await supabase
-          .from('passwords')
-          .update({
-            platform: `Academic: ${portalData.portal_name}`,
-            username: portalData.username,
-            password: portalData.password,
-            website_url: portalData.url,
-            notes: portalData.notes
-          })
-          .eq('id', existingPassword.id);
-      } else {
-        // Create new password entry
-        await supabase
-          .from('passwords')
-          .insert({
-            child_id: portalData.child_id,
-            platform: `Academic: ${portalData.portal_name}`,
-            username: portalData.username,
-            password: portalData.password,
-            category: 'Education',
-            website_url: portalData.url,
-            notes: portalData.notes,
-            source_page: 'J3 Academics',
-            source_reference: portal.id,
-            created_at: new Date().toISOString()
-          });
+      const parentUserIds: string[] = [];
+
+      if (children && children.length > 0) {
+        for (const childId of children) {
+          const { data: childData } = await supabase
+            .from('family_members')
+            .select('parent_id')
+            .eq('id', childId)
+            .single();
+
+          if (childData?.parent_id) {
+            const parentUserId = await resolveFamilyMemberToUser(childData.parent_id);
+            if (parentUserId && !parentUserIds.includes(parentUserId)) {
+              parentUserIds.push(parentUserId);
+            }
+          }
+        }
       }
+
+      const ownerId = parentUserIds[0] || user.id;
+      const sharedWith = parentUserIds.slice(1);
+      const childIds = Array.isArray(children) ? children.filter((childId: string) => Boolean(childId)) : [];
+
+      await ensurePortalAndPassword({
+        providerType: 'academic',
+        providerId: id,
+        providerName: title || portal.portal_name,
+        portal_url: portalUrl || portal.portal_url,
+        portal_username: username,
+        portal_password: password,
+        ownerId,
+        sharedWith,
+        createdBy: user.id,
+        notes: notes || portal.notes,
+        source: 'academic_portal',
+        sourcePage: 'j3-academics',
+        entityIds: childIds
+      });
     }
 
-    return NextResponse.json({ ...portal, children: children || [] });
+    return NextResponse.json({ ...serializePortal(portal), children: children || [] });
   } catch (error) {
     console.error('Error in PUT /api/academic-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -170,9 +217,10 @@ export async function DELETE(
 
     // Delete the portal
     const { error } = await supabase
-      .from('j3_academics_portals')
+      .from('portals')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('portal_type', 'academic');
 
     if (error) {
       console.error('Error deleting academic portal:', error);
