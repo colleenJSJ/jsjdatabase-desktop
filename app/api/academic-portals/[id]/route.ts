@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
 
@@ -197,14 +197,16 @@ export async function DELETE(
     }
 
     // Delete associated password entry if exists
-    await supabase
+    const serviceSupabase = await createServiceClient();
+
+    await serviceSupabase
       .from('passwords')
       .delete()
       .eq('source_reference', id)
       .eq('source_page', 'J3 Academics');
 
     // Delete the portal
-    const { error } = await supabase
+    const { error } = await serviceSupabase
       .from('j3_academics_portals')
       .delete()
       .eq('id', id);
