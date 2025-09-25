@@ -93,18 +93,6 @@ export default function PetsPageClient() {
   }, [pets]);
   const canManagePortals = user?.role === 'admin';
 
-  const handleDeletePortal = useCallback(async (portalId?: string) => {
-    if (!portalId) return;
-    if (!confirm('Delete this pet portal?')) return;
-    const ApiClient = (await import('@/lib/api/api-client')).default;
-    const response = await ApiClient.delete(`/api/pet-portals/${portalId}`);
-    if (!response.success) {
-      alert(response.error || 'Failed to delete portal');
-      return;
-    }
-    await loadData();
-  }, [loadData]);
-
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -153,6 +141,18 @@ export default function PetsPageClient() {
       setLoading(false);
     }
   }, []);
+
+  const handleDeletePortal = useCallback(async (portalId?: string) => {
+    if (!portalId) return;
+    if (!confirm('Delete this pet portal?')) return;
+    const ApiClient = (await import('@/lib/api/api-client')).default;
+    const response = await ApiClient.delete(`/api/pet-portals/${portalId}`);
+    if (!response.success) {
+      alert(response.error || 'Failed to delete portal');
+      return;
+    }
+    await loadData();
+  }, [loadData]);
 
   useEffect(() => {
     loadData();
