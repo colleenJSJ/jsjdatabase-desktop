@@ -146,11 +146,14 @@ export async function POST(request: NextRequest) {
       const ownerId = petOwnerUserIds[0] || user.id;
       const sharedWith = petOwnerUserIds.slice(1);
       
-      const entityIds = petId ? [petId] : [];
+      const portalEntityId = typeof portal.entity_id === 'string' && portal.entity_id.trim().length > 0
+        ? portal.entity_id.trim()
+        : null;
+      const entityIds = portalEntityId ? [portalEntityId] : [];
 
       const syncResult = await ensurePortalAndPassword({
         providerType: 'pet',
-        providerId: petId || undefined,
+        providerId: portalEntityId ?? undefined,
         providerName: title,
         portalName: title,
         portalId: portal.id,

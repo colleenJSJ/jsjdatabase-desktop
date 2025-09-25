@@ -101,6 +101,15 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { children, url, title, username, password, notes } = body;
+    const selectedChildIds: string[] = Array.isArray(children)
+      ? Array.from(
+          new Set(
+            children.filter((childId: unknown): childId is string =>
+              typeof childId === 'string' && childId.trim().length > 0
+            )
+          )
+        )
+      : [];
     const portalUrl = url ? normalizeUrl(url) : '';
     const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
       ? notes.trim()
@@ -131,8 +140,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Add children associations
-    if (portal && children && children.length > 0) {
-      const childRecords = children.map((childId: string) => ({
+    if (portal && selectedChildIds.length > 0) {
+      const childRecords = selectedChildIds.map((childId) => ({
         portal_id: portal.id,
         child_id: childId
       }));
@@ -156,8 +165,8 @@ export async function POST(request: NextRequest) {
       const parentUserIds: string[] = [];
       
       // Get parents of the children
-      if (children && children.length > 0) {
-        for (const childId of children) {
+      if (selectedChildIds.length > 0) {
+        for (const childId of selectedChildIds) {
           // Get the child's parent information
           const { data: childData } = await supabase
             .from('family_members')
@@ -181,14 +190,14 @@ export async function POST(request: NextRequest) {
       
       console.log('[Academic Portals API] Syncing portal to password:', {
         portal_id: portal.id,
-        children: children,
+        children: selectedChildIds,
         owner: ownerId,
         shared: sharedWith
       });
-      
+
       const syncResult = await ensurePortalAndPassword({
         providerType: 'academic',
-        providerId: portal.id,
+        providerId: undefined, // academic portals link via children only
         providerName: title,
         portalName: title,
         portalId: portal.id,
@@ -201,7 +210,7 @@ export async function POST(request: NextRequest) {
         notes: sanitizedNotes,
         source: 'academic_portal',
         sourcePage: 'j3-academics',
-        entityIds: Array.isArray(children) ? children.filter((id: string) => Boolean(id)) : []
+        entityIds: selectedChildIds
       });
       
       if (!syncResult.success) {
@@ -210,7 +219,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...serializePortal(portal), children: children || [] });
+    return NextResponse.json({ ...serializePortal(portal), children: selectedChildIds });
   } catch (error) {
     console.error('Error in POST /api/academic-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

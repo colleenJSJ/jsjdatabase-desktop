@@ -115,11 +115,15 @@ export async function PUT(
 
     // Sync credentials to Passwords if changed/present
     const ownerUserIds: string[] = [];
-    if (portal.entity_id) {
+    const portalEntityId = typeof portal.entity_id === 'string' && portal.entity_id.trim().length > 0
+      ? portal.entity_id.trim()
+      : null;
+
+    if (portalEntityId) {
       const { data: petData } = await supabase
         .from('family_members')
         .select('parent_id')
-        .eq('id', portal.entity_id)
+        .eq('id', portalEntityId)
         .eq('type', 'pet')
         .single();
 
@@ -144,7 +148,7 @@ export async function PUT(
     if (portalPassword) {
       await ensurePortalAndPassword({
         providerType: 'pet',
-        providerId: typeof portal.entity_id === 'string' ? portal.entity_id : undefined,
+        providerId: portalEntityId ?? undefined,
         providerName: (title ?? portal.portal_name) || portal.provider_name,
         portalName: (title ?? portal.portal_name) || portal.provider_name,
         portalId: portal.id,
@@ -157,7 +161,7 @@ export async function PUT(
         notes: sanitizedNotes,
         source: 'pet_portal',
         sourcePage: 'pets',
-        entityIds: typeof portal.entity_id === 'string' ? [portal.entity_id] : []
+        entityIds: portalEntityId ? [portalEntityId] : []
       });
     }
 

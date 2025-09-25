@@ -111,6 +111,21 @@ export async function PUT(
         ? null
         : undefined;
 
+    const doctorIdProvided = Object.prototype.hasOwnProperty.call(body, 'doctorId');
+    const sanitizedDoctorId = doctorIdProvided
+      ? (typeof doctorId === 'string' && doctorId.trim().length > 0 ? doctorId.trim() : null)
+      : undefined;
+    const patientIdsProvided = Object.prototype.hasOwnProperty.call(body, 'patientIds');
+    const sanitizedPatientIds = patientIdsProvided
+      ? Array.from(
+          new Set(
+            (Array.isArray(patientIds) ? patientIds : [])
+              .filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+              .map(id => id.trim())
+          )
+        )
+      : undefined;
+
     const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString()
     };
@@ -119,10 +134,10 @@ export async function PUT(
       updates.portal_name = title;
       updates.provider_name = title;
     }
-    if (doctorId !== undefined) updates.entity_id = doctorId || null;
+    if (doctorIdProvided) updates.entity_id = sanitizedDoctorId ?? null;
     if (username !== undefined) updates.username = username || null;
     if (sanitizedNotes !== undefined) updates.notes = sanitizedNotes;
-    if (patientIds !== undefined) updates.patient_ids = patientIds;
+    if (sanitizedPatientIds !== undefined) updates.patient_ids = sanitizedPatientIds;
 
     let normalizedUrl: string | null | undefined;
     if (url !== undefined) {
@@ -163,9 +178,22 @@ export async function PUT(
 
     if (portal) {
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
+      const portalEntityId = typeof portal.entity_id === 'string' && portal.entity_id.trim().length > 0
+        ? portal.entity_id.trim()
+        : null;
+      const effectivePatientIds = sanitizedPatientIds ?? (Array.isArray(portal.patient_ids)
+        ? Array.from(
+            new Set(
+              (portal.patient_ids as string[])
+                .filter(id => typeof id === 'string' && id.trim().length > 0)
+                .map(id => id.trim())
+            )
+          )
+        : []);
+
       const patientUserIds: string[] = [];
-      if (Array.isArray(portal.patient_ids)) {
-        for (const fm of portal.patient_ids) {
+      if (effectivePatientIds.length > 0) {
+        for (const fm of effectivePatientIds) {
           const u = await resolveFamilyMemberToUser(String(fm));
           if (u) patientUserIds.push(u);
         }
@@ -173,9 +201,7 @@ export async function PUT(
 
       const ownerId = patientUserIds[0] || user.id;
       const sharedWith = patientUserIds.slice(1);
-      const patientFamilyIds = Array.isArray(portal.patient_ids)
-        ? (portal.patient_ids as string[]).filter((id): id is string => Boolean(id))
-        : [];
+      const providerId = (sanitizedDoctorId ?? portalEntityId ?? effectivePatientIds[0] ?? null) || undefined;
 
       let portalPassword = plainPassword ?? null;
       if (portalPassword == null && portal.password) {
@@ -190,7 +216,7 @@ export async function PUT(
       if (portalPassword && (username || portal.username || plainPassword !== undefined || normalizedUrl !== undefined || sanitizedNotes !== undefined)) {
         await ensurePortalAndPassword({
           providerType: 'medical',
-          providerId: doctorId ?? portal.entity_id ?? undefined,
+          providerId,
           providerName: title ?? portal.portal_name,
           portalName: title ?? portal.portal_name,
           portalId: portal.id,
@@ -203,7 +229,7 @@ export async function PUT(
           notes: sanitizedNotes,
           source: 'medical_portal',
           sourcePage: 'health',
-          entityIds: patientFamilyIds
+          entityIds: effectivePatientIds
         });
       }
     }

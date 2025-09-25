@@ -79,6 +79,15 @@ export async function PUT(
 
     const body = await request.json();
     const { children, url, title, username, password, notes } = body;
+    const selectedChildIds: string[] = Array.isArray(children)
+      ? Array.from(
+          new Set(
+            children.filter((childId: unknown): childId is string =>
+              typeof childId === 'string' && childId.trim().length > 0
+            )
+          )
+        )
+      : [];
 
     const notesProvided = Object.prototype.hasOwnProperty.call(body, 'notes');
     const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
@@ -136,8 +145,8 @@ export async function PUT(
       .eq('portal_id', id);
 
     // Then add new associations
-    if (children && children.length > 0) {
-      const childRecords = children.map((childId: string) => ({
+    if (selectedChildIds.length > 0) {
+      const childRecords = selectedChildIds.map((childId) => ({
         portal_id: id,
         child_id: childId
       }));
@@ -157,8 +166,8 @@ export async function PUT(
 
       const parentUserIds: string[] = [];
 
-      if (children && children.length > 0) {
-        for (const childId of children) {
+      if (selectedChildIds.length > 0) {
+        for (const childId of selectedChildIds) {
           const { data: childData } = await supabase
             .from('family_members')
             .select('parent_id')
@@ -176,11 +185,11 @@ export async function PUT(
 
       const ownerId = parentUserIds[0] || user.id;
       const sharedWith = parentUserIds.slice(1);
-      const childIds = Array.isArray(children) ? children.filter((childId: string) => Boolean(childId)) : [];
+      const childIds = selectedChildIds;
 
       await ensurePortalAndPassword({
         providerType: 'academic',
-        providerId: id,
+        providerId: undefined,
         providerName: title || portal.portal_name,
         portalName: title || portal.portal_name,
         portalId: portal.id,
@@ -197,7 +206,7 @@ export async function PUT(
       });
     }
 
-    return NextResponse.json({ ...serializePortal(portal), children: children || [] });
+    return NextResponse.json({ ...serializePortal(portal), children: selectedChildIds });
   } catch (error) {
     console.error('Error in PUT /api/academic-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

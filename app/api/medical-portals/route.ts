@@ -121,6 +121,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { title, doctorId, username, password, url, notes, patientIds } = body;
 
+    const sanitizedDoctorId = typeof doctorId === 'string' && doctorId.trim().length > 0
+      ? doctorId.trim()
+      : null;
+    const patientFamilyIds = Array.isArray(patientIds)
+      ? Array.from(
+          new Set(
+            patientIds
+              .filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+              .map(id => id.trim())
+          )
+        )
+      : [];
+
     const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
       ? notes.trim()
       : null;
@@ -142,11 +155,11 @@ export async function POST(request: NextRequest) {
       portal_name: title,
       provider_name: title,
       portal_url: normalizedUrl,
-      entity_id: doctorId || null,
+      entity_id: sanitizedDoctorId,
       username: username || null,
       password: encryptedPassword,
       notes: sanitizedNotes,
-      patient_ids: patientIds || [],
+      patient_ids: patientFamilyIds,
       created_by: user.id
     };
 
@@ -171,18 +184,26 @@ export async function POST(request: NextRequest) {
       const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
       
+      const portalPatientIds = Array.isArray(portal.patient_ids)
+        ? Array.from(
+            new Set(
+              (portal.patient_ids as string[])
+                .filter(id => typeof id === 'string' && id.trim().length > 0)
+                .map(id => id.trim())
+            )
+          )
+        : patientFamilyIds;
+
       // Convert patient_ids (family member IDs) to user IDs
       const patientUserIds: string[] = [];
-      for (const patientId of (portal.patient_ids || [])) {
+      for (const patientId of portalPatientIds) {
         const userId = await resolveFamilyMemberToUser(patientId);
         if (userId) {
           patientUserIds.push(userId);
         }
       }
       
-      const patientFamilyIds = Array.isArray(portal.patient_ids)
-        ? (portal.patient_ids as string[]).filter((id): id is string => Boolean(id))
-        : [];
+      const providerId = sanitizedDoctorId ?? portalPatientIds[0] ?? undefined;
 
       // First patient becomes owner, rest are shared_with
       const ownerId = patientUserIds[0] || user.id;
@@ -196,7 +217,7 @@ export async function POST(request: NextRequest) {
       
       const syncResult = await ensurePortalAndPassword({
         providerType: 'medical',
-        providerId: doctorId || portal.entity_id || undefined,
+        providerId,
         providerName: title,
         portalName: title,
         portalId: portal.id,
@@ -209,7 +230,7 @@ export async function POST(request: NextRequest) {
         notes: sanitizedNotes,
         source: 'medical_portal',
         sourcePage: 'health',
-        entityIds: patientFamilyIds
+        entityIds: portalPatientIds
       });
       
       if (!syncResult.success) {
