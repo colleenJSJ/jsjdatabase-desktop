@@ -4,6 +4,7 @@
  */
 
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { ActivityLogger } from '@/lib/services/activity-logger';
 import { encryptionService } from '@/lib/encryption';
@@ -66,7 +67,12 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
   error?: string;
 }> {
   const supabase = await createClient();
-  const serviceSupabase = await createServiceClient();
+  let serviceSupabase: SupabaseClient | null = null;
+  try {
+    serviceSupabase = await createServiceClient();
+  } catch (serviceError) {
+    console.warn('[Portal-Password Sync] Service client unavailable; falling back to user client for password sync', serviceError);
+  }
   
   try {
     // 1. Normalize the portal URL and extract domain
@@ -189,17 +195,22 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     let existingPassword = null;
 
     if (portal?.password_id) {
-      const { data: passwordById } = await serviceSupabase
-        .from('passwords')
-        .select('*')
-        .eq('id', portal.password_id)
-        .single();
-      if (passwordById) {
-        existingPassword = passwordById;
+      try {
+        const passwordClient = (serviceSupabase ?? supabase) as SupabaseClient;
+        const { data: passwordById } = await passwordClient
+          .from('passwords')
+          .select('*')
+          .eq('id', portal.password_id)
+          .maybeSingle();
+        if (passwordById) {
+          existingPassword = passwordById;
+        }
+      } catch (lookupError) {
+        console.warn('[Portal-Password Sync] Unable to fetch existing password by id, will attempt fallback matching', lookupError);
       }
     }
 
-    if (!existingPassword) {
+    if (!existingPassword && serviceSupabase) {
       const { data: existingPasswords } = await serviceSupabase
         .from('passwords')
         .select('*')
@@ -211,6 +222,21 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
         p.username === passwordKey.username &&
         (p.website_url?.includes(domain) || p.url?.includes(domain))
       ) ?? null;
+    }
+
+    if (!existingPassword && !serviceSupabase) {
+      try {
+        const { data: fallbackPassword } = await supabase
+          .from('passwords')
+          .select('*')
+          .eq('source_reference', portal.id)
+          .maybeSingle();
+        if (fallbackPassword) {
+          existingPassword = fallbackPassword;
+        }
+      } catch (fallbackLookupError) {
+        console.warn('[Portal-Password Sync] Fallback password lookup failed', fallbackLookupError);
+      }
     }
     
     // For password creation, we'll use direct Supabase insert to avoid interface issues
@@ -266,44 +292,78 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
         delete passwordUpdate.notes;
       }
 
-      const { data: updatedPassword, error: updateError } = await serviceSupabase
+      const updateClient = (serviceSupabase ?? supabase) as SupabaseClient;
+      const { data: updatedPassword, error: updateError } = await updateClient
         .from('passwords')
         .update(passwordUpdate)
         .eq('id', existingPassword.id)
         .select()
-        .single();
-      
-      if (updateError) {
+        .maybeSingle();
+
+      if (updateError || !updatedPassword) {
         console.error('[Portal-Password Sync] Failed to update password:', updateError);
-        throw updateError;
+        throw updateError || new Error('Password update failed');
       }
       password = updatedPassword;
       console.log('[Portal-Password Sync] Password updated successfully:', password?.id);
     } else {
       // Create new password directly in database
       try {
-        console.log('[Portal-Password Sync] Creating password with data:', {
-          ...passwordDataBase,
-          password: '[REDACTED]',
-          notes: passwordDataBase.notes ? '[REDACTED]' : null
-        });
-        
         const passwordInsert = {
           ...passwordDataBase,
           created_at: new Date().toISOString(),
         };
 
-        const { data: newPassword, error: createError } = await serviceSupabase
-          .from('passwords')
-          .insert(passwordInsert)
-          .select()
-          .single();
-        
-        if (createError) {
-          console.error('[Portal-Password Sync] Failed to create password:', createError);
-          throw createError;
+        let newPassword;
+
+        if (serviceSupabase) {
+          console.log('[Portal-Password Sync] Creating password with service client:', {
+            ...passwordInsert,
+            password: '[REDACTED]',
+            notes: passwordInsert.notes ? '[REDACTED]' : null
+          });
+
+          const { data, error: createError } = await serviceSupabase
+            .from('passwords')
+            .insert(passwordInsert)
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('[Portal-Password Sync] Failed to create password:', createError);
+            throw createError;
+          }
+          newPassword = data;
+        } else {
+          // Fallback to user-scoped client: force owner/shared to createdBy for RLS compatibility
+          const fallbackOwnerId = config.createdBy;
+          const fallbackSharedWith = cleanSharedWith.filter(id => id && id !== fallbackOwnerId);
+          const fallbackInsert = {
+            ...passwordInsert,
+            owner_id: fallbackOwnerId,
+            shared_with: fallbackSharedWith,
+            is_shared: fallbackSharedWith.length > 0,
+          };
+
+          console.log('[Portal-Password Sync] Creating password with fallback client:', {
+            ...fallbackInsert,
+            password: '[REDACTED]',
+            notes: fallbackInsert.notes ? '[REDACTED]' : null
+          });
+
+          const { data, error: fallbackError } = await supabase
+            .from('passwords')
+            .insert(fallbackInsert)
+            .select()
+            .maybeSingle();
+
+          if (fallbackError || !data) {
+            console.error('[Portal-Password Sync] Fallback password creation failed:', fallbackError);
+            throw fallbackError || new Error('Fallback password insertion failed');
+          }
+          newPassword = data;
         }
-        
+
         password = newPassword;
         console.log('[Portal-Password Sync] Password created successfully:', password?.id);
       } catch (createError) {
