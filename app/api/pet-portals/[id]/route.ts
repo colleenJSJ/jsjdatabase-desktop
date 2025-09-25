@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { ensurePortalAndPassword } from '@/lib/services/portal-password-sync';
 import { resolveFamilyMemberToUser } from '@/app/api/_helpers/person-resolver';
 import { normalizeUrl } from '@/lib/utils/url-helper';
@@ -164,7 +164,24 @@ export async function DELETE(
   const { id } = await params;
   try {
     const supabase = await createClient();
-    const { error } = await supabase
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (userRow?.role !== 'admin') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    const serviceSupabase = await createServiceClient();
+    const { error } = await serviceSupabase
       .from('portals')
       .delete()
       .eq('id', id)

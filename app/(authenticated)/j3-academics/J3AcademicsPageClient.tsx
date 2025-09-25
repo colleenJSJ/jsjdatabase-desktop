@@ -306,7 +306,17 @@ export default function J3AcademicsPageClient() {
                       strengthOverride={getPasswordStrength(portalPassword)}
                       canManage={user?.role === 'admin'}
                       onEdit={() => { setEditingPortal(portal); setShowPortalModal(true); }}
-                      onDelete={async () => { if (!confirm('Delete this portal?')) return; const ApiClient = (await import('@/lib/api/api-client')).default; await ApiClient.delete(`/api/academic-portals/${portal.id}`); await reload(); }}
+                      onDelete={async () => {
+                        if (!portal.id) return;
+                        if (!confirm('Delete this portal?')) return;
+                        const ApiClient = (await import('@/lib/api/api-client')).default;
+                        const response = await ApiClient.delete(`/api/academic-portals/${portal.id}`);
+                        if (!response.success) {
+                          alert(response.error || 'Failed to delete portal');
+                          return;
+                        }
+                        await reload();
+                      }}
                       onOpenUrl={portal.id ? handlePortalOpen : undefined}
                     />
                   );

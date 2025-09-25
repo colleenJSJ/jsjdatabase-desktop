@@ -89,6 +89,19 @@ export default function PetsPageClient() {
     }));
     return [...base, { id: 'shared', email: '', name: 'Shared' }];
   }, [pets]);
+  const canManagePortals = user?.role === 'admin';
+
+  const handleDeletePortal = useCallback(async (portalId?: string) => {
+    if (!portalId) return;
+    if (!confirm('Delete this pet portal?')) return;
+    const ApiClient = (await import('@/lib/api/api-client')).default;
+    const response = await ApiClient.delete(`/api/pet-portals/${portalId}`);
+    if (!response.success) {
+      alert(response.error || 'Failed to delete portal');
+      return;
+    }
+    await loadData();
+  }, [loadData]);
 
   const loadData = useCallback(async () => {
     try {
@@ -429,9 +442,12 @@ export default function PetsPageClient() {
                         extraContent={extraContent}
                         showFavoriteToggle={false}
                         strengthOverride={getPasswordStrength(portalPassword)}
-                        canManage={false}
-                        onEdit={() => {}}
-                        onDelete={() => {}}
+                        canManage={canManagePortals}
+                        onEdit={() => {
+                          setEditingPortal(portal);
+                          setShowAddPortal(true);
+                        }}
+                        onDelete={() => handleDeletePortal(portal.id as string | undefined)}
                       />
                     );
                   })}
