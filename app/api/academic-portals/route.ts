@@ -1,28 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { normalizeUrl } from '@/lib/utils/url-helper';
-import { encrypt, decrypt } from '@/lib/encryption';
-
-const serializePortal = (portal: any) => {
-  if (!portal) return portal;
-  let decryptedPassword = portal.password;
-  if (typeof portal.password === 'string' && portal.password.length > 0) {
-    try {
-      decryptedPassword = decrypt(portal.password);
-    } catch (error) {
-      console.error('[Academic Portals API] Failed to decrypt portal password', {
-        portalId: portal.id,
-        error,
-      });
-      decryptedPassword = null;
-    }
-  }
-
-  return {
-    ...portal,
-    password: decryptedPassword,
-  };
-};
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,7 +49,7 @@ export async function GET(request: NextRequest) {
           }
           
           return {
-            ...serializePortal(portal),
+            ...portal,
             children: childIds
           };
         })
@@ -80,10 +57,10 @@ export async function GET(request: NextRequest) {
       
       // Filter out null values (portals that don't match the childId filter)
       const filteredPortals = portalsWithChildren.filter(p => p !== null);
-      return NextResponse.json({ portals: filteredPortals });
+      return NextResponse.json(filteredPortals);
     }
 
-    return NextResponse.json({ portals: [] });
+    return NextResponse.json([]);
   } catch (error) {
     console.error('Error in GET /api/academic-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -100,20 +77,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { children, url, title, username, password, notes } = body;
-    const portalUrl = url ? normalizeUrl(url) : '';
+    const { syncToPasswords, children, url, ...portalData } = body;
+
+    // Map url to portal_url for database compatibility
+    if (url) {
+      portalData.portal_url = url;
+    }
+    
+    // Remove child_id from portalData as we'll use junction table
+    delete portalData.child_id;
 
     // Insert the portal into unified portals table
-    const encryptedPassword = password ? encrypt(password) : null;
-
     const { data: portal, error: portalError } = await supabase
       .from('portals')
       .insert({
-        portal_name: title,
-        portal_url: portalUrl,
-        username,
-        password: encryptedPassword,
-        notes,
+        ...portalData,
         portal_type: 'academic',
         created_at: new Date().toISOString()
       })
@@ -142,7 +120,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Sync portal credentials to passwords table using the better sync function
-    if (portal && username && password) {
+    if (portal && (portalData.username && portalData.password)) {
       const { ensurePortalAndPassword } = await import('@/lib/services/portal-password-sync');
       const { resolveFamilyMemberToUser } = await import('@/app/api/_helpers/person-resolver');
       
@@ -184,17 +162,15 @@ export async function POST(request: NextRequest) {
       const syncResult = await ensurePortalAndPassword({
         providerType: 'academic',
         providerId: portal.id,
-        providerName: title,
-        portal_url: portalUrl,
-        portal_username: username,
-        portal_password: password,
+        providerName: portal.portal_name,
+        portal_url: portal.portal_url,
+        portal_username: portal.username,
+        portal_password: portal.password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: notes || `Academic portal for ${title}`,
-        source: 'academic_portal',
-        sourcePage: 'j3-academics',
-        entityIds: Array.isArray(children) ? children.filter((id: string) => Boolean(id)) : []
+        notes: portal.notes || `Academic portal for ${portal.portal_name}`,
+        source: 'academic_portal'
       });
       
       if (!syncResult.success) {
@@ -203,7 +179,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...serializePortal(portal), children: children || [] });
+    return NextResponse.json({ ...portal, children: children || [] });
   } catch (error) {
     console.error('Error in POST /api/academic-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
