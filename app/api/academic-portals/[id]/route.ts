@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
 
 const serializePortal = (portal: any) => {
   if (!portal) return portal;
@@ -88,6 +89,15 @@ export async function PUT(
           )
         )
       : [];
+    const normalizedChildIds: string[] = selectedChildIds.length > 0
+      ? Array.from(
+          new Set(
+            selectedChildIds
+              .map(childId => normalizeFamilyMemberId(childId).trim())
+              .filter((childId): childId is string => childId.length > 0)
+          )
+        )
+      : [];
 
     const notesProvided = Object.prototype.hasOwnProperty.call(body, 'notes');
     const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
@@ -145,8 +155,8 @@ export async function PUT(
       .eq('portal_id', id);
 
     // Then add new associations
-    if (selectedChildIds.length > 0) {
-      const childRecords = selectedChildIds.map((childId) => ({
+    if (normalizedChildIds.length > 0) {
+      const childRecords = normalizedChildIds.map((childId) => ({
         portal_id: id,
         child_id: childId
       }));
@@ -166,8 +176,8 @@ export async function PUT(
 
       const parentUserIds: string[] = [];
 
-      if (selectedChildIds.length > 0) {
-        for (const childId of selectedChildIds) {
+      if (normalizedChildIds.length > 0) {
+        for (const childId of normalizedChildIds) {
           const { data: childData } = await supabase
             .from('family_members')
             .select('parent_id')
@@ -185,7 +195,7 @@ export async function PUT(
 
       const ownerId = parentUserIds[0] || user.id;
       const sharedWith = parentUserIds.slice(1);
-      const childIds = selectedChildIds;
+      const childIds = normalizedChildIds;
 
       await ensurePortalAndPassword({
         providerType: 'academic',
@@ -206,7 +216,7 @@ export async function PUT(
       });
     }
 
-    return NextResponse.json({ ...serializePortal(portal), children: selectedChildIds });
+    return NextResponse.json({ ...serializePortal(portal), children: normalizedChildIds });
   } catch (error) {
     console.error('Error in PUT /api/academic-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

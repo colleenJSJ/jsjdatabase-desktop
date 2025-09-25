@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/contexts/user-context';
@@ -15,6 +15,7 @@ import ApiClient from '@/lib/api/api-client';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { Password } from '@/lib/services/password-service-interface';
 import { getPasswordStrength } from '@/lib/passwords/utils';
+import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 import { Upload } from 'lucide-react';
@@ -39,7 +40,19 @@ export default function J3AcademicsPageClient() {
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
   const [documentsRefreshKey, setDocumentsRefreshKey] = useState(0);
 
-  const allowedChildNames = new Set(['auggie', 'claire', 'blossom']);
+  const childSeeds = useMemo(
+    () => [
+      { key: 'auggie', id: normalizeFamilyMemberId('auggie'), name: 'Auggie' },
+      { key: 'claire', id: normalizeFamilyMemberId('claire'), name: 'Claire' },
+      { key: 'blossom', id: normalizeFamilyMemberId('blossom'), name: 'Blossom' },
+    ],
+    []
+  );
+
+  const allowedChildNames = useMemo(
+    () => new Set(childSeeds.map(seed => seed.key)),
+    [childSeeds]
+  );
 
   const academicPortalUsers = useMemo(() => {
     const base = children.map(child => ({
@@ -50,30 +63,27 @@ export default function J3AcademicsPageClient() {
     return [...base, { id: 'shared', email: '', name: 'Shared' }];
   }, [children]);
 
-  const childNames = useMemo(() => [
-    { id: 'auggie', name: 'Auggie' },
-    { id: 'claire', name: 'Claire' },
-    { id: 'blossom', name: 'Blossom' },
-  ], []);
-
   const normalizeChildren = (childrenList: any[] = []) => {
     const byFirstName = new Map<string, any>();
     for (const child of childrenList) {
       const name = (child?.name || child?.display_name || child?.full_name || child?.fullName || child?.first_name || child?.student_name || '').toString();
       const first = name.split(' ')[0].toLowerCase();
       if (!allowedChildNames.has(first)) continue;
+      const rawId = String(child?.id ?? child?.child_id ?? child?.person_id ?? child?.student_id ?? child?.uuid ?? child?.user_id ?? first);
+      const normalizedId = normalizeFamilyMemberId(rawId);
+      const displayName = name || childSeeds.find(seed => seed.key === first)?.name || first.charAt(0).toUpperCase() + first.slice(1);
       byFirstName.set(first, {
-        id: String(child?.id ?? child?.child_id ?? child?.person_id ?? child?.student_id ?? child?.uuid ?? child?.user_id ?? first),
-        name: name || first.charAt(0).toUpperCase() + first.slice(1),
+        id: normalizedId,
+        name: displayName,
       });
     }
     const results: { id: string; name: string }[] = [];
-    for (const item of childNames) {
-      const first = item.name.toLowerCase();
+    for (const seed of childSeeds) {
+      const first = seed.key;
       if (byFirstName.has(first)) {
         results.push(byFirstName.get(first)!);
       } else {
-        results.push({ id: item.id, name: item.name });
+        results.push({ id: seed.id, name: seed.name });
       }
     }
     return results;
@@ -245,7 +255,7 @@ export default function J3AcademicsPageClient() {
                       : portal.child_id
                         ? [portal.child_id]
                         : [];
-                  const childNames = childIds
+                  const assignedNames = childIds
                     .map(childId => filteredKids.find(c => c.id === childId)?.name)
                     .filter((name): name is string => Boolean(name));
 
@@ -299,7 +309,7 @@ export default function J3AcademicsPageClient() {
                       categories={[]}
                       users={academicPortalUsers}
                       subtitle={null}
-                      assignedToLabel={childNames.length > 0 ? childNames.join(', ') : student?.name || 'Shared'}
+                      assignedToLabel={assignedNames.length > 0 ? assignedNames.join(', ') : student?.name || 'Shared'}
                       extraContent={notes ? <p className="text-xs text-text-muted/80 italic">{notes}</p> : null}
                       footerContent={footerContent}
                       showFavoriteToggle={false}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
 
 const serializePortal = (portal: any) => {
   if (!portal) return portal;
@@ -110,6 +111,15 @@ export async function POST(request: NextRequest) {
           )
         )
       : [];
+    const normalizedChildIds: string[] = selectedChildIds.length > 0
+      ? Array.from(
+          new Set(
+            selectedChildIds
+              .map(childId => normalizeFamilyMemberId(childId).trim())
+              .filter((childId): childId is string => childId.length > 0)
+          )
+        )
+      : [];
     const portalUrl = url ? normalizeUrl(url) : '';
     const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
       ? notes.trim()
@@ -140,8 +150,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Add children associations
-    if (portal && selectedChildIds.length > 0) {
-      const childRecords = selectedChildIds.map((childId) => ({
+    if (portal && normalizedChildIds.length > 0) {
+      const childRecords = normalizedChildIds.map((childId) => ({
         portal_id: portal.id,
         child_id: childId
       }));
@@ -165,8 +175,8 @@ export async function POST(request: NextRequest) {
       const parentUserIds: string[] = [];
       
       // Get parents of the children
-      if (selectedChildIds.length > 0) {
-        for (const childId of selectedChildIds) {
+      if (normalizedChildIds.length > 0) {
+        for (const childId of normalizedChildIds) {
           // Get the child's parent information
           const { data: childData } = await supabase
             .from('family_members')
@@ -190,7 +200,7 @@ export async function POST(request: NextRequest) {
       
       console.log('[Academic Portals API] Syncing portal to password:', {
         portal_id: portal.id,
-        children: selectedChildIds,
+        children: normalizedChildIds,
         owner: ownerId,
         shared: sharedWith
       });
@@ -210,7 +220,7 @@ export async function POST(request: NextRequest) {
         notes: sanitizedNotes,
         source: 'academic_portal',
         sourcePage: 'j3-academics',
-        entityIds: selectedChildIds
+        entityIds: normalizedChildIds
       });
       
       if (!syncResult.success) {
@@ -219,7 +229,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...serializePortal(portal), children: selectedChildIds });
+    return NextResponse.json({ ...serializePortal(portal), children: normalizedChildIds });
   } catch (error) {
     console.error('Error in POST /api/academic-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
