@@ -73,6 +73,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { title, petId, username, password, url, notes } = body;
 
+    const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
+      ? notes.trim()
+      : null;
+
     if (!title || !petId) {
       return NextResponse.json({ error: 'Portal name and pet are required' }, { status: 400 });
     }
@@ -94,7 +98,7 @@ export async function POST(request: NextRequest) {
       entity_id: petId,
       username: username || null,
       password: encryptedPassword,
-      notes: notes || null,
+      notes: sanitizedNotes,
       created_by: user.id,
     };
 
@@ -148,13 +152,15 @@ export async function POST(request: NextRequest) {
         providerType: 'pet',
         providerId: portal.id,
         providerName: title,
+        portalName: title,
+        portalId: portal.id,
         portal_url: normalizedUrl || '',
         portal_username: username || '',
         portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: notes || `Pet portal for ${title}`,
+        notes: sanitizedNotes,
         source: 'pet_portal',
         sourcePage: 'pets',
         entityIds

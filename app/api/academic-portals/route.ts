@@ -102,6 +102,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { children, url, title, username, password, notes } = body;
     const portalUrl = url ? normalizeUrl(url) : '';
+    const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
+      ? notes.trim()
+      : null;
 
     // Insert the portal into unified portals table
     const encryptedPassword = password ? encrypt(password) : null;
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
         portal_url: portalUrl,
         username,
         password: encryptedPassword,
-        notes,
+        notes: sanitizedNotes,
         portal_type: 'academic',
         created_by: user.id,
         created_at: new Date().toISOString()
@@ -187,13 +190,15 @@ export async function POST(request: NextRequest) {
         providerType: 'academic',
         providerId: portal.id,
         providerName: title,
+        portalName: title,
+        portalId: portal.id,
         portal_url: portalUrl,
         portal_username: username,
         portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: notes || `Academic portal for ${title}`,
+        notes: sanitizedNotes,
         source: 'academic_portal',
         sourcePage: 'j3-academics',
         entityIds: Array.isArray(children) ? children.filter((id: string) => Boolean(id)) : []

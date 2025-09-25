@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { ensurePortalAndPassword, deletePortalAndPassword } from '@/lib/services/portal-password-sync';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { ensurePortalAndPassword, deletePortalById } from '@/lib/services/portal-password-sync';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { decrypt } from '@/lib/encryption';
 
@@ -104,6 +104,13 @@ export async function PUT(
     const body = await request.json();
     const { title, doctorId, username, password, url, notes, patientIds } = body;
 
+    const notesProvided = Object.prototype.hasOwnProperty.call(body, 'notes');
+    const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
+      ? notes.trim()
+      : notesProvided
+        ? null
+        : undefined;
+
     const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString()
     };
@@ -114,7 +121,7 @@ export async function PUT(
     }
     if (doctorId !== undefined) updates.entity_id = doctorId || null;
     if (username !== undefined) updates.username = username || null;
-    if (notes !== undefined) updates.notes = notes || null;
+    if (sanitizedNotes !== undefined) updates.notes = sanitizedNotes;
     if (patientIds !== undefined) updates.patient_ids = patientIds;
 
     let normalizedUrl: string | null | undefined;
@@ -180,18 +187,20 @@ export async function PUT(
         }
       }
 
-      if (portalPassword && (username || portal.username || plainPassword !== undefined || normalizedUrl !== undefined)) {
+      if (portalPassword && (username || portal.username || plainPassword !== undefined || normalizedUrl !== undefined || sanitizedNotes !== undefined)) {
         await ensurePortalAndPassword({
           providerType: 'medical',
           providerId: portal.entity_id || portal.id,
           providerName: title ?? portal.portal_name,
+          portalName: title ?? portal.portal_name,
+          portalId: portal.id,
           portal_url: normalizedUrl ?? portal.portal_url,
           portal_username: (username ?? portal.username) || '',
           portal_password: portalPassword,
           ownerId,
           sharedWith,
           createdBy: user.id,
-          notes: notes ?? portal.notes ?? `Portal for ${title ?? portal.portal_name}`,
+          notes: sanitizedNotes,
           source: 'medical_portal',
           sourcePage: 'health',
           entityIds: patientFamilyIds
@@ -231,47 +240,30 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized - Admin only' }, { status: 403 });
     }
 
-    // Load the portal to determine related provider (entity_id)
-    const { data: existingPortal } = await supabase
+    const serviceSupabase = await createServiceClient();
+    const { data: existingPortal, error: portalError } = await serviceSupabase
       .from('portals')
       .select('id, entity_id')
       .eq('id', id)
       .eq('portal_type', 'medical')
-      .single();
+      .maybeSingle();
 
-    // Best-effort cleanup of associated portals/passwords for this provider
-    if (existingPortal?.entity_id) {
-      try {
-        await deletePortalAndPassword('medical', String(existingPortal.entity_id));
-      } catch (e) {
-        console.warn('[Medical Portals API] Provider cleanup warning:', e);
-      }
-    }
-
-    // Also remove any password entries directly linked to this portal record
-    try {
-      await supabase
-        .from('passwords')
-        .delete()
-        .eq('source', 'medical_portal')
-        .eq('source_reference', id);
-    } catch (e) {
-      console.warn('[Medical Portals API] Direct password cleanup warning:', e);
-    }
-
-    // Delete the portal from unified portals table
-    const { error: deleteError } = await supabase
-      .from('portals')
-      .delete()
-      .eq('id', id)
-      .eq('portal_type', 'medical');
-
-    if (deleteError) {
-      console.error('Error deleting medical portal:', deleteError);
+    if (portalError) {
+      console.error('Error fetching medical portal for deletion:', portalError);
       return NextResponse.json({ error: 'Failed to delete portal' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    if (!existingPortal) {
+      return NextResponse.json({ error: 'Portal not found' }, { status: 404 });
+    }
+
+    const result = await deletePortalById(id);
+
+    if (!result.deletedPortal) {
+      return NextResponse.json({ error: 'Portal not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, deletedPasswords: result.deletedPasswords });
   } catch (error) {
     console.error('Error in DELETE /api/medical-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -121,6 +121,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { title, doctorId, username, password, url, notes, patientIds } = body;
 
+    const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
+      ? notes.trim()
+      : null;
+
     if (!title) {
       return NextResponse.json({ error: 'Portal name is required' }, { status: 400 });
     }
@@ -141,7 +145,7 @@ export async function POST(request: NextRequest) {
       entity_id: doctorId || null,
       username: username || null,
       password: encryptedPassword,
-      notes: notes || null,
+      notes: sanitizedNotes,
       patient_ids: patientIds || [],
       created_by: user.id
     };
@@ -194,13 +198,15 @@ export async function POST(request: NextRequest) {
         providerType: 'medical',
         providerId: portal.entity_id || portal.id,
         providerName: title,
+        portalName: title,
+        portalId: portal.id,
         portal_url: normalizedUrl || portal.portal_url,
         portal_username: username,
         portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: notes || portal.notes || `Portal for ${title}`,
+        notes: sanitizedNotes,
         source: 'medical_portal',
         sourcePage: 'health',
         entityIds: patientFamilyIds

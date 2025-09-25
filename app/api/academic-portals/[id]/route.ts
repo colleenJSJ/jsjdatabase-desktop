@@ -80,6 +80,13 @@ export async function PUT(
     const body = await request.json();
     const { children, url, title, username, password, notes } = body;
 
+    const notesProvided = Object.prototype.hasOwnProperty.call(body, 'notes');
+    const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
+      ? notes.trim()
+      : notesProvided
+        ? null
+        : undefined;
+
     // Map url to portal_url for database compatibility
     const portalUrl = url ? normalizeUrl(url) : undefined;
     // Update the portal
@@ -96,8 +103,8 @@ export async function PUT(
       updates.username = username || null;
     }
 
-    if (notes !== undefined) {
-      updates.notes = notes || null;
+    if (sanitizedNotes !== undefined) {
+      updates.notes = sanitizedNotes;
     }
 
     if (password !== undefined) {
@@ -175,13 +182,15 @@ export async function PUT(
         providerType: 'academic',
         providerId: id,
         providerName: title || portal.portal_name,
+        portalName: title || portal.portal_name,
+        portalId: portal.id,
         portal_url: portalUrl || portal.portal_url,
         portal_username: username,
         portal_password: password,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: notes || portal.notes,
+        notes: sanitizedNotes,
         source: 'academic_portal',
         sourcePage: 'j3-academics',
         entityIds: childIds
@@ -208,26 +217,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Delete associated password entry if exists
-    await supabase
-      .from('passwords')
-      .delete()
-      .eq('source_reference', id)
-      .eq('source_page', 'J3 Academics');
+    const { deletePortalById } = await import('@/lib/services/portal-password-sync');
+    const result = await deletePortalById(id);
 
-    // Delete the portal
-    const { error } = await supabase
-      .from('portals')
-      .delete()
-      .eq('id', id)
-      .eq('portal_type', 'academic');
-
-    if (error) {
-      console.error('Error deleting academic portal:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!result.deletedPortal) {
+      return NextResponse.json({ error: 'Portal not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, deletedPasswords: result.deletedPasswords });
   } catch (error) {
     console.error('Error in DELETE /api/academic-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { ensurePortalAndPassword } from '@/lib/services/portal-password-sync';
+import { createClient } from '@/lib/supabase/server';
+import { ensurePortalAndPassword, deletePortalById } from '@/lib/services/portal-password-sync';
 import { resolveFamilyMemberToUser } from '@/app/api/_helpers/person-resolver';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
@@ -77,7 +77,14 @@ export async function PUT(
     }
     if (petId !== undefined) updates.entity_id = petId || null;
     if (username !== undefined) updates.username = username || null;
-    if (notes !== undefined) updates.notes = notes || null;
+    const notesProvided = Object.prototype.hasOwnProperty.call(body, 'notes');
+    const sanitizedNotes = typeof notes === 'string' && notes.trim().length > 0
+      ? notes.trim()
+      : notesProvided
+        ? null
+        : undefined;
+
+    if (sanitizedNotes !== undefined) updates.notes = sanitizedNotes;
 
     let normalizedUrl: string | null | undefined;
     if (url !== undefined) {
@@ -139,15 +146,18 @@ export async function PUT(
         providerType: 'pet',
         providerId: portal.entity_id || portal.id,
         providerName: (title ?? portal.portal_name) || portal.provider_name,
+        portalName: (title ?? portal.portal_name) || portal.provider_name,
+        portalId: portal.id,
         portal_url: normalizedUrl ?? portal.portal_url ?? '',
         portal_username: (username ?? portal.username) || '',
         portal_password: portalPassword,
         ownerId,
         sharedWith,
         createdBy: user.id,
-        notes: notes ?? portal.notes ?? `Portal for ${(title ?? portal.portal_name) || portal.provider_name}`,
+        notes: sanitizedNotes,
         source: 'pet_portal',
-        sourcePage: 'pets'
+        sourcePage: 'pets',
+        entityIds: portal.entity_id ? [portal.entity_id] : []
       });
     }
 
@@ -180,15 +190,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const serviceSupabase = await createServiceClient();
-    const { error } = await serviceSupabase
-      .from('portals')
-      .delete()
-      .eq('id', id)
-      .eq('portal_type', 'pet');
+    const result = await deletePortalById(id);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ success: true });
+    if (!result.deletedPortal) {
+      return NextResponse.json({ error: 'Portal not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, deletedPasswords: result.deletedPasswords });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to delete pet portal' }, { status: 500 });
   }

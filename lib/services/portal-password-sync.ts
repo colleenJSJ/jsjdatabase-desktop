@@ -12,13 +12,15 @@ export interface PortalPasswordSyncConfig {
   providerType: 'medical' | 'pet' | 'academic';  // Valid portal types
   providerId?: string; // Optional: doctor_id, vet_id, portal_id, etc.
   providerName: string;
+  portalName?: string; // Optional display name override
+  portalId?: string; // If provided, target this portal record directly
   portal_url: string;
   portal_username: string;
   portal_password: string;
   ownerId: string; // Primary owner (user id)
   sharedWith: string[]; // Additional users who need access
   createdBy: string; // User creating/updating the record
-  notes?: string;
+  notes?: string | null; // Persisted as encrypted notes when provided
   source?: string; // Source of the data (e.g., 'health', 'pets')
   sourcePage?: string; // Optional source page for display (e.g., 'health', 'pets')
   entityIds?: string[]; // Related family member ids (pets, patients, students)
@@ -71,75 +73,107 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     const normalizedUrl = normalizeUrl(config.portal_url);
     const domain = extractDomain(config.portal_url);
 
-    // Encrypt the portal password before persisting to the portals table
+    const portalName = (config.portalName ?? config.providerName ?? 'Portal').trim() || config.providerName;
     const encryptedPortalPassword = config.portal_password
       ? encryptionService.encrypt(config.portal_password)
       : null;
-    
-    // 2. Dedupe and validate shared_with (ensure owner_id not in shared_with)
-    const sharedCandidates = [...config.sharedWith];
-    if (config.createdBy && config.createdBy !== config.ownerId) {
+
+    const ownerUserId = config.ownerId || config.createdBy;
+    const sharedCandidates = [...(config.sharedWith ?? [])];
+    if (config.createdBy && config.createdBy !== ownerUserId) {
       sharedCandidates.push(config.createdBy);
     }
-    const cleanSharedWith = Array.from(new Set(
-      sharedCandidates.filter(id => id && id !== config.ownerId)
-    ));
-    
+    const cleanSharedWith = Array.from(
+      new Set(sharedCandidates.filter(id => id && id !== ownerUserId))
+    );
+
+    const portalEntities = Array.from(
+      new Set((config.entityIds ?? []).filter((id): id is string => Boolean(id)))
+    );
+
     // 3. Upsert Portal record
-    // Use composite key: providerType + domain + providerName
-    const portalKey = {
-      portal_type: config.providerType,
-      portal_url_domain: domain,
-      provider_name: config.providerName.toLowerCase().trim()
-    };
-    
-    // Check if portal exists
-    const { data: existingPortal, error: portalSearchError } = await supabase
-      .from('portals')
-      .select('*')
-      .eq('portal_type', portalKey.portal_type)
-      .ilike('provider_name', portalKey.provider_name)
-      .single();
-    
     let portal;
+    let existingPortal = null;
+
+    if (config.portalId) {
+      const { data: portalById, error } = await supabase
+        .from('portals')
+        .select('*')
+        .eq('id', config.portalId)
+        .single();
+
+      if (!error && portalById) {
+        existingPortal = portalById;
+      }
+    }
+
+    if (!existingPortal) {
+      // Fallback lookup using provider name and domain (legacy support)
+      const portalKey = {
+        portal_type: config.providerType,
+        provider_name: config.providerName.toLowerCase().trim(),
+      };
+
+      const { data: foundPortal } = await supabase
+        .from('portals')
+        .select('*')
+        .eq('portal_type', portalKey.portal_type)
+        .ilike('provider_name', portalKey.provider_name)
+        .maybeSingle();
+
+      if (foundPortal) {
+        existingPortal = foundPortal;
+      }
+    }
+
     if (existingPortal) {
-      // Update existing portal
+      const portalUpdate: Record<string, any> = {
+        portal_name: portalName,
+        provider_name: config.providerName,
+        portal_url: normalizedUrl,
+        username: config.portal_username || null,
+        password: encryptedPortalPassword,
+        entity_id: config.providerId ?? existingPortal.entity_id ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (portalEntities.length > 0) {
+        portalUpdate.patient_ids = portalEntities;
+      }
+      if (config.notes !== undefined) {
+        portalUpdate.notes = config.notes;
+      }
+
       const { data: updatedPortal, error: updateError } = await supabase
         .from('portals')
-        .update({
-          portal_url: normalizedUrl,
-          username: config.portal_username,
-          password: encryptedPortalPassword,
-          patient_ids: [config.ownerId, ...cleanSharedWith], // All people who can access
-          entity_id: config.providerId,
-          notes: config.notes,
-          updated_at: new Date().toISOString()
-        })
+        .update(portalUpdate)
         .eq('id', existingPortal.id)
         .select()
         .single();
-      
+
       if (updateError) throw updateError;
       portal = updatedPortal;
     } else {
-      // Create new portal
+      const portalInsert: Record<string, any> = {
+        portal_type: config.providerType,
+        portal_name: portalName,
+        portal_url: normalizedUrl,
+        username: config.portal_username || null,
+        password: encryptedPortalPassword,
+        provider_name: config.providerName,
+        entity_id: config.providerId ?? null,
+        patient_ids: portalEntities,
+        notes: config.notes ?? null,
+        created_by: config.createdBy,
+        updated_at: new Date().toISOString(),
+      };
+
       const { data: newPortal, error: createError } = await supabase
         .from('portals')
-        .insert({
-          portal_type: config.providerType,
-          portal_name: `${config.providerName} Portal`,
-          portal_url: normalizedUrl,
-          username: config.portal_username,
-          password: encryptedPortalPassword,
-          provider_name: config.providerName,
-          entity_id: config.providerId,
-          patient_ids: [config.ownerId, ...cleanSharedWith],
-          notes: config.notes,
-          created_by: config.createdBy
-        })
+        .insert(portalInsert)
         .select()
         .single();
-      
+
       if (createError) throw createError;
       portal = newPortal;
     }
@@ -149,22 +183,35 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     const passwordKey = {
       domain,
       username: config.portal_username,
-      owner_id: config.ownerId
+      owner_id: ownerUserId
     };
-    
-    // Check if password exists
-    const { data: existingPasswords, error: passwordSearchError } = await serviceSupabase
-      .from('passwords')
-      .select('*')
-      .eq('owner_id', passwordKey.owner_id)
-      .eq('username', passwordKey.username)
-      .or(`website_url.ilike.%${domain}%,url.ilike.%${domain}%`);
-    
-    // Find exact match if exists
-    const existingPassword = existingPasswords?.find(p => 
-      p.username === passwordKey.username && 
-      (p.website_url?.includes(domain) || p.url?.includes(domain))
-    );
+
+    let existingPassword = null;
+
+    if (portal?.password_id) {
+      const { data: passwordById } = await serviceSupabase
+        .from('passwords')
+        .select('*')
+        .eq('id', portal.password_id)
+        .single();
+      if (passwordById) {
+        existingPassword = passwordById;
+      }
+    }
+
+    if (!existingPassword) {
+      const { data: existingPasswords } = await serviceSupabase
+        .from('passwords')
+        .select('*')
+        .eq('owner_id', passwordKey.owner_id)
+        .eq('username', passwordKey.username)
+        .or(`website_url.ilike.%${domain}%,url.ilike.%${domain}%`);
+
+      existingPassword = existingPasswords?.find(p =>
+        p.username === passwordKey.username &&
+        (p.website_url?.includes(domain) || p.url?.includes(domain))
+      ) ?? null;
+    }
     
     // For password creation, we'll use direct Supabase insert to avoid interface issues
     let password;
@@ -175,17 +222,16 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     const entityIds = Array.from(new Set((config.entityIds || []).filter(Boolean)));
     const entityTags = entityIds.length > 0 ? entityIds.map(id => `family:${id}`) : undefined;
 
-    const passwordData = {
-      service_name: config.providerName,
-      title: `${config.providerName} Portal`,
+    const passwordDataBase: Record<string, any> = {
+      service_name: portalName,
+      title: portalName,
       username: config.portal_username,
-      password: encryptionService.encrypt(config.portal_password), // Encrypt the password
+      password: encryptionService.encrypt(config.portal_password),
       url: normalizedUrl,
       website_url: normalizedUrl,
       category: getCategoryForProviderType(config.providerType),
-      notes: config.notes ? encryptionService.encrypt(config.notes || `Portal for ${config.providerName}`) : null,
-      owner_id: config.ownerId,
-      shared_with: cleanSharedWith, // Array of UUIDs
+      owner_id: ownerUserId,
+      shared_with: cleanSharedWith,
       is_shared: cleanSharedWith.length > 0,
       source,
       source_page: sourcePage,
@@ -193,10 +239,12 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       tags: entityTags ?? [],
       is_favorite: false,
       created_by: config.createdBy,
-      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       last_changed: new Date().toISOString()
     };
+    if (config.notes !== undefined) {
+      passwordDataBase.notes = config.notes ? encryptionService.encrypt(config.notes) : null;
+    }
     
     if (existingPassword) {
       // Update existing password directly in database
@@ -208,13 +256,19 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
         ? Array.from(new Set([...existingNonFamilyTags, ...entityTags]))
         : existingTagsRaw;
 
+      const passwordUpdate: Record<string, any> = {
+        ...passwordDataBase,
+        tags: mergedTags,
+        created_at: existingPassword.created_at,
+      };
+
+      if (config.notes === undefined) {
+        delete passwordUpdate.notes;
+      }
+
       const { data: updatedPassword, error: updateError } = await serviceSupabase
         .from('passwords')
-        .update({
-          ...passwordData,
-          tags: mergedTags,
-          created_at: existingPassword.created_at, // Keep original creation date
-        })
+        .update(passwordUpdate)
         .eq('id', existingPassword.id)
         .select()
         .single();
@@ -229,14 +283,19 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       // Create new password directly in database
       try {
         console.log('[Portal-Password Sync] Creating password with data:', {
-          ...passwordData,
+          ...passwordDataBase,
           password: '[REDACTED]',
-          notes: passwordData.notes ? '[REDACTED]' : null
+          notes: passwordDataBase.notes ? '[REDACTED]' : null
         });
         
+        const passwordInsert = {
+          ...passwordDataBase,
+          created_at: new Date().toISOString(),
+        };
+
         const { data: newPassword, error: createError } = await serviceSupabase
           .from('passwords')
-          .insert(passwordData)
+          .insert(passwordInsert)
           .select()
           .single();
         
@@ -389,6 +448,7 @@ export async function syncExistingDoctorPortals(userId: string): Promise<{
           providerType: 'medical',  // Changed from 'health' to 'medical'
           providerId: doctor.id,
           providerName: doctor.name,
+          portalName: doctor.name,
           portal_url: doctor.portal_url,
           portal_username: doctor.portal_username,
           portal_password: doctor.portal_password,
@@ -512,4 +572,81 @@ export async function deletePortalAndPassword(
   }
   
   return result;
+}
+
+export async function deletePortalById(portalId: string): Promise<{
+  deletedPortal: boolean;
+  deletedPasswords: number;
+}> {
+  const supabase = await createServiceClient();
+
+  const result = {
+    deletedPortal: false,
+    deletedPasswords: 0,
+  };
+
+  const { data: portal, error: portalError } = await supabase
+    .from('portals')
+    .select('id, password_id')
+    .eq('id', portalId)
+    .maybeSingle();
+
+  if (portalError) {
+    throw new Error(`Failed to fetch portal ${portalId}: ${portalError.message}`);
+  }
+
+  if (!portal) {
+    return result;
+  }
+
+  try {
+    // Remove linked password if the portal tracks it
+    if (portal.password_id) {
+      const { error: passwordError } = await supabase
+        .from('passwords')
+        .delete()
+        .eq('id', portal.password_id);
+
+      if (passwordError) {
+        console.warn('[Portal-Password Sync] Failed to delete password by id:', passwordError);
+      } else {
+        result.deletedPasswords += 1;
+      }
+    }
+
+    // Clean up any passwords referencing this portal via source_reference
+    const { data: linkedPasswords, error: linkedError } = await supabase
+      .from('passwords')
+      .select('id')
+      .eq('source_reference', portalId);
+
+    if (!linkedError && linkedPasswords?.length) {
+      const ids = linkedPasswords.map(p => p.id);
+      const { error: orphanDeleteError } = await supabase
+        .from('passwords')
+        .delete()
+        .in('id', ids);
+
+      if (orphanDeleteError) {
+        console.warn('[Portal-Password Sync] Failed to delete linked passwords:', orphanDeleteError);
+      } else {
+        result.deletedPasswords += ids.length;
+      }
+    }
+
+    const { error: portalDeleteError } = await supabase
+      .from('portals')
+      .delete()
+      .eq('id', portalId);
+
+    if (portalDeleteError) {
+      throw new Error(portalDeleteError.message);
+    }
+
+    result.deletedPortal = true;
+    return result;
+  } catch (error) {
+    console.error('[Portal-Password Sync] deletePortalById error:', error);
+    throw error;
+  }
 }

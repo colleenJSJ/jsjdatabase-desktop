@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { SupabasePasswordService } from '@/lib/services/supabase-password-service';
+import { deletePortalById } from '@/lib/services/portal-password-sync';
 
 const passwordService = new SupabasePasswordService();
 
@@ -85,7 +86,27 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const serviceSupabase = await createServiceClient();
+    const { data: existingPassword } = await serviceSupabase
+      .from('passwords')
+      .select('id, source_page, source_reference')
+      .eq('id', id)
+      .maybeSingle();
+
     await passwordService.deletePassword(id, user.id);
+
+    if (existingPassword?.source_reference) {
+      const sourcePage = (existingPassword.source_page || '').toLowerCase();
+      const shouldSync = ['health', 'pets', 'j3-academics', 'j3_academics'].includes(sourcePage);
+
+      if (shouldSync) {
+        try {
+          await deletePortalById(existingPassword.source_reference);
+        } catch (error) {
+          console.warn('[Passwords API] Failed to delete linked portal:', error);
+        }
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

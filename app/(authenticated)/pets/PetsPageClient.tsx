@@ -152,8 +152,11 @@ export default function PetsPageClient() {
       alert(response.error || 'Failed to delete portal');
       return;
     }
+    if (editingPortal?.id === portalId) {
+      setEditingPortal(null);
+    }
     await loadData();
-  }, [loadData]);
+  }, [loadData, editingPortal]);
 
   useEffect(() => {
     loadData();
