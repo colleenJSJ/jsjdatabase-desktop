@@ -239,7 +239,7 @@ export default function PetsPageClient() {
   const filtered = useMemo((): {
     pets: Pet[];
     contacts: PetContact[];
-    portals: PetPortal[];
+    portals: PortalRecord[];
     appointments: PetAppointment[];
   } => ({
     pets: pets
