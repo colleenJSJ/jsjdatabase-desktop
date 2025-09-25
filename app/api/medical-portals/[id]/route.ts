@@ -190,7 +190,7 @@ export async function PUT(
       if (portalPassword && (username || portal.username || plainPassword !== undefined || normalizedUrl !== undefined || sanitizedNotes !== undefined)) {
         await ensurePortalAndPassword({
           providerType: 'medical',
-          providerId: portal.entity_id || portal.id,
+          providerId: doctorId ?? portal.entity_id ?? undefined,
           providerName: title ?? portal.portal_name,
           portalName: title ?? portal.portal_name,
           portalId: portal.id,

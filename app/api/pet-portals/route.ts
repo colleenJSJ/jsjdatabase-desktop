@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
       const syncResult = await ensurePortalAndPassword({
         providerType: 'pet',
-        providerId: portal.id,
+        providerId: petId || undefined,
         providerName: title,
         portalName: title,
         portalId: portal.id,

@@ -144,7 +144,7 @@ export async function PUT(
     if (portalPassword) {
       await ensurePortalAndPassword({
         providerType: 'pet',
-        providerId: portal.entity_id || portal.id,
+        providerId: typeof portal.entity_id === 'string' ? portal.entity_id : undefined,
         providerName: (title ?? portal.portal_name) || portal.provider_name,
         portalName: (title ?? portal.portal_name) || portal.provider_name,
         portalId: portal.id,
@@ -157,7 +157,7 @@ export async function PUT(
         notes: sanitizedNotes,
         source: 'pet_portal',
         sourcePage: 'pets',
-        entityIds: portal.entity_id ? [portal.entity_id] : []
+        entityIds: typeof portal.entity_id === 'string' ? [portal.entity_id] : []
       });
     }
 

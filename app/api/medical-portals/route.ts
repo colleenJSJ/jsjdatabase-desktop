@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       
       const syncResult = await ensurePortalAndPassword({
         providerType: 'medical',
-        providerId: portal.entity_id || portal.id,
+        providerId: doctorId || portal.entity_id || undefined,
         providerName: title,
         portalName: title,
         portalId: portal.id,
