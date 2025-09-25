@@ -81,6 +81,7 @@ export default function PetsPageClient() {
   const [selectedAppointment, setSelectedAppointment] = useState<PetAppointment | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showAddPortal, setShowAddPortal] = useState(false);
+  const [editingPortal, setEditingPortal] = useState<PortalRecord | null>(null);
   const { calendars: googleCalendars } = useGoogleCalendars();
 
   const portalUsers = useMemo(() => {
@@ -383,7 +384,15 @@ export default function PetsPageClient() {
             <section className="space-y-3">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-semibold text-text-primary">Portals</h2>
-                <button onClick={()=>setShowAddPortal(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Portal</button>
+                <button
+                  onClick={() => {
+                    setEditingPortal(null);
+                    setShowAddPortal(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
+                >
+                  Add Portal
+                </button>
               </div>
               {filtered.portals.length === 0 ? (
                 <div className="text-sm text-text-muted">No portals</div>
@@ -565,8 +574,15 @@ export default function PetsPageClient() {
         <AddPetPortalModal
           pets={pets}
           selectedPetId={selectedPetId}
-          onClose={() => setShowAddPortal(false)}
-          onSaved={loadData}
+          editingPortal={editingPortal}
+          onClose={() => {
+            setShowAddPortal(false);
+            setEditingPortal(null);
+          }}
+          onSaved={async () => {
+            await loadData();
+            setEditingPortal(null);
+          }}
         />
       )}
       {selectedAppointment && (
@@ -584,11 +600,13 @@ export default function PetsPageClient() {
 function AddPetPortalModal({
   pets,
   selectedPetId,
+  editingPortal,
   onClose,
   onSaved,
 }: {
   pets: { id: string; name?: string | null }[];
   selectedPetId: string;
+  editingPortal: PortalRecord | null;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
@@ -607,6 +625,7 @@ function AddPetPortalModal({
   const [includeLowercase, setIncludeLowercase] = useState(true);
   const [includeNumbers, setIncludeNumbers] = useState(true);
   const [includeSymbols, setIncludeSymbols] = useState(true);
+  const isEditing = Boolean(editingPortal);
 
   useEffect(() => {
     const defaultPetId = (() => {
@@ -616,15 +635,26 @@ function AddPetPortalModal({
       return pets[0]?.id || '';
     })();
 
-    setFormData({
-      title: '',
-      petId: defaultPetId,
-      username: '',
-      password: '',
-      url: '',
-      notes: '',
-    });
-  }, [pets, selectedPetId]);
+    if (editingPortal) {
+      setFormData({
+        title: (editingPortal.portal_name || editingPortal.provider_name || '').trim(),
+        petId: typeof editingPortal.entity_id === 'string' ? editingPortal.entity_id : defaultPetId,
+        username: editingPortal.username || '',
+        password: editingPortal.password || '',
+        url: editingPortal.portal_url || '',
+        notes: editingPortal.notes || '',
+      });
+    } else {
+      setFormData({
+        title: '',
+        petId: defaultPetId,
+        username: '',
+        password: '',
+        url: '',
+        notes: '',
+      });
+    }
+  }, [pets, selectedPetId, editingPortal]);
 
   const passwordStrength = getPasswordStrength(formData.password || '');
 
@@ -655,8 +685,11 @@ function AddPetPortalModal({
 
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/pet-portals', {
-        method: 'POST',
+      const endpoint = editingPortal ? `/api/pet-portals/${editingPortal.id}` : '/api/pet-portals';
+      const method = editingPortal ? 'PUT' : 'POST';
+
+      const response = await fetch(endpoint, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: formData.title,
@@ -684,11 +717,16 @@ function AddPetPortalModal({
   };
 
   return (
-    <Modal isOpen onClose={onClose} size="lg" ariaLabel="Add pet portal">
+    <Modal
+      isOpen
+      onClose={onClose}
+      size="lg"
+      ariaLabel={isEditing ? 'Edit pet portal' : 'Add pet portal'}
+    >
       <form onSubmit={handleSubmit} className="flex flex-col">
         <ModalHeader>
           <div className="flex w-full items-start justify-between gap-4">
-            <ModalTitle>Add Pet Portal</ModalTitle>
+            <ModalTitle>{isEditing ? 'Edit Pet Portal' : 'Add Pet Portal'}</ModalTitle>
             <ModalCloseButton onClose={onClose} />
           </div>
         </ModalHeader>
@@ -872,7 +910,7 @@ function AddPetPortalModal({
             disabled={isSubmitting || !formData.title || !formData.petId}
             className="flex-1 rounded-md bg-button-create px-4 py-2 text-white transition-colors hover:bg-button-create/90 disabled:cursor-not-allowed disabled:bg-neutral-600 sm:flex-initial"
           >
-            {isSubmitting ? 'Saving...' : 'Save'}
+            {isSubmitting ? 'Saving...' : isEditing ? 'Save Changes' : 'Save Portal'}
           </button>
         </ModalFooter>
       </form>
