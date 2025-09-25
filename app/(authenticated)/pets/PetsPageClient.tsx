@@ -81,6 +81,7 @@ export default function PetsPageClient() {
   const [selectedAppointment, setSelectedAppointment] = useState<PetAppointment | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showAddPortal, setShowAddPortal] = useState(false);
+  const [editingPortal, setEditingPortal] = useState<PetPortal | null>(null);
   const { calendars: googleCalendars } = useGoogleCalendars();
 
   const portalUsers = useMemo(() => {
