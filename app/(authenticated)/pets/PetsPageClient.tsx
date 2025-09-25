@@ -17,10 +17,12 @@ import { CredentialFormField } from '@/components/credentials/CredentialFormFiel
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { smartUrlComplete } from '@/lib/utils/url-helper';
+import { useUser } from '@/contexts/user-context';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
 export default function PetsPageClient() {
+  const { user } = useUser();
   const [loading, setLoading] = useState(true);
   type UnknownRecord = Record<string, unknown>;
   type Pet = { id: string; name: string; [key: string]: unknown };
