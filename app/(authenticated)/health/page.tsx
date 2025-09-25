@@ -95,6 +95,9 @@ const getFirstName = (fullName: string) => {
   return fullName.split(' ')[0];
 };
 
+const getPortalDisplayName = (portal: MedicalPortal) =>
+  (portal.portal_name ?? portal.provider_name ?? portal.doctor?.name ?? '').trim();
+
 // Helper function to generate appointment title (similar to travel cards)
 const generateAppointmentTitle = (appointment: any) => {
   const appointmentType = appointment.appointment_type || 'Appointment';
@@ -686,9 +689,10 @@ export default function HealthPage() {
   });
   const filteredPortals = filterPortals(portals).filter(p => {
     if (!term) return true;
+    const portalName = getPortalDisplayName(p).toLowerCase();
     return (
-      (p.name||'').toLowerCase().includes(term) ||
-      (p.portal_url||'').toLowerCase().includes(term)
+      portalName.includes(term) ||
+      (p.portal_url || '').toLowerCase().includes(term)
     );
   });
 
