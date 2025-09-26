@@ -48,7 +48,7 @@ export interface Document {
   file_url: string
   file_size: number
   file_type: string
-  category: 'legal' | 'financial' | 'medical' | 'education' | 'travel' | 'property' | 'vehicles' | 'personal' | 'work' | 'household' | 'other'
+  category: 'legal' | 'financial' | 'medical' | 'health' | 'education' | 'travel' | 'property' | 'vehicles' | 'personal' | 'work' | 'household' | 'insurance' | 'tax' | 'pets' | 'other'
   tags?: string[]
   uploaded_by: string
   created_at: Date

@@ -11,7 +11,22 @@ import { useDocumentActions } from '@/hooks/useDocumentActions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 
 interface DocumentListProps {
-  category?: 'Medical' | 'Travel' | 'Legal' | 'Financial' | 'Personal' | 'Other' | 'pets' | 'Education';
+  category?:
+    | 'Medical'
+    | 'Health'
+    | 'Travel'
+    | 'Legal'
+    | 'Financial'
+    | 'Insurance'
+    | 'Tax'
+    | 'Personal'
+    | 'Work'
+    | 'Household'
+    | 'Property'
+    | 'Vehicles'
+    | 'Other'
+    | 'Education'
+    | 'pets';
   sourcePage?: 'Health' | 'Travel' | 'Documents' | 'Pets' | 'J3 Academics';
   limit?: number;
   refreshKey?: number;

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getBackblazeService } from '@/lib/backblaze/b2-service';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateRequest } from '@/lib/utils/auth-middleware';
-import { processRelatedTo } from '@/lib/constants/family-members';
+import { processRelatedToAsync } from '@/lib/constants/family-members';
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,10 +34,8 @@ export async function POST(request: NextRequest) {
     if (tagsRaw) {
       try {
         const allTags = JSON.parse(tagsRaw);
-        
-        // Use centralized family member configuration
-        // processRelatedTo handles 'all' selection and mapping
-        const processed = processRelatedTo(allTags);
+        // Maps to family member IDs where possible
+        const processed = await processRelatedToAsync(allTags);
         assigned_to = processed.assignedTo;
         tags = processed.otherTags;
       } catch {

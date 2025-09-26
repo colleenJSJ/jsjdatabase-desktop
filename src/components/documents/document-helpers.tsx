@@ -27,11 +27,15 @@ export interface DocumentCategoryBadge {
 
 export const DOCUMENT_CATEGORY_OPTIONS: DocumentCategoryOption[] = [
   { id: 'all', name: 'All Categories', color: 'bg-gray-500' },
-  { id: 'legal', name: 'Legal', color: 'bg-purple-500' },
-  { id: 'financial', name: 'Financial', color: 'bg-green-500' },
   { id: 'medical', name: 'Medical', color: 'bg-red-500' },
+  { id: 'health', name: 'Health', color: 'bg-red-400' },
   { id: 'education', name: 'Education', color: 'bg-blue-500' },
   { id: 'travel', name: 'Travel', color: 'bg-yellow-500' },
+  { id: 'pets', name: 'Pets', color: 'bg-orange-400' },
+  { id: 'legal', name: 'Legal', color: 'bg-purple-500' },
+  { id: 'financial', name: 'Financial', color: 'bg-green-500' },
+  { id: 'insurance', name: 'Insurance', color: 'bg-emerald-500' },
+  { id: 'tax', name: 'Tax', color: 'bg-amber-500' },
   { id: 'property', name: 'Property', color: 'bg-indigo-500' },
   { id: 'vehicles', name: 'Vehicles', color: 'bg-orange-500' },
   { id: 'personal', name: 'Personal', color: 'bg-pink-500' },
