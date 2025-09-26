@@ -242,7 +242,6 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
     // For password creation, we'll use direct Supabase insert to avoid interface issues
     let password;
     const source = config.source || config.providerType;
-    const sourcePage = config.sourcePage || source;
 
     // Prepare password data for direct database insert
     const entityIds = Array.from(new Set((config.entityIds || []).filter(Boolean)));
@@ -260,7 +259,6 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       shared_with: cleanSharedWith,
       is_shared: cleanSharedWith.length > 0,
       source,
-      source_page: sourcePage,
       source_reference: portal.id, // Link to portal record
       tags: entityTags ?? [],
       is_favorite: false,
