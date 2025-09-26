@@ -203,29 +203,12 @@ export function PasswordCard({
       <div className="relative z-10 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 space-y-1">
-            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-text-primary">
-              <span className="truncate leading-tight">{serviceName}</span>
-              {showFavoriteToggle && (
-                <button
-                  onClick={() => {
-                    setIsFavorite(prev => {
-                      const next = !prev;
-                      onToggleFavorite?.(next);
-                      return next;
-                    });
-                  }}
-                  className={`rounded-full p-1 transition-colors ${
-                    isFavorite ? 'text-yellow-400' : 'text-text-muted hover:text-yellow-400'
-                  }`}
-                  title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                >
-                  <Star className="h-3.5 w-3.5" fill={isFavorite ? 'currentColor' : 'none'} />
-                </button>
-              )}
-              {assignedLabel && (
-                <span className="text-xs font-medium text-text-muted/80">· {assignedLabel}</span>
-              )}
+            <div className="truncate text-sm font-semibold leading-tight text-text-primary">
+              {serviceName}
             </div>
+            {assignedLabel && (
+              <div className="text-xs text-text-muted/80">{assignedLabel}</div>
+            )}
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/90">
               {category?.name && (
                 <span
@@ -241,8 +224,27 @@ export function PasswordCard({
               {subtitle && <span className="text-[10px] text-text-muted/80">{subtitle}</span>}
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
-            <span>{strengthMeta.label}</span>
+          <div className="flex items-center gap-2">
+            <div className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+              {strengthMeta.label}
+            </div>
+            {showFavoriteToggle && (
+              <button
+                onClick={() => {
+                  setIsFavorite(prev => {
+                    const next = !prev;
+                    onToggleFavorite?.(next);
+                    return next;
+                  });
+                }}
+                className={`rounded-full p-1 transition-colors ${
+                  isFavorite ? 'text-yellow-400' : 'text-text-muted hover:text-yellow-400'
+                }`}
+                title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+              >
+                <Star className="h-3.5 w-3.5" fill={isFavorite ? 'currentColor' : 'none'} />
+              </button>
+            )}
           </div>
         </div>
 
