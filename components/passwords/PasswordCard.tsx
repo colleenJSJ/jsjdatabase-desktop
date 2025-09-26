@@ -6,8 +6,7 @@ import {
   CopyCheck,
   Eye,
   EyeOff,
-  Star,
-  User
+  Star
 } from 'lucide-react';
 import { Password as ServicePassword } from '@/lib/services/password-service-interface';
 import { Password as SupabasePassword } from '@/lib/supabase/types';
@@ -192,7 +191,7 @@ export function PasswordCard({
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl border border-white/5 bg-[#30302e] p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/10 hover:bg-[#3a3a38] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+      className="group relative overflow-hidden rounded-2xl border border-white/5 bg-[#30302e] p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/10 hover:bg-[#363633] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
@@ -202,78 +201,68 @@ export function PasswordCard({
         }}
       />
       <div className="relative z-10 flex flex-col gap-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-text-primary">
+              <span className="truncate leading-tight">{serviceName}</span>
+              {showFavoriteToggle && (
+                <button
+                  onClick={() => {
+                    setIsFavorite(prev => {
+                      const next = !prev;
+                      onToggleFavorite?.(next);
+                      return next;
+                    });
+                  }}
+                  className={`rounded-full p-1 transition-colors ${
+                    isFavorite ? 'text-yellow-400' : 'text-text-muted hover:text-yellow-400'
+                  }`}
+                  title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                >
+                  <Star className="h-3.5 w-3.5" fill={isFavorite ? 'currentColor' : 'none'} />
+                </button>
+              )}
               {assignedLabel && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-xs text-text-muted">
-                  <User className="h-3 w-3 text-text-muted" />
-                  <span className="text-text-primary/90">{assignedLabel}</span>
-                </span>
+                <span className="text-xs font-medium text-text-muted/80">· {assignedLabel}</span>
               )}
-              {sourceLabel && (
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-text-muted">
-                  From {sourceLabel}
-                </span>
-              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/90">
               {category?.name && (
                 <span
-                  className="rounded-full px-2 py-1 text-xs font-medium text-white"
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium text-text-primary/85"
                   style={{ backgroundColor: category.color || '#6366f1' }}
                 >
                   {category.name}
                 </span>
               )}
-              {subtitle && (
-                <span className="text-xs text-text-muted/80">{subtitle}</span>
+              {sourceLabel && (
+                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-text-muted">{sourceLabel}</span>
               )}
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${strengthMeta.dotClass}`}
-                title={`${strengthMeta.label} password`}
-              />
-              <span className={`text-[10px] font-medium uppercase ${strengthMeta.textClass}`}>{strengthMeta.label}</span>
+              {subtitle && <span className="text-[10px] text-text-muted/80">{subtitle}</span>}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-semibold text-text-primary">{serviceName}</h3>
-            {showFavoriteToggle && (
-              <button
-                onClick={() => {
-                  setIsFavorite(prev => {
-                    const next = !prev;
-                    onToggleFavorite?.(next);
-                    return next;
-                  });
-                }}
-                className={`rounded p-1 transition-colors ${
-                  isFavorite ? 'text-yellow-400' : 'text-text-muted hover:text-yellow-400'
-                }`}
-                title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-              >
-                <Star className="h-4 w-4" fill={isFavorite ? 'currentColor' : 'none'} />
-              </button>
-            )}
+          <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+            <span>{strengthMeta.label}</span>
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/5 bg-black/30 p-4">
-          <div className="space-y-3">
+        <div className="space-y-2 rounded-xl border border-white/5 bg-black/25 p-3">
+          <div className="hidden">
+            {/* spacer for consistent spacing when no url */}
+          </div>
+          <div className="space-y-2 text-sm text-text-primary">
             {password.url && (
-              <div className="flex flex-col gap-1 text-sm text-text-primary">
-                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-text-muted">
-                  <span>URL</span>
-                  <button
+              <FieldRow
+                label="URL"
+                action={
+                  <IconButton
+                    active={copiedTarget === 'url'}
+                    icon={copiedTarget === 'url' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     onClick={() => handleCopy('url')}
-                    className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 transition-colors ${
-                      copiedTarget === 'url' ? 'border-emerald-400 text-emerald-300' : 'text-text-muted hover:border-white/20 hover:text-text-primary'
-                    }`}
                     title="Copy URL"
-                  >
-                    {copiedTarget === 'url' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
+                  />
+                }
+              >
                 <a
                   href={smartUrlComplete(password.url)}
                   target="_blank"
@@ -285,95 +274,84 @@ export function PasswordCard({
                 >
                   {getFriendlyDomain(password.url)}
                 </a>
-              </div>
+              </FieldRow>
             )}
 
             {password.username && (
-              <div className="flex flex-col gap-1 text-sm text-text-primary">
-                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-text-muted">
-                  <span>Username</span>
-                  <button
+              <FieldRow
+                label="User"
+                action={
+                  <IconButton
+                    active={copiedTarget === 'username'}
+                    icon={copiedTarget === 'username' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     onClick={() => handleCopy('username')}
-                    className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 transition-colors ${
-                      copiedTarget === 'username' ? 'border-emerald-400 text-emerald-300' : 'text-text-muted hover:border-white/20 hover:text-text-primary'
-                    }`}
                     title="Copy username"
-                  >
-                    {copiedTarget === 'username' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
+                  />
+                }
+              >
                 <span className="truncate font-mono text-[13px] text-text-primary/90">{password.username}</span>
-              </div>
+              </FieldRow>
             )}
 
-            <div className="flex flex-col gap-1 text-sm text-text-primary">
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-text-muted">
-                <span>Password</span>
+            <FieldRow
+              label="Pass"
+              action={
                 <div className="flex items-center gap-1.5">
-                  <button
+                  <IconButton
+                    variant={showPassword ? 'primary' : 'default'}
+                    icon={showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                     onClick={togglePassword}
-                    className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 transition-colors ${
-                      showPassword ? 'border-blue-400/60 text-blue-300' : 'text-text-muted hover:border-white/20 hover:text-text-primary'
-                    }`}
                     title={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
-                  <button
+                  />
+                  <IconButton
+                    active={copiedTarget === 'password'}
+                    icon={copiedTarget === 'password' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     onClick={() => handleCopy('password')}
-                    className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 transition-colors ${
-                      copiedTarget === 'password' ? 'border-emerald-400 text-emerald-300' : 'text-text-muted hover:border-white/20 hover:text-text-primary'
-                    }`}
                     title="Copy password"
-                  >
-                    {copiedTarget === 'password' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  </button>
+                  />
                 </div>
-              </div>
+              }
+            >
               <span className={`font-mono text-[13px] tracking-wide text-text-primary/90 ${showPassword ? '' : 'select-none'}`}>
                 {showPassword ? decryptedPassword : '••••••••'}
               </span>
-            </div>
+            </FieldRow>
           </div>
         </div>
 
         {extraContent && (
-          <div className="text-sm text-text-muted/80">
+          <div className="rounded-xl bg-white/[0.04] px-3 py-2 text-[13px] text-text-muted/80">
             {extraContent}
           </div>
         )}
-        <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
-          {footerContent ? (
-            <div className="text-xs text-text-muted">{footerContent}</div>
-          ) : (
-            <span className="text-xs text-transparent">.</span>
-          )}
-          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:justify-end">
+        <div className="flex flex-col gap-3 pt-2">
+          {footerContent && <div className="text-xs text-text-muted/70">{footerContent}</div>}
+          <div className={`grid gap-2 ${canManage ? 'sm:grid-cols-3' : 'sm:grid-cols-1'}`}>
             <button
               onClick={() => handleCopy('all')}
-              className={`flex-1 rounded-lg border border-white/10 px-4 py-2 text-sm transition-colors sm:flex-initial sm:w-auto ${
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 copiedTarget === 'all'
-                  ? 'border-emerald-400/60 bg-emerald-500/10 text-emerald-300'
-                  : 'bg-white/5 text-text-secondary hover:border-white/20 hover:bg-white/10 hover:text-text-primary'
+                  ? 'border border-emerald-400/60 bg-emerald-500/10 text-emerald-300'
+                  : 'border border-white/10 bg-white/5 text-text-secondary hover:border-white/20 hover:bg-white/10 hover:text-text-primary'
               }`}
             >
               {copiedTarget === 'all' ? 'Copied!' : 'Copy All'}
             </button>
             {canManage && (
-              <div className="flex flex-1 gap-2 sm:flex-initial">
+              <>
                 <button
                   onClick={onEdit}
-                  className="flex-1 rounded-lg border border-white/10 px-4 py-2 text-sm text-text-secondary transition-colors hover:border-white/20 hover:bg-white/10 hover:text-text-primary"
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-white/20 hover:bg-white/10 hover:text-text-primary"
                 >
                   Edit
                 </button>
                 <button
                   onClick={onDelete}
-                  className="flex-1 rounded-lg border border-red-500/40 px-4 py-2 text-sm text-red-400 transition-colors hover:border-red-400 hover:bg-red-500/10"
+                  className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:border-red-400 hover:bg-red-500/10"
                 >
                   Delete
                 </button>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -381,3 +359,49 @@ export function PasswordCard({
     </div>
   );
 }
+
+type FieldRowProps = {
+  label: string;
+  children: ReactNode;
+  action?: ReactNode;
+};
+
+const FieldRow = ({ label, children, action }: FieldRowProps) => (
+  <div className="flex items-center gap-3">
+    <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-[0.28em] text-text-muted">
+      {label}
+    </span>
+    <div className="flex flex-1 items-center justify-between gap-2 rounded-lg bg-black/30 px-3 py-2">
+      <div className="flex-1 truncate leading-tight">{children}</div>
+      {action}
+    </div>
+  </div>
+);
+
+type IconButtonProps = {
+  icon: ReactNode;
+  onClick: () => void;
+  title: string;
+  active?: boolean;
+  variant?: 'default' | 'primary';
+};
+
+const IconButton = ({ icon, onClick, title, active = false, variant = 'default' }: IconButtonProps) => {
+  const base = 'flex h-6 w-6 items-center justify-center rounded border transition-colors';
+  const classes = active
+    ? 'border-emerald-400 text-emerald-300'
+    : variant === 'primary'
+      ? 'border-blue-400/60 text-blue-300'
+      : 'border-white/10 text-text-muted hover:border-white/20 hover:text-text-primary';
+
+  return (
+    <button
+      onClick={onClick}
+      className={`${base} ${classes}`}
+      title={title}
+      type="button"
+    >
+      {icon}
+    </button>
+  );
+};
