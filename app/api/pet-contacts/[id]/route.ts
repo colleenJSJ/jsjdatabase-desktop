@@ -61,7 +61,7 @@ export async function PUT(
 
     // No junction table updates; pets are stored as an array
 
-    return NextResponse.json({ contact: { ...contact, pets: pets || [] } });
+    return NextResponse.json({ contact: { ...contact, pets: contact?.pets ?? petsList } });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to update pet contact' },
