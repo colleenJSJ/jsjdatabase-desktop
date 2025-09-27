@@ -295,7 +295,7 @@ export function ContactCard({
             {extraContent}
           </div>
 
-          {showMetaColumn ? (
+          {showMetaColumn && (
             <div className="space-y-3">
               {emails.map(email => (
                 <DetailRow
@@ -323,15 +323,15 @@ export function ContactCard({
                 />
               ))}
 
-              {website ? (
+              {website && (
                 <DetailRow
                   icon={<Globe className="h-3.5 w-3.5" />}
                   value={<span>{website}</span>}
                   href={formatWebsiteHref(website)}
                 />
-              ) : null}
+              )}
 
-              {portalUrl ? (
+              {portalUrl && (
                 <DetailRow
                   icon={<Globe className="h-3.5 w-3.5" />}
                   value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
@@ -344,9 +344,9 @@ export function ContactCard({
                     ) : null
                   }
                 />
-              ) : null}
+              )}
 
-              {Array.isArray(meta) && meta.length > 0 ? (
+              {Array.isArray(meta) && meta.length > 0 &&
                 meta.map(item => (
                   <DetailRow
                     key={item.key}
@@ -354,10 +354,9 @@ export function ContactCard({
                     value={<span>{item.value}</span>}
                     label={item.label}
                   />
-                ))
-              ) : null}
+                ))}
             </div>
-          ) : null}
+          )}
         </div>
 
         {footerContent}
