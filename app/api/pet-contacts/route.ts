@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return contact with pets array
-    return NextResponse.json({ contact: { ...contact, pets: pets || [] } });
+    return NextResponse.json({ contact: { ...contact, pets: contact?.pets ?? petsList } });
   } catch (error) {
     console.error('Error creating pet contact:', error);
     return NextResponse.json(
