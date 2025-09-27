@@ -258,7 +258,7 @@ export function ContactCard({
   const renderBadge = (badgeValue: ContactCardBadge) => (
     <span
       key={badgeValue.id}
-      className={'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ' + buildBadgeClass(badgeValue)}
+      className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium', buildBadgeClass(badgeValue))}
     >
       {badgeValue.icon}
       {badgeValue.label}
@@ -301,7 +301,7 @@ export function ContactCard({
               ) : null}
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/85">
                 <span
-                  className={'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ' + categoryVisual.badgeClass}
+                  className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium', categoryVisual.badgeClass)}
                 >
                   {categoryVisual.icon}
                   {categoryVisual.label}
