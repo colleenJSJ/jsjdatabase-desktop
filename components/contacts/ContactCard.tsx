@@ -149,10 +149,10 @@ export function ContactCard({
   emails.forEach(email => {
     rightColumnRows.push(
       <DetailRow
-        key={`email-${email}`}
+        key={'email-' + email}
         icon={<Mail className="h-3.5 w-3.5" />}
         value={<span>{email}</span>}
-        href={`mailto:${email}`}
+        href={'mailto:' + email}
       />
     );
   });
@@ -160,7 +160,7 @@ export function ContactCard({
   phones.forEach(phone => {
     rightColumnRows.push(
       <DetailRow
-        key={`phone-${phone}`}
+        key={'phone-' + phone}
         icon={<Phone className="h-3.5 w-3.5" />}
         value={<span>{phone}</span>}
         href={formatPhoneForHref(phone)}
@@ -171,7 +171,7 @@ export function ContactCard({
   addresses.forEach(address => {
     rightColumnRows.push(
       <DetailRow
-        key={`address-${address}`}
+        key={'address-' + address}
         icon={<MapPin className="mt-0.5 h-3.5 w-3.5" />}
         value={<span className="leading-snug">{address}</span>}
       />
