@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { cleanStringArray, sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 // Unified contacts sync is handled inline for pets to avoid duplicates
 
 export async function GET(request: NextRequest) {
@@ -58,9 +59,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
-
-    // Extract pets array from body
-    const { pets, ...contactData } = body;
+    const petsList = cleanStringArray(body.pets);
 
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -68,24 +67,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Set default contact_subtype if not provided
-    if (!contactData.contact_subtype) {
-      contactData.contact_subtype = 'vet';
-    }
+    const sanitized = sanitizeContactPayload({
+      source_type: 'pets',
+      source_page: 'pets',
+      ...body,
+      pets: petsList,
+      related_to: body.related_to ?? petsList,
+    });
 
-    // Create contact record directly in unified contacts table with Pets category
+    const insertData = {
+      contact_type: 'pets',
+      module: 'pets',
+      category: 'Pets',
+      contact_subtype: sanitized.contact_subtype ?? sanitized.category ?? 'vet',
+      name: sanitized.name,
+      company: sanitized.company,
+      email: sanitized.email,
+      emails: sanitized.emails,
+      phone: sanitized.phone,
+      phones: sanitized.phones,
+      address: sanitized.address,
+      addresses: sanitized.addresses,
+      notes: sanitized.notes,
+      tags: sanitized.tags,
+      related_to: sanitized.related_to.length > 0 ? sanitized.related_to : petsList,
+      pets: petsList,
+      source_type: sanitized.source_type ?? 'pets',
+      source_page: sanitized.source_page ?? 'pets',
+      is_emergency: sanitized.is_emergency,
+      is_favorite: sanitized.is_favorite,
+      is_archived: sanitized.is_archived,
+      created_by: user.id,
+    };
+
     const { data: contact, error } = await supabase
       .from('contacts_unified')
-      .insert({ 
-        ...contactData,
-        module: 'pets',  // Set module to 'pets'
-        category: 'Pets',
-        contact_type: 'general',
-        contact_subtype: contactData.contact_subtype || contactData.contact_type || 'vet',
-        related_to: pets || [],
-        created_by: user.id,
-        pets: pets || [] // Store pets array directly in the column
-      })
+      .insert(insertData)
       .select()
       .single();
 

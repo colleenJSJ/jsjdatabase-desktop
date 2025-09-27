@@ -2,27 +2,8 @@
 
 import { useState } from 'react';
 import { X, Edit2, Phone, Mail, Globe, MapPin, Building2, Shield, Eye, EyeOff, Copy } from 'lucide-react';
-
-interface Contact {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  company?: string;
-  category?: string;
-  related_to?: string[];
-  source_type?: 'health' | 'household' | 'pets' | 'academics' | 'other';
-  notes?: string;
-  website?: string;
-  portal_url?: string;
-  portal_username?: string;
-  portal_password?: string;
-  is_emergency: boolean;
-  is_archived: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import type { ContactRecord } from '@/components/contacts/contact-types';
+import { resolveAddresses, resolveEmails, resolvePhones } from '@/components/contacts/contact-utils';
 
 interface FamilyMember {
   id: string;
@@ -30,7 +11,7 @@ interface FamilyMember {
 }
 
 interface ViewContactModalProps {
-  contact: Contact;
+  contact: ContactRecord;
   familyMembers: FamilyMember[];
   onEdit: () => void;
   onClose: () => void;
@@ -43,8 +24,11 @@ export function ViewContactModal({
   onClose
 }: ViewContactModalProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const emails = resolveEmails(contact);
+  const phones = resolvePhones(contact);
+  const addresses = resolveAddresses(contact);
 
-  const copyToClipboard = async (text: string, label: string) => {
+  const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       // Could add a toast notification here
@@ -123,41 +107,41 @@ export function ViewContactModal({
               <h3 className="text-sm font-medium text-text-muted uppercase tracking-wider mb-3">
                 Contact Information
               </h3>
-              <div className="space-y-3">
-                {contact.email && (
-                  <div className="flex items-start gap-3">
+                  <div className="space-y-3">
+                {emails.map(email => (
+                  <div key={email} className="flex items-start gap-3">
                     <Mail className="h-5 w-5 text-text-muted mt-0.5" />
                     <div className="flex-1">
                       <a
-                        href={`mailto:${contact.email}`}
+                        href={`mailto:${email}`}
                         className="text-text-primary hover:text-primary-400 transition-colors"
                       >
-                        {contact.email}
+                        {email}
                       </a>
                     </div>
                   </div>
-                )}
-                {contact.phone && (
-                  <div className="flex items-start gap-3">
+                ))}
+                {phones.map(phone => (
+                  <div key={phone} className="flex items-start gap-3">
                     <Phone className="h-5 w-5 text-text-muted mt-0.5" />
                     <div className="flex-1">
                       <a
-                        href={`tel:${contact.phone}`}
+                        href={`tel:${phone}`}
                         className="text-text-primary hover:text-primary-400 transition-colors"
                       >
-                        {contact.phone}
+                        {phone}
                       </a>
                     </div>
                   </div>
-                )}
-                {contact.address && (
-                  <div className="flex items-start gap-3">
+                ))}
+                {addresses.map(address => (
+                  <div key={address} className="flex items-start gap-3">
                     <MapPin className="h-5 w-5 text-text-muted mt-0.5" />
                     <div className="flex-1">
-                      <p className="text-text-primary">{contact.address}</p>
+                      <p className="text-text-primary">{address}</p>
                     </div>
                   </div>
-                )}
+                ))}
                 {contact.website && (
                   <div className="flex items-start gap-3">
                     <Globe className="h-5 w-5 text-text-muted mt-0.5" />
@@ -207,7 +191,7 @@ export function ViewContactModal({
                           {contact.portal_username}
                         </span>
                         <button
-                          onClick={() => copyToClipboard(contact.portal_username!, 'Username')}
+                          onClick={() => copyToClipboard(contact.portal_username!)}
                           className="text-text-muted hover:text-text-primary"
                         >
                           <Copy className="h-4 w-4" />
@@ -223,7 +207,7 @@ export function ViewContactModal({
                           {showPassword ? contact.portal_password : '••••••••'}
                         </span>
                         <button
-                          onClick={() => copyToClipboard(contact.portal_password!, 'Password')}
+                          onClick={() => copyToClipboard(contact.portal_password!)}
                           className="text-text-muted hover:text-text-primary"
                         >
                           <Copy className="h-4 w-4" />
@@ -271,8 +255,12 @@ export function ViewContactModal({
             {/* Metadata */}
             <div className="border-t border-gray-600/30 pt-4">
               <div className="flex justify-between text-xs text-text-muted">
-                <span>Created: {formatDate(contact.created_at)}</span>
-                <span>Updated: {formatDate(contact.updated_at)}</span>
+                <span>
+                  Created: {contact.created_at ? formatDate(contact.created_at) : '—'}
+                </span>
+                <span>
+                  Updated: {contact.updated_at ? formatDate(contact.updated_at) : '—'}
+                </span>
               </div>
             </div>
           </div>

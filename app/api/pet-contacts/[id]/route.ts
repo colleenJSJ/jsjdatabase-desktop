@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { cleanStringArray, sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 
 export async function PUT(
   request: NextRequest,
@@ -9,32 +10,47 @@ export async function PUT(
   try {
     const supabase = await createClient();
     const body = await request.json();
-    const { pets, ...contactData } = body;
+    const petsList = cleanStringArray((body as Record<string, unknown>).pets);
+    const sanitized = sanitizeContactPayload({
+      source_type: 'pets',
+      source_page: 'pets',
+      ...body,
+      pets: petsList,
+      related_to: (body as Record<string, unknown>).related_to ?? petsList,
+    });
 
-    // Update unified contacts table instead of legacy pet_contacts
+    const updateData = {
+      module: 'pets',
+      category: 'Pets',
+      contact_type: 'pets',
+      contact_subtype: sanitized.contact_subtype ?? sanitized.category ?? 'vet',
+      name: sanitized.name,
+      company: sanitized.company,
+      email: sanitized.email,
+      emails: sanitized.emails,
+      phone: sanitized.phone,
+      phones: sanitized.phones,
+      address: sanitized.address,
+      addresses: sanitized.addresses,
+      website: sanitized.website,
+      portal_url: sanitized.portal_url,
+      portal_username: sanitized.portal_username,
+      notes: sanitized.notes,
+      tags: sanitized.tags,
+      related_to: sanitized.related_to.length > 0 ? sanitized.related_to : petsList,
+      pets: petsList,
+      is_emergency: sanitized.is_emergency,
+      is_favorite: sanitized.is_favorite,
+      is_archived: sanitized.is_archived,
+      source_type: 'pets',
+      source_id: id,
+      source_page: sanitized.source_page ?? 'pets',
+      updated_at: new Date().toISOString(),
+    };
+
     const { data: contact, error } = await supabase
       .from('contacts_unified')
-      .update({ 
-        module: 'pets',
-        category: 'Pets',
-        contact_type: 'general',
-        contact_subtype: (contactData as any).contact_subtype || (contactData as any).contact_type || 'vet',
-        name: (contactData as any).name,
-        email: (contactData as any).email || null,
-        phone: (contactData as any).phone || null,
-        address: (contactData as any).address || null,
-        company: (contactData as any).business_name || (contactData as any).company || null,
-        website: (contactData as any).website || null,
-        portal_url: (contactData as any).portal_url || null,
-        portal_username: (contactData as any).portal_username || null,
-        portal_password: (contactData as any).portal_password || null,
-        notes: (contactData as any).notes || null,
-        related_to: pets || [],
-        pets: pets || [],
-        updated_at: new Date().toISOString(),
-        source_type: 'pets',
-        source_id: id
-      })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();

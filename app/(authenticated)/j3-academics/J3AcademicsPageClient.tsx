@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/contexts/user-context';
-import { ContactCard } from '@/components/academics/ContactCard';
+import { ContactCard } from '@/components/contacts/ContactCard';
 import { EventCard } from '@/components/academics/EventCard';
-import { ContactModal } from '@/components/academics/ContactModal';
+import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
 import { PortalModal } from '@/components/academics/PortalModal';
 import { EventModal } from '@/components/academics/EventModal';
 import { ViewEventModal } from '@/components/academics/ViewEventModal';
@@ -16,19 +16,135 @@ import { PasswordCard } from '@/components/passwords/PasswordCard';
 import { Password } from '@/lib/services/password-service-interface';
 import { getPasswordStrength } from '@/lib/passwords/utils';
 import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
+import type { ContactFormValues, ContactModalFieldVisibilityMap, ContactRecord } from '@/components/contacts/contact-types';
+import { resolveEmails, resolvePhones } from '@/components/contacts/contact-utils';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 import { Upload } from 'lucide-react';
 
+const ACADEMIC_MODAL_VISIBILITY: ContactModalFieldVisibilityMap = {
+  addresses: { hidden: true },
+  portal: { hidden: true },
+  tags: { hidden: true },
+  assignedEntities: { hidden: true },
+  favorite: { hidden: true },
+  emergency: { hidden: true },
+  preferred: { hidden: true },
+  category: { hidden: true },
+};
+
+interface AcademicContactResponse {
+  id: string;
+  contact_name?: string | null;
+  name?: string | null;
+  role?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+  category?: string | null;
+  children?: string[] | null;
+  child_id?: string | null;
+  child_ids?: string[] | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  is_emergency?: boolean | null;
+  is_preferred?: boolean | null;
+  created_by?: string | null;
+}
+
+const ensureStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item)).filter(entry => entry.length > 0);
+  }
+  if (value === null || value === undefined) return [];
+  const trimmed = String(value).trim();
+  return trimmed ? [trimmed] : [];
+};
+
+const collectRelatedIds = (entry: AcademicContactResponse): string[] => {
+  const related = new Set<string>();
+  ensureStringArray(entry.children).forEach(id => related.add(id));
+  ensureStringArray(entry.child_ids).forEach(id => related.add(id));
+  if (entry.child_id) {
+    const id = String(entry.child_id).trim();
+    if (id) related.add(id);
+  }
+  return Array.from(related);
+};
+
+const transformAcademicContact = (entry: AcademicContactResponse): ContactRecord => {
+  const relatedTo = collectRelatedIds(entry);
+  const name = entry.contact_name || entry.name || 'Academic Contact';
+
+  return {
+    id: String(entry.id),
+    name,
+    company: entry.role || null,
+    emails: entry.email ? [entry.email] : [],
+    phones: entry.phone ? [entry.phone] : [],
+    addresses: [],
+    category: entry.category || 'Academics',
+    contact_type: 'academics',
+    contact_subtype: entry.category || null,
+    module: 'academics',
+    source_type: 'academics',
+    source_page: 'j3-academics',
+    related_to: relatedTo,
+    notes: entry.notes || null,
+    is_emergency: Boolean(entry.is_emergency),
+    is_preferred: Boolean(entry.is_preferred),
+    is_favorite: false,
+    is_archived: false,
+    created_by: entry.created_by || null,
+    created_at: entry.created_at || null,
+    updated_at: entry.updated_at || null,
+    role: entry.role || null,
+    children: relatedTo,
+  } as ContactRecord;
+};
+
+const extractAcademicContacts = (payload: unknown): AcademicContactResponse[] => {
+  if (Array.isArray(payload)) {
+    return payload as AcademicContactResponse[];
+  }
+  if (payload && Array.isArray((payload as any).contacts)) {
+    return (payload as any).contacts as AcademicContactResponse[];
+  }
+  return [];
+};
+
+const firstNonEmpty = (values: (string | null | undefined)[]): string | null => {
+  for (const value of values) {
+    const trimmed = (value ?? '').trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+};
+
+const mapAcademicContactToFormValues = (contact: ContactRecord): Partial<ContactFormValues> => ({
+  id: contact.id,
+  name: contact.name,
+  company: contact.company ?? undefined,
+  emails: resolveEmails(contact),
+  phones: resolvePhones(contact),
+  addresses: [],
+  notes: contact.notes ?? undefined,
+  related_to: contact.related_to ?? [],
+  category: contact.contact_subtype ?? contact.category ?? undefined,
+  contact_subtype: contact.contact_subtype ?? undefined,
+  is_emergency: contact.is_emergency ?? undefined,
+  is_preferred: contact.is_preferred ?? undefined,
+});
+
 export default function J3AcademicsPageClient() {
   const { user } = useUser();
   const [loading, setLoading] = useState(true);
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [portals, setPortals] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [children, setChildren] = useState<{ id: string; name: string }[]>([]);
   const [showContactModal, setShowContactModal] = useState(false);
-  const [editingContact, setEditingContact] = useState<any | null>(null);
+  const [editingContact, setEditingContact] = useState<ContactRecord | null>(null);
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [editingPortal, setEditingPortal] = useState<any | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
@@ -39,6 +155,7 @@ export default function J3AcademicsPageClient() {
   const [selectedChildId, setSelectedChildId] = useState<string>('all');
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
   const [documentsRefreshKey, setDocumentsRefreshKey] = useState(0);
+  const [savingContact, setSavingContact] = useState(false);
 
   const childSeeds = useMemo(
     () => [
@@ -99,7 +216,8 @@ export default function J3AcademicsPageClient() {
           fetch('/api/academic-events').then(r => r.ok ? r.json() : { events: [] }),
           fetch('/api/j3-academics/children').then(r => r.ok ? r.json() : { children: [] }),
         ]);
-        setContacts(c.contacts || []);
+        const contactList = extractAcademicContacts(c).map(transformAcademicContact);
+        setContacts(contactList);
         setPortals(p.portals || []);
         setEvents(e.events || []);
         const rawChildren = Array.isArray(kids) ? kids : Array.isArray(kids?.children) ? kids.children : [];
@@ -123,7 +241,8 @@ export default function J3AcademicsPageClient() {
         fetch('/api/academic-events').then(r => r.ok ? r.json() : { events: [] }),
         fetch('/api/j3-academics/children').then(r => r.ok ? r.json() : { children: [] }),
       ]);
-      setContacts(c.contacts || c || []);
+      const contactList = extractAcademicContacts(c).map(transformAcademicContact);
+      setContacts(contactList);
       setPortals(p.portals || p || []);
       setEvents(e.events || e || []);
       const rawChildren = Array.isArray(kids) ? kids : Array.isArray(kids?.children) ? kids.children : [];
@@ -137,20 +256,153 @@ export default function J3AcademicsPageClient() {
 
   const term = search.trim().toLowerCase();
   const filteredKids = useMemo(() => normalizeChildren(children), [children]);
+  const studentOptions = useMemo(
+    () => filteredKids.map(child => ({ id: child.id, label: child.name || 'Student' })),
+    [filteredKids]
+  );
   const child = filteredKids.find(c => c.id === selectedChildId);
   const childName = child?.name || '';
   const nameTerm = childName.toLowerCase();
-  const filtered = useMemo(() => ({
-    contacts: contacts
-      .filter(c => (c.name||'').toLowerCase().includes(term) || (c.company||'').toLowerCase().includes(term) || (c.email||'').toLowerCase().includes(term))
-      .filter(c => selectedChildId==='all' ? true : (c.child_id===selectedChildId || (c.child_ids||[]).includes(selectedChildId) || (c.children||[]).includes(selectedChildId) || (c.notes||'').toLowerCase().includes(nameTerm))),
-    portals: portals
-      .filter(p => (p.name||'').toLowerCase().includes(term) || (p.portal_url||'').toLowerCase().includes(term))
-      .filter(p => selectedChildId==='all' ? true : (p.child_id===selectedChildId || (p.child_ids||[]).includes(selectedChildId) || (p.children||[]).includes(selectedChildId) || (p.notes||'').toLowerCase().includes(nameTerm))),
-    events: events
-      .filter(e => (e.title||'').toLowerCase().includes(term) || (e.description||'').toLowerCase().includes(term))
-      .filter(e => selectedChildId==='all' ? true : (e.child_id===selectedChildId || (e.child_ids||[]).includes(selectedChildId) || (e.children||[]).includes(selectedChildId) || (e.description||'').toLowerCase().includes(nameTerm))),
-  }), [contacts, portals, events, term, selectedChildId, nameTerm]);
+  const filtered = useMemo(() => {
+    const matchesContactSearch = (contact: ContactRecord) => {
+      if (!term) return true;
+      const haystack = [
+        contact.name,
+        contact.company ?? '',
+        contact.notes ?? '',
+        ...resolveEmails(contact),
+        ...resolvePhones(contact),
+      ];
+      return haystack.some(value => value?.toLowerCase().includes(term));
+    };
+
+    const matchesContactChild = (contact: ContactRecord) => {
+      if (selectedChildId === 'all') return true;
+      const related = contact.related_to ?? [];
+      if (related.includes(selectedChildId)) return true;
+      const note = contact.notes?.toLowerCase() ?? '';
+      return note.includes(nameTerm);
+    };
+
+    return {
+      contacts: contacts.filter(contact => matchesContactSearch(contact) && matchesContactChild(contact)),
+      portals: portals
+        .filter(p => (p.name || '').toLowerCase().includes(term) || (p.portal_url || '').toLowerCase().includes(term))
+        .filter(p => selectedChildId === 'all'
+          ? true
+          : (p.child_id === selectedChildId
+            || (Array.isArray(p.child_ids) && p.child_ids.includes(selectedChildId))
+            || (Array.isArray(p.children) && p.children.includes(selectedChildId))
+            || (p.notes || '').toLowerCase().includes(nameTerm))),
+      events: events
+        .filter(e => (e.title || '').toLowerCase().includes(term) || (e.description || '').toLowerCase().includes(term))
+        .filter(e => selectedChildId === 'all'
+          ? true
+          : (e.child_id === selectedChildId
+            || (Array.isArray(e.child_ids) && e.child_ids.includes(selectedChildId))
+            || (Array.isArray(e.children) && e.children.includes(selectedChildId))
+            || (e.description || '').toLowerCase().includes(nameTerm))),
+    };
+  }, [contacts, portals, events, term, selectedChildId, nameTerm]);
+
+  const handleDeleteContact = async (contactId: string) => {
+    if (!confirm('Delete this contact?')) return;
+    try {
+      const response = await ApiClient.delete(`/api/academic-contacts/${contactId}`);
+      if (!response.success) {
+        alert(response.error || 'Failed to delete contact');
+        return;
+      }
+      await reload();
+    } catch (error) {
+      console.error('[J3 Academics] Failed to delete contact', error);
+      alert('Failed to delete contact');
+    }
+  };
+
+  const renderContactCard = (contact: ContactRecord, layout: 'auto' | 'compact') => {
+    const studentNames = (contact.related_to ?? [])
+      .map(id => filteredKids.find(student => student.id === id)?.name)
+      .filter((name): name is string => Boolean(name));
+
+    const extraContent = studentNames.length > 0 ? (
+      <div className="space-y-1">
+        <p className="text-xs uppercase tracking-wide text-text-muted/60">Students</p>
+        <div className="flex flex-wrap gap-2">
+          {studentNames.map(name => (
+            <span
+              key={`${contact.id}-${name}`}
+              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80"
+            >
+              {name}
+            </span>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
+    const canManage = user?.role === 'admin';
+
+    return (
+      <ContactCard
+        key={contact.id}
+        contact={contact}
+        subtitle={contact.role ?? undefined}
+        assignedToLabel={studentNames.length > 0 ? studentNames.join(', ') : undefined}
+        extraContent={extraContent}
+        showFavoriteToggle={false}
+        canManage={canManage}
+        layout={layout}
+        actionConfig={{
+          onEdit: canManage ? () => {
+            setEditingContact(contact);
+            setShowContactModal(true);
+          } : undefined,
+          onDelete: canManage ? () => handleDeleteContact(contact.id) : undefined,
+        }}
+      />
+    );
+  };
+
+  const contactModalDefaults = useMemo(() => ({
+    category: 'Academics' as const,
+    sourceType: 'academics' as const,
+    sourcePage: 'j3-academics',
+    relatedToIds: selectedChildId !== 'all' ? [selectedChildId] : [],
+  }), [selectedChildId]);
+
+  const handleContactSubmit = async (values: ContactFormValues) => {
+    try {
+      setSavingContact(true);
+      const payload = {
+        contact_name: values.name,
+        role: (values.company ?? '').trim(),
+        email: firstNonEmpty(values.emails) ?? null,
+        phone: firstNonEmpty(values.phones) ?? null,
+        category: editingContact?.contact_subtype || values.contact_subtype || values.category || 'teacher',
+        notes: values.notes ?? '',
+        children: values.related_to,
+      };
+
+      const url = editingContact ? `/api/academic-contacts/${editingContact.id}` : '/api/academic-contacts';
+      const response = editingContact
+        ? await ApiClient.put(url, payload)
+        : await ApiClient.post(url, payload);
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to save contact');
+      }
+
+      await reload();
+      setShowContactModal(false);
+      setEditingContact(null);
+    } catch (error) {
+      console.error('[J3 Academics] Failed to save contact', error);
+      alert(error instanceof Error ? error.message : 'Failed to save contact');
+    } finally {
+      setSavingContact(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -197,26 +449,18 @@ export default function J3AcademicsPageClient() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filtered.contacts.map((c: any) => (
-                <ContactCard
-                  key={c.id}
-                  contact={c}
-                  children={filteredKids}
-                  isAdmin={user?.role === 'admin'}
-                  onEdit={() => { setEditingContact(c); setShowContactModal(true); }}
-                  onDelete={async () => { if (!confirm('Delete this contact?')) return; const ApiClient = (await import('@/lib/api/api-client')).default; await ApiClient.delete(`/api/academic-contacts/${c.id}`); await reload(); }}
-                />
-              ))}
-              {filtered.contacts.length === 0 && (
-                <div
-                  className="border border-gray-600/30 rounded-xl p-4 text-center text-text-muted"
-                  style={{ backgroundColor: '#30302e' }}
-                >
-                  No contacts
-                </div>
-              )}
-            </div>
+            {filtered.contacts.length === 0 ? (
+              <div
+                className="border border-gray-600/30 rounded-xl p-4 text-center text-text-muted"
+                style={{ backgroundColor: '#30302e' }}
+              >
+                No contacts
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {filtered.contacts.map(contact => renderContactCard(contact, 'auto'))}
+              </div>
+            )}
           </section>
           )}
 
@@ -410,23 +654,24 @@ export default function J3AcademicsPageClient() {
         </div>
 
         {/* Modals */}
-        <ContactModal
-          isOpen={showContactModal}
-          onClose={() => { setShowContactModal(false); setEditingContact(null); }}
-          onSubmit={async (form) => {
-            const url = editingContact ? `/api/academic-contacts/${editingContact.id}` : '/api/academic-contacts';
-            const response = editingContact
-              ? await ApiClient.put(url, form)
-              : await ApiClient.post(url, form);
-            if (!response.success) {
-              throw new Error(response.error || 'Failed to save contact');
-            }
-            await reload();
-          }}
-          editingContact={editingContact || undefined}
-          children={filteredKids}
-          selectedChild={'all'}
-        />
+        {showContactModal && (
+          <UnifiedContactModal
+            open={showContactModal}
+            mode={editingContact ? 'edit' : 'create'}
+            initialValues={editingContact ? mapAcademicContactToFormValues(editingContact) : undefined}
+            defaults={contactModalDefaults}
+            visibility={ACADEMIC_MODAL_VISIBILITY}
+            labels={{ companyLabel: 'Role/Title', relatedToLabel: 'Students' }}
+            optionSelectors={{ relatedEntities: studentOptions }}
+            busy={savingContact}
+            submitLabel={editingContact ? 'Save changes' : 'Create contact'}
+            onSubmit={handleContactSubmit}
+            onCancel={() => {
+              setShowContactModal(false);
+              setEditingContact(null);
+            }}
+          />
+        )}
 
         <PortalModal
           isOpen={showPortalModal}

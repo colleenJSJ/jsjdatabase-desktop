@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,28 +44,47 @@ export async function POST(request: NextRequest) {
     const { user, supabase } = authResult;
 
     const body = await request.json();
-    
-    // Prepare contact data for unified table
+
+    const sanitized = sanitizeContactPayload(body);
+
+    const portalPassword = sanitized.portal_password
+      ? await (async () => {
+          const { encrypt } = await import('@/lib/encryption');
+          return encrypt(sanitized.portal_password as string);
+        })()
+      : null;
+
     const contactData = {
       contact_type: 'general',
       module: 'general',
-      name: body.name,
-      email: body.email || null,
-      phone: body.phone || null,
-      address: body.address || null,
-      company: body.company || null,
-      category: body.category || 'Other',
-      related_to: body.related_to || [],
-      source_type: body.source_type || 'other',
-      source_id: body.source_id || null,
-      notes: body.notes || null,
-      website: body.website || null,
-      portal_url: body.portal_url || null,
-      portal_username: body.portal_username || null,
-      portal_password: body.portal_password ? (await (async () => { const { encrypt } = await import('@/lib/encryption'); return encrypt(body.portal_password); })()) : null,
-      is_emergency: body.is_emergency || false,
+      name: sanitized.name,
+      company: sanitized.company,
+      category: sanitized.category ?? 'Other',
+      contact_subtype: sanitized.contact_subtype,
+      email: sanitized.email,
+      emails: sanitized.emails,
+      phone: sanitized.phone,
+      phones: sanitized.phones,
+      address: sanitized.address,
+      addresses: sanitized.addresses,
+      tags: sanitized.tags,
+      related_to: sanitized.related_to,
+      assigned_entities: sanitized.assigned_entities,
+      pets: sanitized.pets,
+      trip_id: sanitized.trip_id,
+      source_type: sanitized.source_type ?? 'other',
+      source_page: sanitized.source_page ?? 'contacts',
+      source_id: sanitized.source_id,
+      notes: sanitized.notes,
+      website: sanitized.website,
+      portal_url: sanitized.portal_url,
+      portal_username: sanitized.portal_username,
+      portal_password: portalPassword,
+      is_emergency: sanitized.is_emergency,
+      is_preferred: sanitized.is_preferred,
+      is_favorite: sanitized.is_favorite,
       is_archived: false,
-      created_by: user.id
+      created_by: user.id,
     };
 
     // Insert contact into unified table

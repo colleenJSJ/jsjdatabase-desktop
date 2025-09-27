@@ -1,58 +1,196 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { useUser } from '@/contexts/user-context';
-import { 
-  Home, Plus, Search, Phone, Mail, MapPin, 
-  Wrench, Heart, Building2, Shield, Trash2, Edit2,
-  Package, Calendar, DollarSign, Grid, List, Image,
-  Download, Upload, Archive, FileText, Building,
-  Zap, Trees, Hammer, Sparkles, AlertCircle
+import {
+  Home,
+  Plus,
+  Search,
+  Trash2,
+  Edit2,
+  Package,
+  Calendar,
+  DollarSign,
+  Grid,
+  List,
+  Download,
+  Upload,
+  Archive,
+  FileText,
+  Building,
 } from 'lucide-react';
+import { ContactCard } from '@/components/contacts/ContactCard';
+import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
+import type {
+  ContactCardBadge,
+  ContactFormValues,
+  ContactModalFieldVisibilityMap,
+  ContactRecord,
+} from '@/components/contacts/contact-types';
+import {
+  resolveAddresses,
+  resolveEmails,
+  resolvePhones,
+} from '@/components/contacts/contact-utils';
+
+const HOUSEHOLD_SERVICE_OPTIONS = [
+  { value: 'plumbing', label: 'Plumbing' },
+  { value: 'electrical', label: 'Electrical' },
+  { value: 'landscaping', label: 'Landscaping' },
+  { value: 'cleaning', label: 'Cleaning' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+type HouseholdServiceValue = (typeof HOUSEHOLD_SERVICE_OPTIONS)[number]['value'];
+type HouseholdServiceLabel = (typeof HOUSEHOLD_SERVICE_OPTIONS)[number]['label'];
+
+const HOUSEHOLD_SERVICE_LABELS: HouseholdServiceLabel[] = HOUSEHOLD_SERVICE_OPTIONS.map(option => option.label);
+
+const normalizeHouseholdServiceValue = (raw?: string | null): HouseholdServiceValue => {
+  if (!raw) return 'other';
+  const lowered = raw.toString().trim().toLowerCase();
+  const match = HOUSEHOLD_SERVICE_OPTIONS.find(option => option.value === lowered || option.label.toLowerCase() === lowered);
+  return match ? match.value : 'other';
+};
+
+const getHouseholdServiceLabel = (raw?: string | null): HouseholdServiceLabel => {
+  const value = normalizeHouseholdServiceValue(raw);
+  const match = HOUSEHOLD_SERVICE_OPTIONS.find(option => option.value === value);
+  return match ? match.label : 'Other';
+};
 
 // Property types
+type HouseholdContactRow = {
+  id: string;
+  name?: string | null;
+  company?: string | null;
+  email?: string | null;
+  emails?: string[] | null;
+  phone?: string | null;
+  phones?: string[] | null;
+  address?: string | null;
+  addresses?: string[] | null;
+  notes?: string | null;
+  category?: string | null;
+  contact_subtype?: string | null;
+  tags?: string[] | null;
+  related_to?: string[] | null;
+  assigned_entities?: ContactRecord['assigned_entities'];
+  is_emergency?: boolean | null;
+  is_favorite?: boolean | null;
+  is_archived?: boolean | null;
+  portal_url?: string | null;
+  portal_username?: string | null;
+  portal_password?: string | null;
+  website?: string | null;
+  source_type?: string | null;
+  source_page?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+const coerceStringArray = (...sources: Array<unknown>): string[] => {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  sources.forEach(source => {
+    if (Array.isArray(source)) {
+      source.forEach(value => {
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (trimmed && !seen.has(trimmed)) {
+            seen.add(trimmed);
+            output.push(trimmed);
+          }
+        }
+      });
+    } else if (typeof source === 'string') {
+      const trimmed = source.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        output.push(trimmed);
+      }
+    }
+  });
+
+  return output;
+};
+
+const toHouseholdContactRecord = (raw: HouseholdContactRow): ContactRecord => {
+  const serviceValue = normalizeHouseholdServiceValue(raw.contact_subtype ?? raw.category);
+
+  return {
+    id: String(raw.id),
+    name: raw.name || 'Household Contact',
+    company: raw.company || null,
+    emails: coerceStringArray(raw.emails, raw.email),
+    phones: coerceStringArray(raw.phones, raw.phone),
+    addresses: coerceStringArray(raw.addresses, raw.address),
+    website: raw.website || null,
+    notes: raw.notes || null,
+    category: 'household',
+    contact_type: 'household',
+    contact_subtype: serviceValue,
+    module: 'household',
+    source_type: raw.source_type || 'household',
+    source_page: raw.source_page || 'household',
+    tags: Array.isArray(raw.tags) ? raw.tags.filter(Boolean) : [],
+    related_to: Array.isArray(raw.related_to) ? raw.related_to.filter(Boolean) : [],
+    assigned_entities: Array.isArray(raw.assigned_entities) ? raw.assigned_entities : null,
+    is_emergency: Boolean(raw.is_emergency),
+    is_favorite: Boolean(raw.is_favorite),
+    is_archived: Boolean(raw.is_archived),
+    portal_url: raw.portal_url || null,
+    portal_username: raw.portal_username || null,
+    portal_password: raw.portal_password || null,
+    created_by: raw.created_by || null,
+    created_at: raw.created_at || null,
+    updated_at: raw.updated_at || null,
+  } as ContactRecord;
+};
+
+const HOUSEHOLD_MODAL_VISIBILITY: ContactModalFieldVisibilityMap = {
+  tags: { hidden: true },
+  assignedEntities: { hidden: true },
+  relatedTo: { hidden: true },
+  favorite: { hidden: true },
+  preferred: { hidden: true },
+};
+
+const mapHouseholdContactToFormValues = (contact: ContactRecord): Partial<ContactFormValues> => ({
+  id: contact.id,
+  name: contact.name,
+  company: contact.company ?? undefined,
+  emails: resolveEmails(contact),
+  phones: resolvePhones(contact),
+  addresses: resolveAddresses(contact),
+  website: contact.website ?? undefined,
+  notes: contact.notes ?? undefined,
+  category: getHouseholdServiceLabel(contact.contact_subtype ?? contact.category),
+  contact_subtype: contact.contact_subtype ?? undefined,
+  source_type: contact.source_type ?? undefined,
+  source_page: contact.source_page ?? undefined,
+  tags: Array.isArray(contact.tags) ? [...contact.tags] : [],
+  related_to: Array.isArray(contact.related_to) ? [...contact.related_to] : [],
+  assigned_entities: Array.isArray(contact.assigned_entities)
+    ? contact.assigned_entities.map(entity => entity.id)
+    : [],
+  portal_url: contact.portal_url ?? undefined,
+  portal_username: contact.portal_username ?? undefined,
+  portal_password: contact.portal_password ?? undefined,
+  is_emergency: contact.is_emergency ?? undefined,
+  is_favorite: contact.is_favorite ?? undefined,
+});
+
 interface Property {
   id: string;
   name: string;
   address?: string;
   created_at: string;
 }
-
-// Contact types
-type ContactCategory = 'plumbing' | 'electrical' | 'landscaping' | 'cleaning' | 'maintenance' | 'other';
-
-interface HouseholdContact {
-  id: string;
-  name: string;
-  company?: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  portal_url?: string;
-  portal_username?: string;
-  portal_password?: string;
-  category: ContactCategory;
-  is_emergency: boolean;
-  created_at: string;
-}
-
-const contactCategoryIcons: Record<ContactCategory, React.ReactNode> = {
-  plumbing: <Wrench className="h-4 w-4" />,
-  electrical: <Zap className="h-4 w-4" />,
-  landscaping: <Trees className="h-4 w-4" />,
-  cleaning: <Sparkles className="h-4 w-4" />,
-  maintenance: <Hammer className="h-4 w-4" />,
-  other: <Building2 className="h-4 w-4" />,
-};
-
-const contactCategoryColors: Record<ContactCategory, string> = {
-  plumbing: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
-  electrical: 'bg-yellow-600/20 text-yellow-400 border-yellow-600/30',
-  landscaping: 'bg-green-600/20 text-green-400 border-green-600/30',
-  cleaning: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
-  maintenance: 'bg-orange-600/20 text-orange-400 border-orange-600/30',
-  other: 'bg-gray-600/20 text-gray-400 border-gray-600/30',
-};
 
 // Inventory types
 type ItemCategory = 'electronics' | 'valuables' | 'household' | 'documents' | 'other';
@@ -72,7 +210,7 @@ interface InventoryItem {
   created_at: string;
 }
 
-const itemCategoryIcons: Record<ItemCategory, React.ReactNode> = {
+const itemCategoryIcons: Record<ItemCategory, ReactNode> = {
   electronics: <Package className="h-4 w-4" />,
   valuables: <DollarSign className="h-4 w-4" />,
   household: <Home className="h-4 w-4" />,
@@ -95,7 +233,6 @@ const locationColors: Record<ItemLocation, string> = {
   home: 'bg-orange-600/20 text-orange-400',
   other: 'bg-gray-600/20 text-gray-400',
 };
-
 export default function HouseholdPage() {
   const { user } = useUser();
   const [activeTab, setActiveTab] = useState<'properties' | 'contacts' | 'inventory'>('properties');
@@ -109,11 +246,12 @@ export default function HouseholdPage() {
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   
   // Contacts state
-  const [contacts, setContacts] = useState<HouseholdContact[]>([]);
+  const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<ContactCategory | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<HouseholdServiceValue | 'all'>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingContact, setEditingContact] = useState<HouseholdContact | null>(null);
+  const [editingContact, setEditingContact] = useState<ContactRecord | null>(null);
+  const [savingContact, setSavingContact] = useState(false);
   
   // Inventory state
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -219,93 +357,10 @@ export default function HouseholdPage() {
       const response = await fetch('/api/household/contacts');
       if (!response.ok) throw new Error('Failed to fetch contacts');
       const data = await response.json();
-      setContacts(data.contacts || []);
+      const mapped = Array.isArray(data.contacts) ? data.contacts.map(toHouseholdContactRecord) : [];
+      setContacts(mapped);
     } catch (error) {
       showError('Failed to load contacts');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateContact = async (contact: Partial<HouseholdContact>) => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/household/contacts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contact)
-      });
-      if (!response.ok) throw new Error('Failed to create contact');
-      
-      // Auto-save portal credentials to passwords if provided
-      if (contact.portal_username && contact.portal_password && contact.portal_url) {
-        try {
-          await fetch('/api/passwords', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title: `${contact.company || contact.name} - Service Portal`,
-              username: contact.portal_username,
-              password: contact.portal_password,
-              url: contact.portal_url,
-              category: 'household',
-              notes: `Service provider portal for ${contact.name}${contact.company ? ` (${contact.company})` : ''}\nCategory: ${contact.category}${contact.is_emergency ? '\nEmergency Contact' : ''}`,
-              is_shared: true
-            })
-          });
-        } catch (passwordError) {
-          console.error('Failed to save portal credentials to passwords:', passwordError);
-          // Don't fail the contact save if password save fails
-        }
-      }
-      
-      await fetchContacts();
-      setShowCreateModal(false);
-      showSuccess('Contact created successfully');
-    } catch (error) {
-      showError('Failed to create contact');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateContact = async (id: string, contact: Partial<HouseholdContact>) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/household/contacts/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contact)
-      });
-      if (!response.ok) throw new Error('Failed to update contact');
-      
-      // Auto-save portal credentials to passwords if provided
-      if (contact.portal_username && contact.portal_password && contact.portal_url) {
-        try {
-          await fetch('/api/passwords', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title: `${contact.company || contact.name} - Service Portal`,
-              username: contact.portal_username,
-              password: contact.portal_password,
-              url: contact.portal_url,
-              category: 'household',
-              notes: `Service provider portal for ${contact.name}${contact.company ? ` (${contact.company})` : ''}\nCategory: ${contact.category}${contact.is_emergency ? '\nEmergency Contact' : ''}`,
-              is_shared: true
-            })
-          });
-        } catch (passwordError) {
-          console.error('Failed to save portal credentials to passwords:', passwordError);
-          // Don't fail the contact update if password save fails
-        }
-      }
-      
-      await fetchContacts();
-      setEditingContact(null);
-      showSuccess('Contact updated successfully');
-    } catch (error) {
-      showError('Failed to update contact');
     } finally {
       setLoading(false);
     }
@@ -442,17 +497,27 @@ export default function HouseholdPage() {
         
         for (let i = 1; i < lines.length; i++) {
           const values = lines[i].match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g) || [];
-          const item = values.reduce((obj, val, index) => {
+          const item = values.reduce<Record<string, string>>((obj, val, index) => {
             const key = headers[index]?.toLowerCase().replace(' ', '_');
-            obj[key] = val.replace(/"/g, '');
+            if (key) {
+              obj[key] = val.replace(/"/g, '');
+            }
             return obj;
-          }, {} as any);
+          }, {});
 
           if (item.name) {
+            const category = (item.category || '').toLowerCase();
+            const normalizedCategory = ['electronics', 'valuables', 'household', 'documents', 'other'].includes(category)
+              ? (category as ItemCategory)
+              : 'other';
+            const location = (item.location || '').toLowerCase();
+            const normalizedLocation = ['unit1', 'unit2', 'unit3', 'home', 'other'].includes(location)
+              ? (location as ItemLocation)
+              : 'other';
             await handleCreateItem({
               name: item.name,
-              category: item.category || 'other',
-              location: item.location || 'other',
+              category: normalizedCategory,
+              location: normalizedLocation,
               value: parseFloat(item.value) || undefined,
               purchase_date: item.purchase_date || undefined,
               serial_number: item.serial_number || undefined,
@@ -468,15 +533,159 @@ export default function HouseholdPage() {
     reader.readAsText(file);
   };
 
+  const renderContactCard = (contact: ContactRecord) => {
+    const badges: ContactCardBadge[] = [];
+    const serviceLabel = getHouseholdServiceLabel(contact.contact_subtype ?? contact.category);
+
+    if (serviceLabel && serviceLabel !== 'Other') {
+      badges.push({ id: `${contact.id}-service`, label: serviceLabel, tone: 'neutral' });
+    }
+    if (contact.is_emergency) {
+      badges.push({ id: `${contact.id}-emergency`, label: 'Emergency', tone: 'danger' });
+    }
+    if (contact.portal_url) {
+      badges.push({ id: `${contact.id}-portal`, label: 'Portal', tone: 'primary' });
+    }
+
+    return (
+      <ContactCard
+        key={contact.id}
+        contact={contact}
+        subtitle={contact.company ?? undefined}
+        badges={badges}
+        showFavoriteToggle={false}
+        canManage={user?.role === 'admin'}
+        actionConfig={user?.role === 'admin'
+          ? {
+              onEdit: () => {
+                setEditingContact(contact);
+                setShowCreateModal(true);
+              },
+              onDelete: () => handleDeleteContact(contact.id),
+            }
+          : undefined}
+      />
+    );
+  };
+
+  const contactModalDefaults = useMemo(
+    () => ({
+      category: getHouseholdServiceLabel('other'),
+      sourceType: 'household' as const,
+      sourcePage: 'household',
+      contactType: 'household',
+      contactSubtype: 'other',
+    }),
+    []
+  );
+
+  const handleContactSubmit = async (values: ContactFormValues) => {
+    try {
+      setSavingContact(true);
+      const emails = coerceStringArray(values.emails);
+      const phones = coerceStringArray(values.phones);
+      const addresses = coerceStringArray(values.addresses);
+      const tags = Array.isArray(values.tags) ? values.tags : [];
+      const relatedTo = Array.isArray(values.related_to) ? values.related_to : [];
+      const assignedEntities = Array.isArray(values.assigned_entities) ? values.assigned_entities : [];
+      const serviceValue = normalizeHouseholdServiceValue(values.contact_subtype ?? values.category);
+      const serviceLabel = getHouseholdServiceLabel(serviceValue);
+
+      const toNullable = (value?: string | null) => {
+        if (!value) return null;
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      };
+
+      const payload = {
+        name: values.name,
+        company: toNullable(values.company),
+        emails,
+        phones,
+        addresses,
+        notes: toNullable(values.notes),
+        website: toNullable(values.website),
+        tags,
+        related_to: relatedTo,
+        assigned_entities: assignedEntities,
+        category: 'household',
+        contact_subtype: serviceValue,
+        source_type: values.source_type || 'household',
+        source_page: values.source_page || 'household',
+        is_emergency: Boolean(values.is_emergency),
+        is_favorite: Boolean(values.is_favorite),
+        portal_url: toNullable(values.portal_url),
+        portal_username: toNullable(values.portal_username),
+        portal_password: toNullable(values.portal_password),
+      };
+
+      const endpoint = editingContact
+        ? `/api/household/contacts/${editingContact.id}`
+        : '/api/household/contacts';
+
+      const response = await fetch(endpoint, {
+        method: editingContact ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error('Failed to save contact');
+
+      if (payload.portal_url && payload.portal_username && values.portal_password) {
+        try {
+          const categoryLabel = serviceLabel;
+          await fetch('/api/passwords', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: `${values.company || values.name} - Service Portal`,
+              username: payload.portal_username,
+              password: values.portal_password,
+              url: payload.portal_url,
+              category: 'household',
+              notes: `Service provider portal for ${values.name}${values.company ? ` (${values.company})` : ''}\nCategory: ${categoryLabel}${values.is_emergency ? '\nEmergency Contact' : ''}`,
+              is_shared: true,
+            }),
+          });
+        } catch (error) {
+          console.error('[Household] Failed to sync portal credentials', error);
+        }
+      }
+
+      await fetchContacts();
+      setShowCreateModal(false);
+      setEditingContact(null);
+      showSuccess(`Contact ${editingContact ? 'updated' : 'created'} successfully`);
+    } catch (error) {
+      console.error('[Household] Failed to save contact', error);
+      showError('Failed to save contact');
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
   // Filter functions
-  const filteredContacts = contacts.filter(contact => {
-    const matchesSearch = contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         contact.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         contact.phone?.includes(searchTerm) ||
-                         contact.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || contact.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredContacts = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    return contacts.filter(contact => {
+      const matchesSearch = normalizedSearch
+        ? [
+            contact.name,
+            contact.company ?? '',
+            ...resolvePhones(contact),
+            ...resolveEmails(contact),
+            ...resolveAddresses(contact),
+            contact.notes ?? '',
+            getHouseholdServiceLabel(contact.contact_subtype ?? contact.category),
+          ]
+            .filter(Boolean)
+            .some(value => value.toLowerCase().includes(normalizedSearch))
+        : true;
+      const serviceValue = normalizeHouseholdServiceValue(contact.contact_subtype ?? contact.category);
+      const matchesCategory = selectedCategory === 'all' || serviceValue === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [contacts, searchTerm, selectedCategory]);
 
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
@@ -617,20 +826,22 @@ export default function HouseholdPage() {
             </div>
             <select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value as ContactCategory | 'all')}
+              onChange={event => setSelectedCategory(event.target.value as HouseholdServiceValue | 'all')}
               className="px-3 py-2 bg-background-primary border border-gray-600/30 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
             >
-              <option value="all">All Categories</option>
-              <option value="plumbing">Plumbing</option>
-              <option value="electrical">Electrical</option>
-              <option value="landscaping">Landscaping</option>
-              <option value="cleaning">Cleaning</option>
-              <option value="maintenance">Maintenance</option>
-              <option value="other">Other</option>
+              <option value="all">All Service Categories</option>
+              {HOUSEHOLD_SERVICE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
             {user?.role === 'admin' && (
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => {
+                  setEditingContact(null);
+                  setShowCreateModal(true);
+                }}
                 className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
               >
                 <Plus className="h-4 w-4" />
@@ -640,69 +851,14 @@ export default function HouseholdPage() {
           </div>
 
           {/* Contacts Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredContacts.map(contact => (
-              <div
-                key={contact.id}
-                className="bg-background-secondary border border-gray-600/30 rounded-xl p-4 hover:border-gray-500 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    {contact.is_emergency && (
-                      <span className="px-2 py-1 bg-red-600/20 text-red-400 text-xs font-medium rounded">
-                        Emergency
-                      </span>
-                    )}
-                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${contactCategoryColors[contact.category]}`}>
-                      {contactCategoryIcons[contact.category]}
-                      {contact.category}
-                    </span>
-                  </div>
-                  {user?.role === 'admin' && (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => setEditingContact(contact)}
-                        className="p-1 hover:bg-gray-700 rounded transition-colors"
-                      >
-                        <Edit2 className="h-3 w-3 text-text-muted" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteContact(contact.id)}
-                        className="p-1 hover:bg-gray-700 rounded transition-colors"
-                      >
-                        <Trash2 className="h-3 w-3 text-text-muted" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <h3 className="font-medium text-text-primary mb-1">{contact.name}</h3>
-                {contact.company && (
-                  <p className="text-sm text-text-muted mb-2">{contact.company}</p>
-                )}
-
-                <div className="space-y-1">
-                  {contact.phone && (
-                    <div className="flex items-center gap-2 text-sm text-text-muted">
-                      <Phone className="h-3 w-3" />
-                      {contact.phone}
-                    </div>
-                  )}
-                  {contact.email && (
-                    <div className="flex items-center gap-2 text-sm text-text-muted">
-                      <Mail className="h-3 w-3" />
-                      {contact.email}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {filteredContacts.length === 0 && (
+          {filteredContacts.length === 0 ? (
             <div className="text-center py-8 text-text-muted">
               No contacts found. Try adjusting your search or filters.
             </div>
+          ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredContacts.map(renderContactCard)}
+          </div>
           )}
         </div>
       )}
@@ -933,20 +1089,20 @@ export default function HouseholdPage() {
         />
       )}
 
-      {/* Contact Modal */}
       {(showCreateModal || editingContact) && (
-        <ContactModal
-          contact={editingContact}
-          onClose={() => {
+        <UnifiedContactModal
+          open={showCreateModal || Boolean(editingContact)}
+          mode={editingContact ? 'edit' : 'create'}
+          defaults={contactModalDefaults}
+          initialValues={editingContact ? mapHouseholdContactToFormValues(editingContact) : undefined}
+          visibility={HOUSEHOLD_MODAL_VISIBILITY}
+          optionSelectors={{ categories: HOUSEHOLD_SERVICE_LABELS }}
+          labels={{ categoryLabel: 'Service Category' }}
+          busy={savingContact || loading}
+          onSubmit={handleContactSubmit}
+          onCancel={() => {
             setShowCreateModal(false);
             setEditingContact(null);
-          }}
-          onSave={(contact) => {
-            if (editingContact) {
-              handleUpdateContact(editingContact.id, contact);
-            } else {
-              handleCreateContact(contact);
-            }
           }}
         />
       )}
@@ -1046,203 +1202,6 @@ function PropertyModal({
   );
 }
 
-// Contact Modal Component
-function ContactModal({ 
-  contact, 
-  onClose, 
-  onSave 
-}: { 
-  contact: HouseholdContact | null;
-  onClose: () => void;
-  onSave: (contact: Partial<HouseholdContact>) => void;
-}) {
-  const [formData, setFormData] = useState({
-    name: contact?.name || '',
-    company: contact?.company || '',
-    phone: contact?.phone || '',
-    email: contact?.email || '',
-    website: contact?.website || '',
-    portal_url: contact?.portal_url || '',
-    portal_username: contact?.portal_username || '',
-    portal_password: contact?.portal_password || '',
-    category: contact?.category || 'other' as ContactCategory,
-    is_emergency: contact?.is_emergency || false
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-background-secondary border border-gray-600 rounded-lg p-6 w-full max-w-md">
-        <h2 className="text-xl font-semibold text-text-primary mb-4">
-          {contact ? 'Edit Contact' : 'Add Contact'}
-        </h2>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">
-              Name *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">
-              Company
-            </label>
-            <input
-              type="text"
-              value={formData.company}
-              onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">
-              Phone
-            </label>
-            <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">
-              Category
-            </label>
-            <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value as ContactCategory })}
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-            >
-              <option value="plumbing">Plumbing</option>
-              <option value="electrical">Electrical</option>
-              <option value="landscaping">Landscaping</option>
-              <option value="cleaning">Cleaning</option>
-              <option value="maintenance">Maintenance</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">
-              Website
-            </label>
-            <input
-              type="url"
-              value={formData.website}
-              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-              placeholder="https://example.com"
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-            />
-          </div>
-
-          {/* Portal Credentials Section */}
-          <div className="border-t border-gray-600/30 pt-4">
-            <h3 className="text-sm font-medium text-text-primary mb-2">Portal Credentials (Optional)</h3>
-            <p className="text-xs text-yellow-500 mb-3">Portal credentials will auto-sync to the Passwords page</p>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Portal URL
-                </label>
-                <input
-                  type="url"
-                  value={formData.portal_url}
-                  onChange={(e) => setFormData({ ...formData, portal_url: e.target.value })}
-                  placeholder="https://portal.example.com"
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Portal Username
-                </label>
-                <input
-                  type="text"
-                  value={formData.portal_username}
-                  onChange={(e) => setFormData({ ...formData, portal_username: e.target.value })}
-                  placeholder="username@example.com"
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Portal Password
-                </label>
-                <input
-                  type="password"
-                  value={formData.portal_password}
-                  onChange={(e) => setFormData({ ...formData, portal_password: e.target.value })}
-                  placeholder="••••••••"
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600 rounded-lg text-text-primary focus:outline-none focus:border-gray-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.is_emergency}
-                onChange={(e) => setFormData({ ...formData, is_emergency: e.target.checked })}
-                className="w-4 h-4 bg-background-primary border-gray-600 rounded"
-              />
-              <span className="text-sm font-medium text-text-primary">
-                Emergency Contact
-              </span>
-            </label>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-text-primary rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex-1 px-4 py-2 bg-button-create hover:bg-button-create/90 text-white rounded-lg transition-colors"
-            >
-              {contact ? 'Update' : 'Create'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 // Item Modal Component
 function ItemModal({ 

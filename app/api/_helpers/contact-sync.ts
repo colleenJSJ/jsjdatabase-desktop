@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 
 interface ContactSyncData {
   name: string;
@@ -10,6 +11,8 @@ interface ContactSyncData {
   source_id: string;
   category?: string;
   related_to?: string[]; // Array of family member IDs
+  patients?: string[];
+  pets?: string[];
   specialties?: string[];
   notes?: string | null;
   is_emergency?: boolean;
@@ -51,31 +54,51 @@ export async function syncContactToUnified(contactData: ContactSyncData) {
 
     // Determine category based on source type
     const category = contactData.category || getCategoryForSource(contactData.source_type);
-    
+
+    const sanitized = sanitizeContactPayload({
+      ...contactData,
+      category,
+      source_type: contactData.source_type,
+      source_page: contactData.source_type,
+      related_to: contactData.related_to || contactData.patients || contactData.pets,
+    });
+
+    const portalPassword = sanitized.portal_password
+      ? await (async () => {
+          const { encrypt } = await import('@/lib/encryption');
+          return encrypt(sanitized.portal_password as string);
+        })()
+      : null;
+
     // Prepare unified contact data
     const unifiedContactData = {
-      name: contactData.name,
-      email: contactData.email,
-      phone: contactData.phone,
-      address: contactData.address,
-      website: contactData.website,
+      name: sanitized.name,
+      email: sanitized.email,
+      emails: sanitized.emails,
+      phone: sanitized.phone,
+      phones: sanitized.phones,
+      address: sanitized.address,
+      addresses: sanitized.addresses,
+      website: sanitized.website,
       contact_type: contactData.source_type,
       module: contactData.source_type,
       category,
       source_type: contactData.source_type,
+      source_page: sanitized.source_page ?? contactData.source_type,
       source_id: contactData.source_id,
-      related_to: contactData.related_to || [],
+      related_to: sanitized.related_to,
       specialties: contactData.specialties || [],
-      notes: contactData.notes,
-      is_emergency: contactData.is_emergency || false,
-      is_emergency_contact: contactData.is_emergency || false,
-      portal_url: contactData.portal_url,
-      portal_username: contactData.portal_username,
-      portal_password: contactData.portal_password,
-      company: contactData.company,
+      notes: sanitized.notes,
+      is_emergency: sanitized.is_emergency,
+      is_emergency_contact: sanitized.is_emergency,
+      portal_url: sanitized.portal_url,
+      portal_username: sanitized.portal_username,
+      portal_password: portalPassword,
+      company: sanitized.company || contactData.company,
       role: contactData.role,
       services_provided: contactData.services_provided || [],
       hours_of_operation: contactData.hours_of_operation,
+      tags: sanitized.tags,
       is_active: true,
       created_by: user.id,
       owner_id: user.id

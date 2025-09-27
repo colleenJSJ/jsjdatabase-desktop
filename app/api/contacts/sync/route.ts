@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { cleanStringArray, sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,26 +33,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to check existing contact' }, { status: 500 });
     }
 
-    // Prepare contact data for unified table
+    const sanitized = sanitizeContactPayload(contact_data);
+
+    const encryptedPortalPassword = sanitized.portal_password
+      ? await (async () => {
+          const { encrypt } = await import('@/lib/encryption');
+          return encrypt(sanitized.portal_password as string);
+        })()
+      : null;
+
     const contactRecord = {
       contact_type: 'general',
       module: source_type,
-      name: contact_data.name,
-      email: contact_data.email || null,
-      phone: contact_data.phone || null,
-      address: contact_data.address || null,
-      company: contact_data.company || contact_data.specialty || null, // For doctors, use specialty as company
+      name: sanitized.name,
+      company: sanitized.company || (contact_data.specialty ?? null),
       category: getCategoryFromSource(source_type),
-      related_to: contact_data.related_to || contact_data.patients || contact_data.pets || [],
+      contact_subtype: sanitized.contact_subtype,
+      email: sanitized.email,
+      emails: sanitized.emails,
+      phone: sanitized.phone,
+      phones: sanitized.phones,
+      address: sanitized.address,
+      addresses: sanitized.addresses,
+      tags: sanitized.tags,
+      related_to: sanitized.related_to.length > 0
+        ? sanitized.related_to
+        : cleanStringArray(contact_data?.patients, contact_data?.pets),
       source_type,
+      source_page: sanitized.source_page ?? source_type,
       source_id,
-      notes: contact_data.notes || null,
-      website: contact_data.website || null,
-      portal_url: contact_data.portal_url || null,
-      portal_username: contact_data.portal_username || null,
-      portal_password: contact_data.portal_password || null,
-      is_emergency: contact_data.is_emergency || false,
-      is_archived: false,
+      notes: sanitized.notes,
+      website: sanitized.website,
+      portal_url: sanitized.portal_url,
+      portal_username: sanitized.portal_username,
+      portal_password: encryptedPortalPassword,
+      is_emergency: sanitized.is_emergency,
+      is_archived: sanitized.is_archived,
       created_by: user.id
     };
 

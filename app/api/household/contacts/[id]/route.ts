@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 
 export async function GET(
   request: NextRequest,
@@ -37,10 +38,49 @@ export async function PUT(
   try {
     const supabase = await createClient();
     const body = await request.json();
+    const sanitized = sanitizeContactPayload({
+      source_type: 'household',
+      source_page: 'household',
+      ...body,
+    });
+
+    const updateData: Record<string, unknown> = {
+      name: sanitized.name,
+      company: sanitized.company,
+      category: 'household',
+      contact_subtype: sanitized.contact_subtype ?? sanitized.category ?? 'other',
+      email: sanitized.email,
+      emails: sanitized.emails,
+      phone: sanitized.phone,
+      phones: sanitized.phones,
+      address: sanitized.address,
+      addresses: sanitized.addresses,
+      tags: sanitized.tags,
+      related_to: sanitized.related_to,
+      assigned_entities: sanitized.assigned_entities,
+      notes: sanitized.notes,
+      website: sanitized.website,
+      portal_url: sanitized.portal_url,
+      portal_username: sanitized.portal_username,
+      is_emergency: sanitized.is_emergency,
+      is_favorite: sanitized.is_favorite,
+      source_type: sanitized.source_type ?? 'household',
+      source_page: sanitized.source_page ?? 'household',
+      updated_at: new Date().toISOString(),
+    };
+
+    if (Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'portal_password')) {
+      if (!sanitized.portal_password) {
+        updateData.portal_password = null;
+      } else {
+        const { encrypt } = await import('@/lib/encryption');
+        updateData.portal_password = await encrypt(sanitized.portal_password);
+      }
+    }
 
     const { data: contact, error } = await supabase
       .from('contacts_unified')
-      .update(body)
+      .update(updateData)
       .eq('id', id)
       .eq('contact_type', 'household')
       .select()

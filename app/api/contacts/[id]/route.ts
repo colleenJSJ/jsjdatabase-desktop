@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 
 export async function GET(
   request: NextRequest,
@@ -54,25 +55,46 @@ export async function PUT(
     const { user, supabase } = authResult;
 
     const body = await request.json();
-    
-    // Prepare update data
-    const updateData = {
-      name: body.name,
-      email: body.email || null,
-      phone: body.phone || null,
-      address: body.address || null,
-      company: body.company || null,
-      category: body.category || 'Other',
-      related_to: body.related_to || [],
-      notes: body.notes || null,
-      website: body.website || null,
-      portal_url: body.portal_url || null,
-      portal_username: body.portal_username || null,
-      portal_password: body.portal_password ? (await (async () => { const { encrypt } = await import('@/lib/encryption'); return encrypt(body.portal_password); })()) : (body.portal_password === '' ? null : undefined),
-      is_emergency: body.is_emergency || false,
-      is_archived: body.is_archived || false,
-      updated_at: new Date().toISOString()
+    const sanitized = sanitizeContactPayload(body);
+
+    const updateData: Record<string, unknown> = {
+      name: sanitized.name,
+      company: sanitized.company,
+      category: sanitized.category ?? 'Other',
+      contact_subtype: sanitized.contact_subtype,
+      emails: sanitized.emails,
+      email: sanitized.email,
+      phones: sanitized.phones,
+      phone: sanitized.phone,
+      addresses: sanitized.addresses,
+      address: sanitized.address,
+      tags: sanitized.tags,
+      related_to: sanitized.related_to,
+      assigned_entities: sanitized.assigned_entities,
+      pets: sanitized.pets,
+      trip_id: sanitized.trip_id,
+      source_type: sanitized.source_type ?? 'other',
+      source_page: sanitized.source_page ?? 'contacts',
+      source_id: sanitized.source_id,
+      notes: sanitized.notes,
+      website: sanitized.website,
+      portal_url: sanitized.portal_url,
+      portal_username: sanitized.portal_username,
+      is_emergency: sanitized.is_emergency,
+      is_preferred: sanitized.is_preferred,
+      is_favorite: sanitized.is_favorite,
+      is_archived: sanitized.is_archived,
+      updated_at: new Date().toISOString(),
     };
+
+    if (Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'portal_password')) {
+      if (!sanitized.portal_password) {
+        updateData.portal_password = null;
+      } else {
+        const { encrypt } = await import('@/lib/encryption');
+        updateData.portal_password = await encrypt(sanitized.portal_password);
+      }
+    }
 
     // Update contact in unified table
     const { data: contact, error } = await supabase

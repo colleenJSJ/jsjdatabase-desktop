@@ -5,7 +5,8 @@ import { PetDocumentUpload } from './PetDocumentUpload';
 import { DocumentList } from '@/components/documents/document-list';
 import dynamic from 'next/dynamic';
 import PetAppointmentModal from './PetAppointmentModal';
-import PetContactModal from './PetContactModal';
+import { ContactCard } from '@/components/contacts/ContactCard';
+import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
 import ViewPetAppointmentModal from './ViewPetAppointmentModal';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { PawPrint, Stethoscope, Syringe, Scissors, Eye, EyeOff } from 'lucide-react';
@@ -19,58 +20,161 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { smartUrlComplete } from '@/lib/utils/url-helper';
 import { useUser } from '@/contexts/user-context';
 import type { PortalRecord } from '@/types/portals';
+import type { ContactFormValues, ContactModalFieldVisibilityMap, ContactRecord } from '@/components/contacts/contact-types';
+import { resolveEmails, resolvePhones, resolveAddresses } from '@/components/contacts/contact-utils';
+import ApiClient from '@/lib/api/api-client';
+
+type UnknownRecord = Record<string, unknown>;
+type Pet = { id: string; name: string; [key: string]: unknown };
+type PetContactRaw = {
+  id: string;
+  name: string;
+  contact_type?: string;
+  contact_subtype?: string;
+  practice?: string;
+  clinic_name?: string;
+  company?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  website?: string;
+  notes?: string;
+  pets?: string[];
+  petIds?: string[];
+  pet_id?: string;
+  related_to?: string[];
+  description?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+};
+type PetAppointment = {
+  id: string;
+  title?: string;
+  description?: string;
+  pet_id?: string;
+  petIds?: string[];
+  pets?: string[];
+  location?: string;
+  start_time?: string;
+  end_time?: string;
+  appointment_date?: string;
+  appointment_time?: string;
+  appointment_type?: string;
+  vet_name?: string | null;
+  vet_phone?: string | null;
+  additional_attendees?: string[];
+  notify_attendees?: boolean;
+  google_calendar_id?: string | null;
+  [key: string]: unknown;
+};
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
+
+const PET_CONTACT_MODAL_VISIBILITY: ContactModalFieldVisibilityMap = {
+  assignedEntities: { hidden: true },
+  tags: { hidden: true },
+  portal: { hidden: true },
+  favorite: { hidden: true },
+  emergency: { hidden: true },
+  preferred: { hidden: true },
+};
+
+const uniqueStringValues = (values: unknown): string[] => {
+  if (!Array.isArray(values)) return [];
+  const set = new Set<string>();
+  values.forEach(value => {
+    if (typeof value === 'string' && value.trim()) {
+      set.add(value.trim());
+    }
+  });
+  return Array.from(set);
+};
+
+const collectPetIds = (contact: PetContactRaw): string[] => {
+  const set = new Set<string>();
+  uniqueStringValues(contact.pets).forEach(id => set.add(id));
+  uniqueStringValues(contact.petIds).forEach(id => set.add(id));
+  uniqueStringValues(contact.related_to).forEach(id => set.add(id));
+  if (typeof contact.pet_id === 'string' && contact.pet_id.trim()) {
+    set.add(contact.pet_id.trim());
+  }
+  return Array.from(set);
+};
+
+const sanitizeList = (...sources: unknown[]): string[] => {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  const pushValue = (value: unknown) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        output.push(trimmed);
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(pushValue);
+      return;
+    }
+
+    if (value && typeof value === 'object') {
+      Object.values(value as Record<string, unknown>).forEach(pushValue);
+    }
+  };
+
+  sources.forEach(pushValue);
+  return output;
+};
+
+const toNullable = (value?: string | null) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const toPetContactRecord = (raw: PetContactRaw, subtype: 'vet' | 'other'): ContactRecord => {
+  const related = collectPetIds(raw);
+  const name = raw.name || raw.practice || raw.clinic_name || raw.company || 'Pet Contact';
+  const company = raw.practice || raw.clinic_name || raw.company || null;
+
+  return {
+    id: raw.id,
+    name,
+    company,
+    emails: sanitizeList(raw.emails, raw.email),
+    phones: sanitizeList(raw.phones, raw.phone),
+    addresses: sanitizeList(raw.addresses, raw.address),
+    website: raw.website || null,
+    notes: raw.notes || raw.description || null,
+    category: 'Pets',
+    contact_type: 'pets',
+    contact_subtype: subtype,
+    module: 'pets',
+    source_type: 'pets',
+    source_page: 'pets',
+    related_to: related,
+    pets: related,
+    is_emergency: false,
+    is_preferred: false,
+    is_favorite: false,
+    is_archived: false,
+    created_by: typeof raw.created_by === 'string' ? raw.created_by : null,
+    created_at: typeof raw.created_at === 'string' ? raw.created_at : null,
+    updated_at: typeof raw.updated_at === 'string' ? raw.updated_at : null,
+  } as ContactRecord;
+};
 
 export default function PetsPageClient() {
   const { user } = useUser();
   const [loading, setLoading] = useState(true);
-  type UnknownRecord = Record<string, unknown>;
-  type Pet = { id: string; name: string; [key: string]: unknown };
-  type PetContact = {
-    id: string;
-    name: string;
-    contact_type?: string;
-    contact_subtype?: string;
-    practice?: string;
-    clinic_name?: string;
-    company?: string;
-    phone?: string;
-    email?: string;
-    address?: string;
-    website?: string;
-    notes?: string;
-    pets?: string[];
-    petIds?: string[];
-    pet_id?: string;
-    related_to?: string[];
-    description?: string;
-    [key: string]: unknown;
-  };
-  type PetAppointment = {
-    id: string;
-    title?: string;
-    description?: string;
-    pet_id?: string;
-    petIds?: string[];
-    pets?: string[];
-    location?: string;
-    start_time?: string;
-    end_time?: string;
-    appointment_date?: string;
-    appointment_time?: string;
-    appointment_type?: string;
-    vet_name?: string | null;
-    vet_phone?: string | null;
-    additional_attendees?: string[];
-    notify_attendees?: boolean;
-    google_calendar_id?: string | null;
-    [key: string]: unknown;
-  };
-
   const [pets, setPets] = useState<Pet[]>([]);
-  const [contacts, setContacts] = useState<PetContact[]>([]);
-  const [vets, setVets] = useState<PetContact[]>([]);
+  const [contacts, setContacts] = useState<ContactRecord[]>([]);
+  const [vets, setVets] = useState<PetContactRaw[]>([]);
   const [portals, setPortals] = useState<PortalRecord[]>([]);
   const [appointments, setAppointments] = useState<PetAppointment[]>([]);
   const [refreshDocs, setRefreshDocs] = useState(0);
@@ -80,6 +184,8 @@ export default function PetsPageClient() {
   const [showAddAppointment, setShowAddAppointment] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<PetAppointment | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [editingContact, setEditingContact] = useState<ContactRecord | null>(null);
+  const [savingContact, setSavingContact] = useState(false);
   const [showAddPortal, setShowAddPortal] = useState(false);
   const [editingPortal, setEditingPortal] = useState<PortalRecord | null>(null);
   const { calendars: googleCalendars } = useGoogleCalendars();
@@ -93,6 +199,138 @@ export default function PetsPageClient() {
     return [...base, { id: 'shared', email: '', name: 'Shared' }];
   }, [pets]);
   const canManagePortals = user?.role === 'admin';
+  const canManageContacts = false;
+
+  const renderContactCard = (contact: ContactRecord) => {
+    const relatedPetNames = (contact.pets ?? contact.related_to ?? [])
+      .map(id => pets.find(pet => pet.id === id)?.name)
+      .filter((name): name is string => Boolean(name));
+
+    const badges = contact.contact_subtype === 'vet'
+      ? [{ id: `${contact.id}-vet`, label: 'Vet', tone: 'primary' as const }]
+      : [];
+
+    return (
+      <ContactCard
+        key={contact.id}
+        contact={contact}
+        subtitle={contact.company ?? undefined}
+        assignedToLabel={relatedPetNames.length > 0 ? relatedPetNames.join(', ') : undefined}
+        badges={badges}
+        showFavoriteToggle={false}
+        canManage={canManageContacts}
+      />
+    );
+  };
+
+  const contactModalDefaults = useMemo(() => ({
+    category: 'Vet',
+    contactSubtype: 'vet',
+    sourceType: 'pets' as const,
+    sourcePage: 'pets',
+    relatedToIds: selectedPetId !== 'all' ? [selectedPetId] : [],
+    petIds: selectedPetId !== 'all' ? [selectedPetId] : [],
+  }), [selectedPetId]);
+
+  const mapPetContactToFormValues = (contact: ContactRecord): Partial<ContactFormValues> => ({
+    id: contact.id,
+    name: contact.name,
+    company: contact.company ?? undefined,
+    emails: resolveEmails(contact),
+    phones: resolvePhones(contact),
+    addresses: resolveAddresses(contact),
+    website: contact.website ?? undefined,
+    notes: contact.notes ?? undefined,
+    related_to: contact.pets ?? contact.related_to ?? [],
+    pets: contact.pets ?? contact.related_to ?? [],
+    category: contact.contact_subtype === 'vet' ? 'Vet' : 'Other',
+    contact_subtype: contact.contact_subtype ?? undefined,
+  });
+
+  const relatedEntityOptions = useMemo(
+    () => pets.map(pet => ({ id: pet.id, label: pet.name || 'Pet' })),
+    [pets]
+  );
+
+  const handleContactSubmit = async (values: ContactFormValues) => {
+    try {
+      setSavingContact(true);
+      const category = (values.category || '').toLowerCase();
+      const subtype = category.includes('vet') ? 'vet' : 'other';
+      const petIds = values.related_to.length > 0 ? values.related_to : values.pets;
+
+      const emails = sanitizeList(values.emails);
+      const phones = sanitizeList(values.phones);
+      const addresses = sanitizeList(values.addresses);
+
+      if (editingContact && editingContact.contact_subtype === 'vet') {
+        const payload = {
+          name: values.name,
+          clinic_name: values.company || values.name,
+          practice: values.company || '',
+          phone: phones[0] ?? null,
+          email: emails[0] ?? null,
+          address: addresses[0] ?? null,
+          website: toNullable(values.website),
+          notes: toNullable(values.notes),
+          pets: petIds,
+        };
+        const response = await ApiClient.put(`/api/vets/${editingContact.id}`, payload);
+        if (!response.success) throw new Error(response.error || 'Failed to save contact');
+      } else if (editingContact && editingContact.contact_subtype !== 'vet') {
+        const payload = {
+          name: values.name,
+          company: values.company || null,
+          emails,
+          phones,
+          addresses,
+          website: toNullable(values.website),
+          notes: toNullable(values.notes),
+          pets: petIds,
+          contact_subtype: subtype,
+        };
+        const response = await ApiClient.put(`/api/pet-contacts/${editingContact.id}`, payload);
+        if (!response.success) throw new Error(response.error || 'Failed to save contact');
+      } else if (subtype === 'vet') {
+        const payload = {
+          name: values.name,
+          clinic_name: values.company || values.name,
+          practice: values.company || '',
+          phone: phones[0] ?? null,
+          email: emails[0] ?? null,
+          address: addresses[0] ?? null,
+          website: toNullable(values.website),
+          notes: toNullable(values.notes),
+          pets: petIds,
+        };
+        const response = await ApiClient.post('/api/vets', payload);
+        if (!response.success) throw new Error(response.error || 'Failed to create vet contact');
+      } else {
+        const payload = {
+          name: values.name,
+          company: values.company || null,
+          emails,
+          phones,
+          addresses,
+          website: toNullable(values.website),
+          notes: toNullable(values.notes),
+          pets: petIds,
+          contact_subtype: 'other',
+        };
+        const response = await ApiClient.post('/api/pet-contacts', payload);
+        if (!response.success) throw new Error(response.error || 'Failed to create contact');
+      }
+
+      await loadData();
+      setShowAddContact(false);
+      setEditingContact(null);
+    } catch (error) {
+      console.error('[Pets] Failed to save contact', error);
+      alert(error instanceof Error ? error.message : 'Failed to save contact');
+    } finally {
+      setSavingContact(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -107,35 +345,43 @@ export default function PetsPageClient() {
 
       setPets(Array.isArray(petsRes.pets) ? petsRes.pets as Pet[] : []);
 
-      const vetContacts: PetContact[] = Array.isArray(vetsRes.vets)
-        ? (vetsRes.vets as UnknownRecord[]).reduce<PetContact[]>((acc, vet) => {
+      const vetContactsRaw: PetContactRaw[] = Array.isArray(vetsRes.vets)
+        ? (vetsRes.vets as UnknownRecord[]).reduce<PetContactRaw[]>((acc, vet) => {
             const id = typeof vet.id === 'string' ? vet.id : undefined;
             if (!id) return acc;
             const name = (vet.name as string | undefined) || (vet.clinic_name as string | undefined) || 'Veterinary Contact';
             acc.push({
-              ...(vet as PetContact),
+              ...(vet as UnknownRecord),
               id,
-              contact_type: 'vet',
               name,
-            });
-            return acc;
-          }, [])
-        : [];
-      const otherContacts: PetContact[] = Array.isArray(contactsRes.contacts)
-        ? (contactsRes.contacts as UnknownRecord[]).reduce<PetContact[]>((acc, contact) => {
-            const id = typeof contact.id === 'string' ? contact.id : undefined;
-            if (!id) return acc;
-            acc.push({
-              ...(contact as PetContact),
-              id,
-              contact_type: (contact.contact_subtype as string | undefined) || 'other',
-            });
+              contact_type: 'vet',
+              contact_subtype: 'vet',
+            } as PetContactRaw);
             return acc;
           }, [])
         : [];
 
-      setVets(vetContacts);
-      setContacts([...vetContacts, ...otherContacts]);
+      const otherContactsRaw: PetContactRaw[] = Array.isArray(contactsRes.contacts)
+        ? (contactsRes.contacts as UnknownRecord[]).reduce<PetContactRaw[]>((acc, contact) => {
+            const id = typeof contact.id === 'string' ? contact.id : undefined;
+            if (!id) return acc;
+            const subtype = (contact.contact_subtype as string | undefined) || 'other';
+            acc.push({
+              ...(contact as UnknownRecord),
+              id,
+              contact_type: subtype,
+              contact_subtype: subtype,
+            } as PetContactRaw);
+            return acc;
+          }, [])
+        : [];
+
+      setVets(vetContactsRaw);
+      const combinedContacts = [
+        ...vetContactsRaw.map(contact => toPetContactRecord(contact, 'vet')),
+        ...otherContactsRaw.map(contact => toPetContactRecord(contact, 'other')),
+      ];
+      setContacts(combinedContacts);
       setPortals(Array.isArray(portalsRes.portals) ? portalsRes.portals : []);
       setAppointments(Array.isArray(apptRes.appointments) ? apptRes.appointments : []);
     } finally {
@@ -146,7 +392,6 @@ export default function PetsPageClient() {
   const handleDeletePortal = useCallback(async (portalId?: string) => {
     if (!portalId) return;
     if (!confirm('Delete this pet portal?')) return;
-    const ApiClient = (await import('@/lib/api/api-client')).default;
     const response = await ApiClient.delete(`/api/pet-portals/${portalId}`);
     if (!response.success) {
       alert(response.error || 'Failed to delete portal');
@@ -242,53 +487,59 @@ export default function PetsPageClient() {
   const term = search.trim().toLowerCase();
   const filtered = useMemo((): {
     pets: Pet[];
-    contacts: PetContact[];
+    contacts: ContactRecord[];
     portals: PortalRecord[];
     appointments: PetAppointment[];
-  } => ({
-    pets: pets
-      .filter(p => (p.name || '').toLowerCase().includes(term)),
-    contacts: contacts
-      .filter(contact => {
-        const candidate = [
-          contact.name,
-          contact.practice,
-          contact.clinic_name,
-          contact.company,
-          contact.notes,
-        ].filter(Boolean).join(' ').toLowerCase();
-        return candidate.includes(term);
-      })
-      .filter(contact => {
+  } => {
+    const contactsMatch = contacts.filter(contact => {
+      const haystack = [
+        contact.name,
+        contact.company ?? '',
+        contact.notes ?? '',
+        ...resolveEmails(contact),
+        ...resolvePhones(contact),
+        ...resolveAddresses(contact),
+        contact.website ?? '',
+      ];
+      const matchesQuery = term ? haystack.some(value => value.toLowerCase().includes(term)) : true;
+      if (!matchesQuery) return false;
+
+      if (selectedPetId === 'all') return true;
+      return (contact.pets ?? contact.related_to ?? []).includes(selectedPetId);
+    });
+
+    const petsMatch = pets.filter(pet => (pet.name || '').toLowerCase().includes(term));
+
+    const portalsMatch = portals
+      .filter(portal => (portal.portal_name || portal.provider_name || '').toLowerCase().includes(term))
+      .filter(portal => {
         if (selectedPetId === 'all') return true;
-        const petName = pets.find(p => p.id === selectedPetId)?.name?.toLowerCase() || '';
-        const petIds = new Set([
-          contact.pet_id,
-          ...(contact.petIds || []),
-          ...(contact.pets || []),
-          ...(contact.related_to || []),
-        ].filter(Boolean));
-        if (petIds.has(selectedPetId)) return true;
-        return (contact.description || '').toLowerCase().includes(petName);
-      }),
-    portals: portals
-      .filter(pt => (pt.portal_name || pt.provider_name || '').toLowerCase().includes(term))
-      .filter(pt => {
+        return portal.entity_id === selectedPetId;
+      });
+
+    const appointmentsMatch = appointments
+      .filter(appointment => ((appointment.title || appointment.description || '') as string).toLowerCase().includes(term))
+      .filter(appointment => {
         if (selectedPetId === 'all') return true;
-        return pt.entity_id === selectedPetId;
-      }),
-    appointments: appointments
-      .filter(a => ((a.title || a.description || '') as string).toLowerCase().includes(term))
-      .filter(a => {
-        if (selectedPetId === 'all') return true;
-        const petName = pets.find(x => x.id === selectedPetId)?.name?.toLowerCase() || '';
-        const descriptionText = (a.description as string | undefined)?.toLowerCase() || '';
-        const idMatches = [a.pet_id, ...(Array.isArray(a.petIds) ? a.petIds : []), ...(Array.isArray(a.pets) ? a.pets : [])]
+        const petName = pets.find(pet => pet.id === selectedPetId)?.name?.toLowerCase() || '';
+        const descriptionText = (appointment.description as string | undefined)?.toLowerCase() || '';
+        const idMatches = [
+          appointment.pet_id,
+          ...(Array.isArray(appointment.petIds) ? appointment.petIds : []),
+          ...(Array.isArray(appointment.pets) ? appointment.pets : []),
+        ]
           .filter(Boolean)
-          .some((value) => value === selectedPetId);
+          .some(value => value === selectedPetId);
         return idMatches || descriptionText.includes(petName);
-      }),
-  }), [pets, contacts, portals, appointments, term, selectedPetId]);
+      });
+
+    return {
+      pets: petsMatch,
+      contacts: contactsMatch,
+      portals: portalsMatch,
+      appointments: appointmentsMatch,
+    };
+  }, [pets, contacts, portals, appointments, term, selectedPetId]);
 
   return (
     <div className="space-y-6">
@@ -329,57 +580,22 @@ export default function PetsPageClient() {
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-text-primary">Contacts</h2>
-                <button onClick={()=>setShowAddContact(true)} className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors">Add Contact</button>
+                <button
+                  onClick={() => {
+                    setEditingContact(null);
+                    setShowAddContact(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
+                >
+                  Add Contact
+                </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filtered.contacts.map((contact) => {
-                  const relatedPets = (contact.pets || contact.petIds || contact.related_to || [])
-                    .map((id: string) => pets.find(p => p.id === id)?.name)
-                    .filter((name): name is string => Boolean(name));
-                  const subtype = (contact.contact_type || contact.contact_subtype || '').toString();
-                  const badgeLabel = subtype === 'vet' ? 'Vet' : 'Contact';
-                  return (
-                    <div key={contact.id} className="bg-black/30 border border-gray-600/30 rounded-lg p-3 space-y-3 transition hover:border-gray-500">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-text-primary">{contact.name}</p>
-                          {(contact.practice || contact.clinic_name || contact.company) && (
-                            <p className="text-xs text-text-muted">{contact.practice || contact.clinic_name || contact.company}</p>
-                          )}
-                        </div>
-                        <span className={`rounded-full border px-2 py-0.5 text-[11px] ${subtype === 'vet' ? 'border-emerald-400 text-emerald-300' : 'border-gray-500 text-text-muted'}`}>
-                          {badgeLabel}
-                        </span>
-                      </div>
-                      <div className="text-xs text-text-muted space-y-1">
-                        {contact.phone && <p>Phone: {contact.phone}</p>}
-                        {contact.email && <p>Email: {contact.email}</p>}
-                        {contact.address && <p>{contact.address}</p>}
-                        {contact.website && (
-                          <p>
-                            Website:{' '}
-                            <a href={contact.website} target="_blank" rel="noopener noreferrer" className="text-text-primary underline">
-                              {contact.website}
-                            </a>
-                          </p>
-                        )}
-                        {contact.notes && <p className="text-[11px] text-text-muted/80">{contact.notes}</p>}
-                      </div>
-                      {relatedPets.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {relatedPets.map((petName: string) => (
-                            <span key={`${contact.id}-${petName}`} className="px-2 py-0.5 text-xs bg-gray-700/60 text-text-primary rounded-full">
-                              {petName}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {filtered.contacts.length === 0 && (
+              {filtered.contacts.length === 0 ? (
                 <div className="text-sm text-text-muted">No contacts</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {filtered.contacts.map(contact => renderContactCard(contact))}
+                </div>
               )}
             </section>
           )}
@@ -489,7 +705,7 @@ export default function PetsPageClient() {
                   const dateDisplay = formatAppointmentDate(
                     appointment.start_time as string | undefined,
                     appointment.appointment_date as string | undefined,
-                    (appointment as any).appointment_time as string | undefined
+                    appointment.appointment_time as string | undefined
                   );
                   const locationDisplay = (appointment.location as string | undefined) || undefined;
                   const vetName = appointment.vet_name as string | undefined;
@@ -564,12 +780,27 @@ export default function PetsPageClient() {
         />
       )}
       {showAddContact && (
-        <PetContactModal
-          pets={pets}
-          onClose={() => setShowAddContact(false)}
-          onSaved={async () => {
+        <UnifiedContactModal
+          open={showAddContact}
+          mode={editingContact ? 'edit' : 'create'}
+          defaults={contactModalDefaults}
+          initialValues={editingContact ? mapPetContactToFormValues(editingContact) : undefined}
+          visibility={PET_CONTACT_MODAL_VISIBILITY}
+          labels={{
+            companyLabel: 'Clinic / Company',
+            relatedToLabel: 'Related Pets',
+            categoryLabel: 'Contact Type',
+          }}
+          optionSelectors={{
+            categories: ['Vet', 'Other'],
+            relatedEntities: relatedEntityOptions,
+          }}
+          busy={savingContact}
+          submitLabel={editingContact ? 'Save changes' : 'Create contact'}
+          onSubmit={handleContactSubmit}
+          onCancel={() => {
             setShowAddContact(false);
-            await loadData();
+            setEditingContact(null);
           }}
         />
       )}

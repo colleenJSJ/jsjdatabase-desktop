@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TransportType } from '@/types/travel';
 import dynamic from 'next/dynamic';
 import { SmartUploadButtonV2 } from '@/components/travel/SmartUploadButtonV2';
-import { Plane, Train, Car, Ship, Globe, Pencil, Trash2, Calendar, Clock, MapPin, Users, Ticket, X, Phone, Mail, Building2, FileText } from 'lucide-react';
+import { Plane, Train, Car, Ship, Globe, Pencil, Trash2, Calendar, Clock, MapPin, Users, Ticket, X } from 'lucide-react';
+import { ContactCard } from '@/components/contacts/ContactCard';
+import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
+import type { ContactCardBadge, ContactFormValues, ContactModalFieldVisibilityMap, ContactRecord } from '@/components/contacts/contact-types';
+import { resolveAddresses, resolveEmails, resolvePhones } from '@/components/contacts/contact-utils';
 import { TravelSegmentFields } from '@/components/travel/shared/TravelSegmentFields';
 import { TravelersPicker } from '@/components/travel/shared/TravelersPicker';
 import { InvitesCalendarPanel } from '@/components/travel/shared/InvitesCalendarPanel';
@@ -20,7 +24,6 @@ import { DocumentCard } from '@/components/documents/document-card';
 import { DocumentPreviewModal } from '@/components/documents/document-preview-modal';
 import { useDocumentActions } from '@/hooks/useDocumentActions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
-import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 
 const normalizeId = (raw: unknown): string | null => {
   if (raw === null || raw === undefined) return null;
@@ -75,6 +78,117 @@ const matchesSearchBlob = (searchTerm: string, ...values: Array<unknown>): boole
   return values.some(entry => matchesText(searchTerm, entry));
 };
 
+type TravelContactRaw = {
+  id: string;
+  name?: string | null;
+  company?: string | null;
+  organization?: string | null;
+  phone?: string | null;
+  phone_number?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  trip_id?: string | null;
+  trip_name?: string | null;
+  contact_type?: string | null;
+  contact_subtype?: string | null;
+  related_to?: string[] | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  is_preferred?: boolean | null;
+  [key: string]: unknown;
+};
+
+const TRAVEL_CONTACT_MODAL_VISIBILITY: ContactModalFieldVisibilityMap = {
+  tags: { hidden: true },
+  portal: { hidden: true },
+  assignedEntities: { hidden: true },
+  favorite: { hidden: true },
+  emergency: { hidden: true },
+};
+
+const sanitizeList = (values: (string | null | undefined)[] | undefined): string[] => {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const output: string[] = [];
+  values.forEach(value => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        output.push(trimmed);
+      }
+    }
+  });
+  return output;
+};
+
+const toNullable = (value?: string | null) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const coerceTravelList = (...inputs: Array<unknown>): string[] => {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  inputs.forEach(input => {
+    if (!input) return;
+    if (Array.isArray(input)) {
+      input.forEach(value => {
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (trimmed && !seen.has(trimmed)) {
+            seen.add(trimmed);
+            output.push(trimmed);
+          }
+        }
+      });
+    } else if (typeof input === 'string') {
+      const trimmed = input.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        output.push(trimmed);
+      }
+    }
+  });
+  return output;
+};
+
+const toTravelContactRecord = (raw: TravelContactRaw): ContactRecord => {
+  const name = raw.name || 'Travel Contact';
+  const company = raw.company || raw.organization || null;
+  const phones = coerceTravelList(raw.phones, raw.phone, raw.phone_number);
+  const emails = coerceTravelList(raw.emails, raw.email);
+  const addresses = coerceTravelList(raw.addresses, raw.address);
+  return {
+    id: raw.id,
+    name,
+    company,
+    emails,
+    phones,
+    addresses,
+    notes: raw.notes || null,
+    category: 'Travel',
+    contact_type: 'travel',
+    contact_subtype: raw.contact_type || raw.contact_subtype || null,
+    module: 'travel',
+    source_type: 'travel',
+    source_page: 'travel',
+    related_to: Array.isArray(raw.related_to) ? raw.related_to : [],
+    trip_id: raw.trip_id || null,
+    is_preferred: Boolean(raw.is_preferred),
+    is_favorite: false,
+    is_emergency: false,
+    is_archived: false,
+    created_by: raw.created_by || null,
+    created_at: raw.created_at || null,
+    updated_at: raw.updated_at || null,
+    trip_label: raw.trip_name || null,
+  } as ContactRecord;
+};
+
 function daysUntil(date?: string | null) {
   if (!date) return null;
   const today = new Date();
@@ -104,7 +218,7 @@ export default function TravelPageClient() {
     trips: any[];
     travel_details: any[];
     accommodations: any[];
-    contacts: any[];
+    contacts: ContactRecord[];
     documents: any[];
     family_members: any[];
   }>({ trips: [], travel_details: [], accommodations: [], contacts: [], documents: [], family_members: [] });
@@ -118,6 +232,8 @@ export default function TravelPageClient() {
   const [viewingDetail, setViewingDetail] = useState<any | null>(null);
   const [showUploadDoc, setShowUploadDoc] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [editingContact, setEditingContact] = useState<ContactRecord | null>(null);
+  const [savingContact, setSavingContact] = useState(false);
   // Filters (match Tasks page style)
   const [search, setSearch] = useState<string>('');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
@@ -169,7 +285,9 @@ export default function TravelPageClient() {
           trips: tripsJson?.trips || [],
           travel_details: detailsJson?.details || [],
           accommodations: accJson?.accommodations || [],
-          contacts: contactsJson?.contacts || [],
+          contacts: Array.isArray(contactsJson?.contacts)
+            ? contactsJson.contacts.map(toTravelContactRecord)
+            : [],
           documents: docsJson?.documents || [],
           family_members: famJson?.members || [],
         });
@@ -209,7 +327,9 @@ export default function TravelPageClient() {
         trips: tripsJson?.trips || [],
         travel_details: detailsJson?.details || [],
         accommodations: accJson?.accommodations || [],
-        contacts: contactsJson?.contacts || [],
+        contacts: Array.isArray(contactsJson?.contacts)
+          ? contactsJson.contacts.map(toTravelContactRecord)
+          : [],
         documents: docsJson?.documents || [],
         family_members: famJson?.members || [],
       });
@@ -328,21 +448,21 @@ export default function TravelPageClient() {
       return matchesSearchBlob(searchTerm, doc.title, doc.file_name, doc.notes);
     });
 
-    // Contacts: name/company/notes/phone/email/address
-    const contacts = (data.contacts || []).filter((c: any) => {
+    // Contacts: leverage unified contact record
+    const contacts = (data.contacts || []).filter((contact: ContactRecord) => {
       const filterTripId = normalizeId(filters.tripId);
-      const contactTripId = normalizeId(c.trip_id);
-      if (filterTripId && (!contactTripId || contactTripId !== filterTripId)) {
+      const contactTripId = normalizeId(contact.trip_id);
+      if (filterTripId && contactTripId !== filterTripId) {
         return false;
       }
       return matchesSearchBlob(
         searchTerm,
-        c.name,
-        c.company,
-        c.notes,
-        c.phone,
-        c.email,
-        c.address,
+        contact.name,
+        contact.company,
+        contact.notes,
+        ...resolvePhones(contact),
+        ...resolveEmails(contact),
+        ...resolveAddresses(contact),
       );
     });
 
@@ -356,6 +476,136 @@ export default function TravelPageClient() {
     });
     return map;
   }, [data.trips]);
+
+  const renderContactCard = (contact: ContactRecord) => {
+    const relatedNames = (contact.related_to ?? [])
+      .map(id => familyMemberMap[id])
+      .filter((name): name is string => Boolean(name));
+
+    const trip = contact.trip_id ? tripsById.get(contact.trip_id) : null;
+    const tripLabel = contact.trip_label || trip?.destination || trip?.name || '';
+
+    const badges: ContactCardBadge[] = [];
+    if (tripLabel) {
+      badges.push({
+        id: `${contact.id}-trip`,
+        label: tripLabel,
+        icon: <Ticket className="h-3 w-3" />,
+      });
+    }
+
+    if (contact.is_preferred) {
+      badges.push({ id: `${contact.id}-preferred`, label: 'Preferred', tone: 'primary' });
+    }
+
+    return (
+      <ContactCard
+        key={contact.id}
+        contact={contact}
+        subtitle={contact.company ?? undefined}
+        assignedToLabel={relatedNames.length > 0 ? relatedNames.join(', ') : undefined}
+        badges={badges}
+        showFavoriteToggle={false}
+        canManage={false}
+      />
+    );
+  };
+
+  const tripOptions = useMemo(() => {
+    return (data.trips || [])
+      .filter((trip: any) => Boolean(trip?.id))
+      .map((trip: any) => ({
+        id: String(trip.id),
+        label: trip.destination || trip.name || 'Trip',
+      }));
+  }, [data.trips]);
+
+  const contactModalDefaults = useMemo(
+    () => ({
+      category: 'Travel' as const,
+      contactSubtype: 'other',
+      sourceType: 'travel' as const,
+      sourcePage: 'travel',
+      relatedToIds: selectedPersonParam ? [selectedPersonParam] : [],
+    }),
+    [selectedPersonParam]
+  );
+
+  const mapTravelContactToFormValues = (contact: ContactRecord): Partial<ContactFormValues> => ({
+    id: contact.id,
+    name: contact.name,
+    company: contact.company ?? undefined,
+    emails: resolveEmails(contact),
+    phones: resolvePhones(contact),
+    addresses: resolveAddresses(contact),
+    notes: contact.notes ?? undefined,
+    related_to: contact.related_to ?? [],
+    trip_id: contact.trip_id ?? undefined,
+    contact_subtype: contact.contact_subtype ?? undefined,
+    category: contact.contact_subtype ?? undefined,
+  });
+
+  const renderTravelContactFields = useCallback(
+    ({ values, setValues }: { values: ContactFormValues; setValues: (value: Partial<ContactFormValues> | ((prev: ContactFormValues) => Partial<ContactFormValues>)) => void }) => (
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-text-primary">Trip</label>
+        <select
+          className="w-full rounded-md border border-white/10 bg-background-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-white/10"
+          value={values.trip_id ?? ''}
+          onChange={event => setValues({ trip_id: event.target.value || null })}
+        >
+          <option value="">No trip</option>
+          {tripOptions.map(option => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    ),
+    [tripOptions]
+  );
+
+  const handleContactSubmit = async (values: ContactFormValues) => {
+    try {
+      setSavingContact(true);
+      const payload = {
+        name: values.name,
+        company: toNullable(values.company),
+        emails: sanitizeList(values.emails),
+        phones: sanitizeList(values.phones),
+        addresses: sanitizeList(values.addresses),
+        notes: toNullable(values.notes),
+        trip_id: values.trip_id ?? null,
+        contact_type: values.contact_type ?? 'travel',
+        contact_subtype: values.contact_subtype || values.category || 'other',
+        category: 'Travel',
+        related_to: Array.isArray(values.related_to) ? values.related_to : [],
+        is_preferred: Boolean(values.is_preferred),
+        is_favorite: Boolean(values.is_favorite),
+        is_archived: false,
+        source_type: 'travel',
+        source_page: 'travel',
+      };
+
+      const response = editingContact
+        ? await ApiClient.put(`/api/travel-contacts/${editingContact.id}`, payload)
+        : await ApiClient.post('/api/travel-contacts', payload);
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to save contact');
+      }
+
+      await refreshData();
+      setShowAddContact(false);
+      setEditingContact(null);
+    } catch (error) {
+      console.error('[Travel] Failed to save contact', error);
+      alert(error instanceof Error ? error.message : 'Failed to save contact');
+    } finally {
+      setSavingContact(false);
+    }
+  };
 
   const handleDocumentCopy = async (doc: Document) => {
     try {
@@ -801,7 +1051,10 @@ export default function TravelPageClient() {
                     <span className="text-xs text-text-muted">{filtered.contacts.length} total</span>
                   </div>
                   <button
-                    onClick={() => setShowAddContact(true)}
+                    onClick={() => {
+                      setEditingContact(null);
+                      setShowAddContact(true);
+                    }}
                     className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
                   >
                     Add Contact
@@ -811,74 +1064,8 @@ export default function TravelPageClient() {
                 {filtered.contacts.length === 0 ? (
                   <div className="py-6 text-center text-text-muted">No contacts</div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {filtered.contacts.map((contact: any, index: number) => {
-                      const key = contact.id || contact.email || contact.phone || `${contact.name || 'contact'}-${index}`;
-                      const trip = contact.trip || (contact.trip_id ? tripsById.get(contact.trip_id) : null);
-                      const tripLabel = contact.trip_name || trip?.destination || trip?.name || '';
-                      const company = contact.company || contact.organization || '';
-                      const phone = contact.phone || contact.phone_number || '';
-                      const email = contact.email || '';
-                      const address = contact.address || '';
-                      const notes = contact.notes || '';
-
-                      return (
-                        <div
-                          key={key}
-                          className="border border-gray-600/30 rounded-xl p-4 transition-colors hover:border-gray-500"
-                          style={{ backgroundColor: '#30302e' }}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-semibold text-text-primary text-lg truncate">
-                                {contact.name || 'Travel Contact'}
-                              </h3>
-                              {company && (
-                                <p className="mt-1 text-sm text-text-muted flex items-center gap-1">
-                                  <Building2 className="h-3.5 w-3.5" />
-                                  <span className="truncate">{company}</span>
-                                </p>
-                              )}
-                            </div>
-                            {tripLabel && (
-                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs px-2 py-1 bg-[#30302E] border border-[#3A3A38] text-text-muted rounded-full">
-                                <Ticket className="h-3 w-3" />
-                                {tripLabel}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="mt-3 space-y-2 text-sm text-text-muted">
-                            {phone && (
-                              <div className="flex items-center gap-2">
-                                <Phone className="h-3.5 w-3.5 text-text-primary" />
-                                <span>{phone}</span>
-                              </div>
-                            )}
-                            {email && (
-                              <div className="flex items-center gap-2">
-                                <Mail className="h-3.5 w-3.5 text-text-primary" />
-                                <a href={`mailto:${email}`} className="text-text-primary hover:underline">
-                                  {email}
-                                </a>
-                              </div>
-                            )}
-                            {address && (
-                              <div className="flex items-start gap-2">
-                                <MapPin className="h-3.5 w-3.5 text-text-primary mt-0.5" />
-                                <span>{address}</span>
-                              </div>
-                            )}
-                            {notes && (
-                              <div className="flex items-start gap-2">
-                                <FileText className="h-3.5 w-3.5 text-text-primary mt-0.5" />
-                                <span>{notes}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {filtered.contacts.map(renderContactCard)}
                   </div>
                 )}
               </section>
@@ -986,10 +1173,27 @@ export default function TravelPageClient() {
 
       {/* Add Contact Modal */}
       {showAddContact && (
-        <AddTravelContactModal
-          onClose={() => setShowAddContact(false)}
-          onSaved={async ()=>{ setShowAddContact(false); await refreshData(); }}
-          trips={data.trips}
+        <UnifiedContactModal
+          open={showAddContact}
+          mode={editingContact ? 'edit' : 'create'}
+          defaults={contactModalDefaults}
+          initialValues={editingContact
+            ? mapTravelContactToFormValues(editingContact)
+            : {
+                trip_id: selectedTripId || undefined,
+                related_to: selectedPersonParam ? [selectedPersonParam] : [],
+              }}
+          visibility={TRAVEL_CONTACT_MODAL_VISIBILITY}
+          labels={{ relatedToLabel: 'Travelers' }}
+          optionSelectors={{ relatedEntities: peopleOptions }}
+          renderCustomFields={renderTravelContactFields}
+          busy={savingContact}
+          submitLabel={editingContact ? 'Save changes' : 'Create contact'}
+          onSubmit={handleContactSubmit}
+          onCancel={() => {
+            setShowAddContact(false);
+            setEditingContact(null);
+          }}
         />
       )}
 
@@ -1282,75 +1486,6 @@ function UploadTravelDocumentModal({ onClose, onUploaded, familyMembers }: { onC
   );
 }
 
-// Add travel contact modal (uses /api/travel-contacts)
-function AddTravelContactModal({ onClose, onSaved, trips }: { onClose: () => void; onSaved: () => void; trips: any[] }) {
-  const [name, setName] = useState('');
-  const [company, setCompany] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
-  const [notes, setNotes] = useState('');
-  const [tripId, setTripId] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const submit = async () => {
-    setSubmitting(true);
-    try {
-      const payload = { name, company, phone, email, address, notes, trip_id: tripId || null };
-      const res = await ApiClient.post('/api/travel-contacts', payload);
-      if (res.success) onSaved();
-    } finally { setSubmitting(false); }
-  };
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-background-secondary rounded-xl w-full max-w-xl border border-gray-600/30">
-        <div className="p-4 border-b border-gray-600/30 flex items-center justify-between">
-          <div className="font-semibold text-text-primary">Add Travel Contact</div>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary">✕</button>
-        </div>
-        <div className="p-4 space-y-3">
-          <label className="block text-sm">Name
-            <input value={name} onChange={e=>setName(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">Company
-              <input value={company} onChange={e=>setCompany(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-            </label>
-            <label className="block text-sm">Trip (optional)
-              <select value={tripId} onChange={(e)=>setTripId(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary">
-                <option value="">(none)</option>
-                {trips.map(t => <option key={t.id} value={t.id}>{t.destination || t.name}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">Phone
-              <input value={phone} onChange={e=>setPhone(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-            </label>
-            <label className="block text-sm">Email
-              <input value={email} onChange={e=>setEmail(e.target.value)} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-            </label>
-          </div>
-          <div className="space-y-1">
-            <label className="block text-sm">Address</label>
-            <AddressAutocomplete
-              value={address}
-              onChange={setAddress}
-              placeholder="Street, city, state"
-              className="w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary"
-            />
-          </div>
-          <label className="block text-sm">Notes
-            <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} className="mt-1 w-full px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary" />
-          </label>
-        </div>
-        <div className="p-4 border-t border-gray-600/30 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 bg-background-primary border border-gray-600/40 rounded text-text-primary">Cancel</button>
-          <button disabled={!name || submitting} onClick={submit} className="px-3 py-2 bg-button-create disabled:bg-gray-700 text-white rounded">{submitting?'Saving...':'Save'}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 // Minimal Add Trip Modal
 function AddTripModal({ familyMembers, onClose, onCreated, trip }: { familyMembers: any[]; onClose: () => void; onCreated: () => void; trip?: any }) {
   const [destination, setDestination] = useState(trip?.destination || trip?.name || '');

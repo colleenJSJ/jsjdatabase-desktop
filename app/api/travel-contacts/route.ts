@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
 import { applyPersonFilter } from '@/app/api/_helpers/apply-person-filter';
 import { resolvePersonReferences } from '@/app/api/_helpers/person-resolver';
+import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
 
 export async function GET(request: NextRequest) {
   try {
@@ -93,24 +94,40 @@ export async function POST(request: NextRequest) {
 
     const { user, supabase } = authResult;
     const data = await request.json();
-    
+    const sanitized = sanitizeContactPayload({
+      source_type: 'travel',
+      source_page: 'travel',
+      ...data,
+    });
+
+    const insertData = {
+      contact_type: 'travel',
+      module: 'travel',
+      category: sanitized.category ?? 'Travel',
+      contact_subtype: sanitized.contact_subtype ?? sanitized.category ?? 'other',
+      name: sanitized.name,
+      company: sanitized.company,
+      email: sanitized.email,
+      emails: sanitized.emails,
+      phone: sanitized.phone,
+      phones: sanitized.phones,
+      address: sanitized.address,
+      addresses: sanitized.addresses,
+      notes: sanitized.notes,
+      tags: sanitized.tags,
+      related_to: sanitized.related_to,
+      is_preferred: sanitized.is_preferred,
+      is_favorite: sanitized.is_favorite,
+      is_archived: sanitized.is_archived,
+      trip_id: sanitized.trip_id,
+      source_type: sanitized.source_type ?? 'travel',
+      source_page: sanitized.source_page ?? 'travel',
+      created_by: user.id,
+    };
+
     const { data: contact, error } = await supabase
       .from('contacts_unified')
-      .insert({
-        contact_type: 'travel',
-        module: 'travel',
-        category: data.category || 'Travel',
-        contact_subtype: data.contact_type || 'other',
-        name: data.name,
-        company: data.company || null,
-        phone: data.phone || null,
-        email: data.email || null,
-        address: data.address || null,
-        notes: data.notes || null,
-        is_preferred: data.is_preferred || false,
-        trip_id: data.trip_id || null,
-        created_by: user.id,
-      })
+      .insert(insertData)
       .select()
       .single();
 
