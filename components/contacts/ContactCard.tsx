@@ -64,26 +64,30 @@ type DetailRowProps = {
 
 const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProps) => {
   const content = (
-    <>
-      <span className="mt-1 text-text-muted/60 transition group-hover:text-white/80">{icon}</span>
+    <div className="flex items-start gap-3">
+      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-white/8 text-text-muted">
+        {icon}
+      </span>
       <div className="flex-1">
-        <div className="flex items-center gap-2 text-sm font-medium text-white/90 leading-snug">
+        {label ? (
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-text-muted/70">
+            {label}
+          </p>
+        ) : null}
+        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-white/90 leading-snug">
           {value}
           {badge ?? null}
         </div>
-        {label ? (
-          <p className="mt-0.5 text-[11px] uppercase tracking-wide text-text-muted/60">{label}</p>
-        ) : null}
         {secondary ? (
           <div className="mt-1 text-xs text-text-muted/65">{secondary}</div>
         ) : null}
       </div>
-    </>
+    </div>
   );
 
   const className = cn(
-    'group flex items-start gap-3 rounded-xl px-2 py-1 transition hover:bg-white/5',
-    href ? 'text-text-primary hover:text-white' : 'text-text-muted'
+    'group block rounded-xl border border-white/8 bg-black/25 px-3 py-2 transition',
+    href ? 'hover:border-white/20 hover:bg-black/30 hover:text-white' : undefined
   );
 
   if (href) {
@@ -216,13 +220,13 @@ export function ContactCard({
         }}
       />
 
-      <div className="relative z-10 flex flex-col gap-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+      <div className="relative z-10 flex flex-col gap-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-1 items-start gap-3">
             {renderAvatar()}
-            <div className="min-w-[12rem]">
+            <div className="space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg font-semibold text-white/95 leading-tight">
+                <h3 className="text-base font-semibold leading-tight text-text-primary">
                   {contact.name || 'Untitled Contact'}
                 </h3>
                 {canFavorite && (
@@ -236,95 +240,88 @@ export function ContactCard({
                   </button>
                 )}
               </div>
-              {subtitle ? <p className="mt-1 text-sm text-text-muted/70">{subtitle}</p> : null}
+              {subtitle ? <p className="text-sm text-text-muted/75">{subtitle}</p> : null}
               {assignedLabel ? (
-                <p className="text-xs uppercase tracking-wide text-text-muted/60">{assignedLabel}</p>
+                <p className="text-xs uppercase tracking-[0.28em] text-text-muted/65">{assignedLabel}</p>
               ) : null}
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/85">
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${categoryVisual.badgeClass}`}
+                >
+                  {categoryVisual.icon}
+                  {categoryVisual.label}
+                </span>
+                {Array.isArray(badges) && badges.length > 0 && badges.map(renderBadge)}
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${categoryVisual.badgeClass}`}
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button
+              type="button"
+              onClick={handleCopyAll}
+              className={ACTION_BUTTON_CLASS}
+              title="Copy contact details"
             >
-              {categoryVisual.icon}
-              {categoryVisual.label}
-            </span>
-
-            {Array.isArray(badges) && badges.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                {badges.map(renderBadge)}
-              </div>
-            )}
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleCopyAll}
-                className={ACTION_BUTTON_CLASS}
-                title="Copy contact details"
-              >
-                {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
-              </button>
-              {canManage && (
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={actionConfig?.onEdit}
-                    className={ACTION_BUTTON_CLASS}
-                    title="Edit contact"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={actionConfig?.onDelete}
-                    className={ACTION_BUTTON_CLASS}
-                    title="Delete contact"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-              {actionConfig?.onOpenDetails && (
+              {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+            </button>
+            {canManage && (
+              <>
                 <button
                   type="button"
-                  onClick={actionConfig.onOpenDetails}
+                  onClick={actionConfig?.onEdit}
                   className={ACTION_BUTTON_CLASS}
-                  title="Open details"
+                  title="Edit contact"
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <Edit2 className="h-4 w-4" />
                 </button>
-              )}
-            </div>
+                <button
+                  type="button"
+                  onClick={actionConfig?.onDelete}
+                  className={ACTION_BUTTON_CLASS}
+                  title="Delete contact"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
+            {actionConfig?.onOpenDetails && (
+              <button
+                type="button"
+                onClick={actionConfig.onOpenDetails}
+                className={ACTION_BUTTON_CLASS}
+                title="Open details"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className={cn('grid grid-cols-1 gap-6', showMetaColumn ? 'md:grid-cols-2' : undefined)}>
-          <div className="space-y-4 text-sm text-text-muted">
-            {contact.company && (
+        <div className={cn('grid grid-cols-1 gap-4', showMetaColumn ? 'md:grid-cols-2' : undefined)}>
+          <div className="space-y-3">
+            {contact.company ? (
               <DetailRow
                 icon={<Building2 className="h-3.5 w-3.5" />}
                 value={<span>{contact.company}</span>}
                 label="Company"
                 secondary={contact.role ? <span>Role · {contact.role}</span> : undefined}
               />
-            )}
+            ) : null}
 
-            {contact.notes && (
-              <div className="rounded-2xl border border-white/10 bg-background-secondary/40 p-4">
-                <p className="text-[11px] uppercase tracking-wide text-text-muted/60">Notes</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-text-primary/90">
-                  {contact.notes}
-                </p>
-              </div>
-            )}
+            {contact.notes ? (
+              <DetailRow
+                icon={<MoreHorizontal className="h-3.5 w-3.5" />}
+                value={<span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>}
+                label="Notes"
+              />
+            ) : null}
 
             {extraContent}
           </div>
 
-          {showMetaColumn && (
-            <div className="space-y-3 text-sm text-text-muted">
+          {showMetaColumn ? (
+            <div className="space-y-3">
               {emails.map(email => (
                 <DetailRow
                   key={email}
@@ -354,20 +351,20 @@ export function ContactCard({
                 />
               ))}
 
-              {website && (
+              {website ? (
                 <DetailRow
                   icon={<Globe className="h-3.5 w-3.5" />}
                   value={<span>{website}</span>}
                   label="Website"
                   href={formatWebsiteHref(website)}
                 />
-              )}
+              ) : null}
 
-              {portalUrl && (
+              {portalUrl ? (
                 <DetailRow
                   icon={<Globe className="h-3.5 w-3.5" />}
                   value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
-                  label="Portal Access"
+                  label="Portal"
                   href={formatWebsiteHref(portalUrl)}
                   badge={
                     portalPassword ? (
@@ -377,22 +374,20 @@ export function ContactCard({
                     ) : null
                   }
                 />
-              )}
+              ) : null}
 
-              {Array.isArray(meta) && meta.length > 0 && (
-                <div className="space-y-3">
-                  {meta.map(item => (
+              {Array.isArray(meta) && meta.length > 0
+                ? meta.map(item => (
                     <DetailRow
                       key={item.key}
                       icon={item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
                       value={<span>{item.value}</span>}
                       label={item.label}
                     />
-                  ))}
-                </div>
-              )}
+                  ))
+                : null}
             </div>
-          )}
+          ) : null}
         </div>
 
         {footerContent}

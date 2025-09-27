@@ -141,7 +141,7 @@ export const formatPortalLabel = (
 };
 
 export const DEFAULT_CONTACT_AVATAR = (
-  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/8 text-sm font-semibold text-white/80">
+  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white/80">
     <Building2 className="h-4 w-4" />
   </div>
 );
@@ -159,7 +159,7 @@ export const renderFavoriteIcon = (isFavorite: boolean | undefined | null) => {
 };
 
 export const CONTACT_CARD_CLASS =
-  'relative overflow-hidden rounded-2xl border border-white/10 bg-background-secondary/70 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/15 hover:bg-background-secondary/80 hover:shadow-[0_14px_28px_rgba(0,0,0,0.32)]';
+  'group relative overflow-hidden rounded-2xl border border-white/8 bg-[#30302e] p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/12 hover:bg-[#353533] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]';
 
 export const ACTION_BUTTON_CLASS =
   'inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-transparent text-text-muted transition hover:border-white/20 hover:text-white';
