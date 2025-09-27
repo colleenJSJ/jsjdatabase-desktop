@@ -142,7 +142,72 @@ export function ContactCard({
           label={item.label}
         />
       ))
-    : null;
+    : [];
+
+  const rightColumnRows: ReactNode[] = [];
+
+  emails.forEach(email => {
+    rightColumnRows.push(
+      <DetailRow
+        key={`email-${email}`}
+        icon={<Mail className="h-3.5 w-3.5" />}
+        value={<span>{email}</span>}
+        href={`mailto:${email}`}
+      />
+    );
+  });
+
+  phones.forEach(phone => {
+    rightColumnRows.push(
+      <DetailRow
+        key={`phone-${phone}`}
+        icon={<Phone className="h-3.5 w-3.5" />}
+        value={<span>{phone}</span>}
+        href={formatPhoneForHref(phone)}
+      />
+    );
+  });
+
+  addresses.forEach(address => {
+    rightColumnRows.push(
+      <DetailRow
+        key={`address-${address}`}
+        icon={<MapPin className="mt-0.5 h-3.5 w-3.5" />}
+        value={<span className="leading-snug">{address}</span>}
+      />
+    );
+  });
+
+  if (website) {
+    rightColumnRows.push(
+      <DetailRow
+        key="website"
+        icon={<Globe className="h-3.5 w-3.5" />}
+        value={<span>{website}</span>}
+        href={formatWebsiteHref(website)}
+      />
+    );
+  }
+
+  if (portalUrl) {
+    rightColumnRows.push(
+      <DetailRow
+        key="portal"
+        icon={<Globe className="h-3.5 w-3.5" />}
+        value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
+        href={formatWebsiteHref(portalUrl)}
+        badge={
+          portalPassword ? (
+            <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-text-muted/70">
+              Password stored
+            </span>
+          ) : null
+        }
+      />
+    );
+  }
+
+  rightColumnRows.push(...metaRows);
 
   const canFavorite = showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function';
 
@@ -306,60 +371,11 @@ export function ContactCard({
             {extraContent}
           </div>
 
-          {showMetaColumn && (
+          {showMetaColumn ? (
             <div className="space-y-3">
-              {emails.map(email => (
-                <DetailRow
-                  key={email}
-                  icon={<Mail className="h-3.5 w-3.5" />}
-                  value={<span>{email}</span>}
-                  href={`mailto:${email}`}
-                />
-              ))}
-
-              {phones.map(phone => (
-                <DetailRow
-                  key={phone}
-                  icon={<Phone className="h-3.5 w-3.5" />}
-                  value={<span>{phone}</span>}
-                  href={formatPhoneForHref(phone)}
-                />
-              ))}
-
-              {addresses.map(address => (
-                <DetailRow
-                  key={address}
-                  icon={<MapPin className="mt-0.5 h-3.5 w-3.5" />}
-                  value={<span className="leading-snug">{address}</span>}
-                />
-              ))}
-
-              {website && (
-                <DetailRow
-                  icon={<Globe className="h-3.5 w-3.5" />}
-                  value={<span>{website}</span>}
-                  href={formatWebsiteHref(website)}
-                />
-              )}
-
-              {portalUrl && (
-                <DetailRow
-                  icon={<Globe className="h-3.5 w-3.5" />}
-                  value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
-                  href={formatWebsiteHref(portalUrl)}
-                  badge={
-                    portalPassword ? (
-                      <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-text-muted/70">
-                        Password stored
-                      </span>
-                    ) : null
-                  }
-                />
-              )}
-
-              {metaRows}
+              {rightColumnRows}
             </div>
-          )}
+          ) : null}
         </div>
 
         {footerContent}
