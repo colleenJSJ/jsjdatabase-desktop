@@ -20,7 +20,6 @@ import {
   formatPhoneForHref,
   formatPortalLabel,
   formatWebsiteHref,
-  getContactInitials,
   renderFavoriteIcon,
   resolveAddresses,
   resolveCategoryVisual,
@@ -64,29 +63,29 @@ type DetailRowProps = {
 
 const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProps) => {
   const content = (
-    <div className="flex items-start gap-3">
-      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-white/8 text-text-muted">
+    <div className="flex w-full flex-wrap items-start gap-3">
+      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-white/10 text-text-muted">
         {icon}
       </span>
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         {label ? (
           <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-text-muted/70">
             {label}
           </p>
         ) : null}
-        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-white/90 leading-snug">
+        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-sm font-medium leading-snug text-white/90 break-words">
           {value}
           {badge ?? null}
         </div>
         {secondary ? (
-          <div className="mt-1 text-xs text-text-muted/65">{secondary}</div>
+          <div className="mt-1 text-xs text-text-muted/65 break-words">{secondary}</div>
         ) : null}
       </div>
     </div>
   );
 
   const className = cn(
-    'group block rounded-xl border border-white/8 bg-black/25 px-3 py-2 transition',
+    'group block break-words rounded-xl border border-white/8 bg-black/25 px-3 py-2 transition',
     href ? 'hover:border-white/20 hover:bg-black/30 hover:text-white' : undefined
   );
 
@@ -132,16 +131,7 @@ export function ContactCard({
   const [isFavorite, setIsFavorite] = useState(isFavoriteInitial);
   const [copied, setCopied] = useState(false);
 
-  const assignedLabel = useMemo(() => {
-    if (assignedToLabel) return assignedToLabel;
-    if (Array.isArray(contact.assigned_entities) && contact.assigned_entities.length > 0) {
-      return contact.assigned_entities.map(entity => entity.label).join(', ');
-    }
-    if (Array.isArray(contact.related_to) && contact.related_to.length > 0) {
-      return `${contact.related_to.length} linked`;
-    }
-    return null;
-  }, [assignedToLabel, contact.assigned_entities, contact.related_to]);
+  const assignedLabel = useMemo(() => assignedToLabel ?? null, [assignedToLabel]);
 
   const canFavorite = showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function';
 
@@ -197,19 +187,6 @@ export function ContactCard({
 
   const showMetaColumn = layout === 'auto' ? (phones.length > 0 || emails.length > 0 || addresses.length > 0 || website || portalUrl) : true;
 
-  const renderAvatar = () => {
-    if (!contact.name) {
-      return DEFAULT_CONTACT_AVATAR;
-    }
-
-    const initials = getContactInitials(contact.name);
-    return (
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-base font-semibold text-white/80">
-        {initials || <Building2 className="h-4 w-4" />}
-      </div>
-    );
-  };
-
   return (
     <div className={CONTACT_CARD_CLASS}>
       <div
@@ -222,14 +199,12 @@ export function ContactCard({
 
       <div className="relative z-10 flex flex-col gap-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex flex-1 items-start gap-3">
-            {renderAvatar()}
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-semibold leading-tight text-text-primary">
-                  {contact.name || 'Untitled Contact'}
-                </h3>
-                {canFavorite && (
+          <div className="flex flex-1 flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold leading-tight text-text-primary">
+                {contact.name || 'Untitled Contact'}
+              </h3>
+              {canFavorite && (
                   <button
                     type="button"
                     onClick={handleFavoriteToggle}
@@ -327,7 +302,6 @@ export function ContactCard({
                   key={email}
                   icon={<Mail className="h-3.5 w-3.5" />}
                   value={<span>{email}</span>}
-                  label="Email"
                   href={`mailto:${email}`}
                 />
               ))}
@@ -337,7 +311,6 @@ export function ContactCard({
                   key={phone}
                   icon={<Phone className="h-3.5 w-3.5" />}
                   value={<span>{phone}</span>}
-                  label="Phone"
                   href={formatPhoneForHref(phone)}
                 />
               ))}
@@ -347,7 +320,6 @@ export function ContactCard({
                   key={address}
                   icon={<MapPin className="mt-0.5 h-3.5 w-3.5" />}
                   value={<span className="leading-snug">{address}</span>}
-                  label="Address"
                 />
               ))}
 
@@ -355,7 +327,6 @@ export function ContactCard({
                 <DetailRow
                   icon={<Globe className="h-3.5 w-3.5" />}
                   value={<span>{website}</span>}
-                  label="Website"
                   href={formatWebsiteHref(website)}
                 />
               ) : null}
@@ -364,7 +335,6 @@ export function ContactCard({
                 <DetailRow
                   icon={<Globe className="h-3.5 w-3.5" />}
                   value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
-                  label="Portal"
                   href={formatWebsiteHref(portalUrl)}
                   badge={
                     portalPassword ? (

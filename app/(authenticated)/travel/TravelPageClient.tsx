@@ -503,7 +503,7 @@ export default function TravelPageClient() {
         key={contact.id}
         contact={contact}
         subtitle={contact.company ?? undefined}
-        assignedToLabel={relatedNames.length > 0 ? relatedNames.join(', ') : undefined}
+        extraContent={relatedNames.length > 0 ? renderContactChips(relatedNames) : null}
         badges={badges}
         showFavoriteToggle={false}
         canManage={false}
@@ -1928,3 +1928,12 @@ function AddAccommodationModal({ trips, onClose, onSaved, accommodation, default
     </div>
   );
 }
+const renderContactChips = (names: string[]) => (
+  <div className="flex flex-wrap gap-2">
+    {names.map(name => (
+      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
+        {name}
+      </span>
+    ))}
+  </div>
+);

@@ -19,6 +19,16 @@ import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
 import type { ContactFormValues, ContactModalFieldVisibilityMap, ContactRecord } from '@/components/contacts/contact-types';
 import { resolveEmails, resolvePhones } from '@/components/contacts/contact-utils';
 
+const renderContactChips = (names: string[]) => (
+  <div className="flex flex-wrap gap-2">
+    {names.map(name => (
+      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
+        {name}
+      </span>
+    ))}
+  </div>
+);
+
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 import { Upload } from 'lucide-react';
 
@@ -325,21 +335,7 @@ export default function J3AcademicsPageClient() {
       .map(id => filteredKids.find(student => student.id === id)?.name)
       .filter((name): name is string => Boolean(name));
 
-    const extraContent = studentNames.length > 0 ? (
-      <div className="space-y-1">
-        <p className="text-xs uppercase tracking-wide text-text-muted/60">Students</p>
-        <div className="flex flex-wrap gap-2">
-          {studentNames.map(name => (
-            <span
-              key={`${contact.id}-${name}`}
-              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80"
-            >
-              {name}
-            </span>
-          ))}
-        </div>
-      </div>
-    ) : null;
+    const extraContent = studentNames.length > 0 ? renderContactChips(studentNames) : null;
 
     const canManage = user?.role === 'admin';
 
@@ -348,7 +344,6 @@ export default function J3AcademicsPageClient() {
         key={contact.id}
         contact={contact}
         subtitle={contact.role ?? undefined}
-        assignedToLabel={studentNames.length > 0 ? studentNames.join(', ') : undefined}
         extraContent={extraContent}
         showFavoriteToggle={false}
         canManage={canManage}

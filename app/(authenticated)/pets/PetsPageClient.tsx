@@ -215,8 +215,8 @@ export default function PetsPageClient() {
         key={contact.id}
         contact={contact}
         subtitle={contact.company ?? undefined}
-        assignedToLabel={relatedPetNames.length > 0 ? relatedPetNames.join(', ') : undefined}
         badges={badges}
+        extraContent={relatedPetNames.length > 0 ? renderContactChips(relatedPetNames) : null}
         showFavoriteToggle={false}
         canManage={canManageContacts}
       />
@@ -1151,3 +1151,12 @@ function AddPetPortalModal({
     </Modal>
   );
 }
+const renderContactChips = (names: string[]) => (
+  <div className="flex flex-wrap gap-2">
+    {names.map(name => (
+      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
+        {name}
+      </span>
+    ))}
+  </div>
+);

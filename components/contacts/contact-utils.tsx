@@ -140,11 +140,7 @@ export const formatPortalLabel = (
   return 'Portal access';
 };
 
-export const DEFAULT_CONTACT_AVATAR = (
-  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white/80">
-    <Building2 className="h-4 w-4" />
-  </div>
-);
+export const DEFAULT_CONTACT_AVATAR = null;
 
 export const renderFavoriteIcon = (isFavorite: boolean | undefined | null) => {
   return (

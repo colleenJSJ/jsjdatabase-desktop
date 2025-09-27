@@ -406,21 +406,7 @@ export default function ContactsPageContent() {
       .map(getFamilyMemberName)
       .filter(Boolean);
 
-    const extraContent = relatedNames.length > 0 ? (
-      <div className="space-y-1">
-        <p className="text-xs uppercase tracking-wide text-text-muted/60">Related To</p>
-        <div className="flex flex-wrap gap-2">
-          {relatedNames.map(name => (
-            <span
-              key={`${contact.id}-${name}`}
-              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80"
-            >
-              {name}
-            </span>
-          ))}
-        </div>
-      </div>
-    ) : null;
+    const extraContent = relatedNames.length > 0 ? renderContactChips(relatedNames) : null;
 
     const canManage = user?.role === 'admin' || contact.created_by === user?.id;
 
@@ -429,7 +415,6 @@ export default function ContactsPageContent() {
         key={contact.id}
         contact={contact}
         subtitle={contact.company ?? undefined}
-        assignedToLabel={relatedNames.length > 0 ? relatedNames.join(', ') : undefined}
         badges={buildBadgesForContact(contact)}
         extraContent={extraContent}
         canManage={canManage}
@@ -646,3 +631,12 @@ export default function ContactsPageContent() {
     </div>
   );
 }
+const renderContactChips = (names: string[]) => (
+  <div className="flex flex-wrap gap-2">
+    {names.map(name => (
+      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
+        {name}
+      </span>
+    ))}
+  </div>
+);
