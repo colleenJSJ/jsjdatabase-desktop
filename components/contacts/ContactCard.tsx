@@ -17,7 +17,6 @@ import {
   ACTION_BUTTON_CLASS,
   CONTACT_CARD_CLASS,
   DEFAULT_CONTACT_AVATAR,
-  DEFAULT_SECTION_CLASS,
   formatPhoneForHref,
   formatPortalLabel,
   formatWebsiteHref,
@@ -29,6 +28,7 @@ import {
   resolvePhones
 } from './contact-utils';
 import { ContactCardBadge, ContactCardProps } from './contact-types';
+import { cn } from '@/lib/utils';
 
 const buildBadgeClass = (badge: ContactCardBadge) => {
   switch (badge.tone) {
@@ -51,6 +51,56 @@ const DEFAULT_METADATA_ICON: Record<string, ReactNode> = {
   email: <Mail className="h-3.5 w-3.5 text-text-primary" />,
   address: <MapPin className="h-3.5 w-3.5 text-text-primary" />,
   website: <Globe className="h-3.5 w-3.5 text-text-primary" />,
+};
+
+type DetailRowProps = {
+  icon: ReactNode;
+  value: ReactNode;
+  label?: string;
+  href?: string;
+  badge?: ReactNode;
+  secondary?: ReactNode;
+};
+
+const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProps) => {
+  const content = (
+    <>
+      <span className="mt-1 text-text-muted/60 transition group-hover:text-white/80">{icon}</span>
+      <div className="flex-1">
+        <div className="flex items-center gap-2 text-sm font-medium text-white/90 leading-snug">
+          {value}
+          {badge ?? null}
+        </div>
+        {label ? (
+          <p className="mt-0.5 text-[11px] uppercase tracking-wide text-text-muted/60">{label}</p>
+        ) : null}
+        {secondary ? (
+          <div className="mt-1 text-xs text-text-muted/65">{secondary}</div>
+        ) : null}
+      </div>
+    </>
+  );
+
+  const className = cn(
+    'group flex items-start gap-3 rounded-xl px-2 py-1 transition hover:bg-white/5',
+    href ? 'text-text-primary hover:text-white' : 'text-text-muted'
+  );
+
+  if (href) {
+    const isExternal = /^https?:/i.test(href);
+    return (
+      <a
+        href={href}
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
+        className={className}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 };
 
 export function ContactCard({
@@ -162,17 +212,19 @@ export function ContactCard({
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
         aria-hidden
         style={{
-          background: 'radial-gradient(circle at top right, rgba(148,163,184,0.15), transparent 55%)'
+          background: 'radial-gradient(circle at top right, rgba(148,163,184,0.12), transparent 55%)'
         }}
       />
 
-      <div className="relative z-10 flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
+      <div className="relative z-10 flex flex-col gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             {renderAvatar()}
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold text-white/90">{contact.name || 'Untitled Contact'}</h3>
+            <div className="min-w-[12rem]">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-semibold text-white/95 leading-tight">
+                  {contact.name || 'Untitled Contact'}
+                </h3>
                 {canFavorite && (
                   <button
                     type="button"
@@ -184,16 +236,14 @@ export function ContactCard({
                   </button>
                 )}
               </div>
-              {subtitle && <p className="text-sm text-text-muted/80">{subtitle}</p>}
-              {assignedLabel && (
-                <p className="text-xs text-text-muted/70">
-                  {assignedLabel}
-                </p>
-              )}
+              {subtitle ? <p className="mt-1 text-sm text-text-muted/70">{subtitle}</p> : null}
+              {assignedLabel ? (
+                <p className="text-xs uppercase tracking-wide text-text-muted/60">{assignedLabel}</p>
+              ) : null}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${categoryVisual.badgeClass}`}
             >
@@ -250,28 +300,23 @@ export function ContactCard({
           </div>
         </div>
 
-        <div className={
-          showMetaColumn
-            ? 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]'
-            : 'grid grid-cols-1 gap-4'
-        }>
-          <div className="space-y-3 text-sm text-text-muted">
+        <div className={cn('grid grid-cols-1 gap-6', showMetaColumn ? 'md:grid-cols-2' : undefined)}>
+          <div className="space-y-4 text-sm text-text-muted">
             {contact.company && (
-              <div className={DEFAULT_SECTION_CLASS}>
-                <div className="flex items-center gap-2 text-text-primary">
-                  <Building2 className="h-3.5 w-3.5" />
-                  <span className="font-medium text-white/85">{contact.company}</span>
-                </div>
-                {contact.role && (
-                  <p className="text-xs text-text-muted/80">{contact.role}</p>
-                )}
-              </div>
+              <DetailRow
+                icon={<Building2 className="h-3.5 w-3.5" />}
+                value={<span>{contact.company}</span>}
+                label="Company"
+                secondary={contact.role ? <span>Role · {contact.role}</span> : undefined}
+              />
             )}
 
             {contact.notes && (
-              <div className={DEFAULT_SECTION_CLASS}>
-                <p className="text-xs uppercase tracking-wide text-text-muted/60">Notes</p>
-                <p className="whitespace-pre-wrap text-sm text-text-primary">{contact.notes}</p>
+              <div className="rounded-2xl border border-white/10 bg-background-secondary/40 p-4">
+                <p className="text-[11px] uppercase tracking-wide text-text-muted/60">Notes</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-text-primary/90">
+                  {contact.notes}
+                </p>
               </div>
             )}
 
@@ -279,84 +324,70 @@ export function ContactCard({
           </div>
 
           {showMetaColumn && (
-            <div className="space-y-2 text-sm text-text-muted">
+            <div className="space-y-3 text-sm text-text-muted">
               {emails.map(email => (
-                <a
+                <DetailRow
                   key={email}
+                  icon={<Mail className="h-3.5 w-3.5" />}
+                  value={<span>{email}</span>}
+                  label="Email"
                   href={`mailto:${email}`}
-                  className={DEFAULT_SECTION_CLASS}
-                >
-                  <div className="flex items-center gap-2 text-text-primary">
-                    <Mail className="h-3.5 w-3.5" />
-                    <span className="font-medium">{email}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Email</p>
-                </a>
+                />
               ))}
 
               {phones.map(phone => (
-                <a
+                <DetailRow
                   key={phone}
+                  icon={<Phone className="h-3.5 w-3.5" />}
+                  value={<span>{phone}</span>}
+                  label="Phone"
                   href={formatPhoneForHref(phone)}
-                  className={DEFAULT_SECTION_CLASS}
-                >
-                  <div className="flex items-center gap-2 text-text-primary">
-                    <Phone className="h-3.5 w-3.5" />
-                    <span className="font-medium">{phone}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Phone</p>
-                </a>
+                />
               ))}
 
               {addresses.map(address => (
-                <div key={address} className={DEFAULT_SECTION_CLASS}>
-                  <div className="flex items-start gap-2 text-text-primary">
-                    <MapPin className="mt-0.5 h-3.5 w-3.5" />
-                    <span className="font-medium leading-snug">{address}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Address</p>
-                </div>
+                <DetailRow
+                  key={address}
+                  icon={<MapPin className="mt-0.5 h-3.5 w-3.5" />}
+                  value={<span className="leading-snug">{address}</span>}
+                  label="Address"
+                />
               ))}
 
               {website && (
-                <a
+                <DetailRow
+                  icon={<Globe className="h-3.5 w-3.5" />}
+                  value={<span>{website}</span>}
+                  label="Website"
                   href={formatWebsiteHref(website)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={DEFAULT_SECTION_CLASS}
-                >
-                  <div className="flex items-center gap-2 text-text-primary">
-                    <Globe className="h-3.5 w-3.5" />
-                    <span className="font-medium">{website}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Website</p>
-                </a>
+                />
               )}
 
               {portalUrl && (
-                <div className={DEFAULT_SECTION_CLASS}>
-                  <div className="flex items-center justify-between gap-2 text-text-primary">
-                    <span className="font-medium">{formatPortalLabel(portalUrl, portalUsername)}</span>
-                    {portalPassword && (
-                      <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-text-muted/60">
-                        Password Stored
+                <DetailRow
+                  icon={<Globe className="h-3.5 w-3.5" />}
+                  value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
+                  label="Portal Access"
+                  href={formatWebsiteHref(portalUrl)}
+                  badge={
+                    portalPassword ? (
+                      <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-text-muted/70">
+                        Password stored
                       </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-text-muted/70">Portal Access</p>
-                </div>
+                    ) : null
+                  }
+                />
               )}
 
               {Array.isArray(meta) && meta.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {meta.map(item => (
-                    <div key={item.key} className={DEFAULT_SECTION_CLASS}>
-                      <div className="flex items-center gap-2 text-text-primary">
-                        {item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
-                        <span className="font-medium">{item.value}</span>
-                      </div>
-                      <p className="text-xs text-text-muted/70">{item.label}</p>
-                    </div>
+                    <DetailRow
+                      key={item.key}
+                      icon={item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
+                      value={<span>{item.value}</span>}
+                      label={item.label}
+                    />
                   ))}
                 </div>
               )}
