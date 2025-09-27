@@ -234,19 +234,19 @@ export function ContactCard({
       lines.push(contact.name);
       if (contact.company) lines.push(contact.company);
       if (emails.length > 0) {
-        lines.push(`Emails: ${emails.join(', ')}`);
+        lines.push('Emails: ' + emails.join(', '));
       }
       if (phones.length > 0) {
-        lines.push(`Phones: ${phones.join(', ')}`);
+        lines.push('Phones: ' + phones.join(', '));
       }
       if (addresses.length > 0) {
-        lines.push(`Addresses: ${addresses.join(' | ')}`);
+        lines.push('Addresses: ' + addresses.join(' | '));
       }
-      if (website) lines.push(`Website: ${website}`);
-      if (portalUrl) lines.push(`Portal URL: ${portalUrl}`);
-      if (portalUsername) lines.push(`Portal Username: ${portalUsername}`);
-      if (portalPassword) lines.push(`Portal Password: ${portalPassword}`);
-      if (contact.notes) lines.push(`Notes: ${contact.notes}`);
+      if (website) lines.push('Website: ' + website);
+      if (portalUrl) lines.push('Portal URL: ' + portalUrl);
+      if (portalUsername) lines.push('Portal Username: ' + portalUsername);
+      if (portalPassword) lines.push('Portal Password: ' + portalPassword);
+      if (contact.notes) lines.push('Notes: ' + contact.notes);
       await navigator.clipboard.writeText(lines.filter(Boolean).join('\n'));
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
@@ -258,7 +258,7 @@ export function ContactCard({
   const renderBadge = (badgeValue: ContactCardBadge) => (
     <span
       key={badgeValue.id}
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${buildBadgeClass(badgeValue)}`}
+      className={'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ' + buildBadgeClass(badgeValue)}
     >
       {badgeValue.icon}
       {badgeValue.label}
@@ -301,7 +301,7 @@ export function ContactCard({
               ) : null}
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/85">
                 <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${categoryVisual.badgeClass}`}
+                  className={'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ' + categoryVisual.badgeClass}
                 >
                   {categoryVisual.icon}
                   {categoryVisual.label}
