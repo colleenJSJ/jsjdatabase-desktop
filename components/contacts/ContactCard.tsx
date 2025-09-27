@@ -133,81 +133,85 @@ export function ContactCard({
 
   const assignedLabel = useMemo(() => assignedToLabel ?? null, [assignedToLabel]);
 
-  const metaRows = Array.isArray(meta) && meta.length > 0
-    ? meta.map(item => (
+  const metaRows = useMemo(() => {
+    if (!Array.isArray(meta) || meta.length === 0) return [] as ReactNode[];
+    return meta.map(item => (
+      <DetailRow
+        key={item.key}
+        icon={item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
+        value={<span>{item.value}</span>}
+        label={item.label}
+      />
+    ));
+  }, [meta]);
+
+  const rightColumnRows = useMemo(() => {
+    const rows: ReactNode[] = [];
+
+    emails.forEach(email => {
+      rows.push(
         <DetailRow
-          key={item.key}
-          icon={item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
-          value={<span>{item.value}</span>}
-          label={item.label}
+          key={'email-' + email}
+          icon={<Mail className="h-3.5 w-3.5" />}
+          value={<span>{email}</span>}
+          href={'mailto:' + email}
         />
-      ))
-    : [];
+      );
+    });
 
-  const rightColumnRows: ReactNode[] = [];
+    phones.forEach(phone => {
+      rows.push(
+        <DetailRow
+          key={'phone-' + phone}
+          icon={<Phone className="h-3.5 w-3.5" />}
+          value={<span>{phone}</span>}
+          href={formatPhoneForHref(phone)}
+        />
+      );
+    });
 
-  emails.forEach(email => {
-    rightColumnRows.push(
-      <DetailRow
-        key={'email-' + email}
-        icon={<Mail className="h-3.5 w-3.5" />}
-        value={<span>{email}</span>}
-        href={'mailto:' + email}
-      />
-    );
-  });
+    addresses.forEach(address => {
+      rows.push(
+        <DetailRow
+          key={'address-' + address}
+          icon={<MapPin className="mt-0.5 h-3.5 w-3.5" />}
+          value={<span className="leading-snug">{address}</span>}
+        />
+      );
+    });
 
-  phones.forEach(phone => {
-    rightColumnRows.push(
-      <DetailRow
-        key={'phone-' + phone}
-        icon={<Phone className="h-3.5 w-3.5" />}
-        value={<span>{phone}</span>}
-        href={formatPhoneForHref(phone)}
-      />
-    );
-  });
+    if (website) {
+      rows.push(
+        <DetailRow
+          key="website"
+          icon={<Globe className="h-3.5 w-3.5" />}
+          value={<span>{website}</span>}
+          href={formatWebsiteHref(website)}
+        />
+      );
+    }
 
-  addresses.forEach(address => {
-    rightColumnRows.push(
-      <DetailRow
-        key={'address-' + address}
-        icon={<MapPin className="mt-0.5 h-3.5 w-3.5" />}
-        value={<span className="leading-snug">{address}</span>}
-      />
-    );
-  });
+    if (portalUrl) {
+      rows.push(
+        <DetailRow
+          key="portal"
+          icon={<Globe className="h-3.5 w-3.5" />}
+          value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
+          href={formatWebsiteHref(portalUrl)}
+          badge={
+            portalPassword ? (
+              <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-text-muted/70">
+                Password stored
+              </span>
+            ) : null
+          }
+        />
+      );
+    }
 
-  if (website) {
-    rightColumnRows.push(
-      <DetailRow
-        key="website"
-        icon={<Globe className="h-3.5 w-3.5" />}
-        value={<span>{website}</span>}
-        href={formatWebsiteHref(website)}
-      />
-    );
-  }
-
-  if (portalUrl) {
-    rightColumnRows.push(
-      <DetailRow
-        key="portal"
-        icon={<Globe className="h-3.5 w-3.5" />}
-        value={<span>{formatPortalLabel(portalUrl, portalUsername)}</span>}
-        href={formatWebsiteHref(portalUrl)}
-        badge={
-          portalPassword ? (
-            <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-text-muted/70">
-              Password stored
-            </span>
-          ) : null
-        }
-      />
-    );
-  }
-
-  rightColumnRows.push(...metaRows);
+    rows.push(...metaRows);
+    return rows;
+  }, [addresses, emails, phones, website, portalUrl, portalUsername, portalPassword, metaRows]);
 
   const canFavorite = showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function';
 
