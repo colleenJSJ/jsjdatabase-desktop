@@ -133,6 +133,17 @@ export function ContactCard({
 
   const assignedLabel = useMemo(() => assignedToLabel ?? null, [assignedToLabel]);
 
+  const metaRows = Array.isArray(meta) && meta.length > 0
+    ? meta.map(item => (
+        <DetailRow
+          key={item.key}
+          icon={item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
+          value={<span>{item.value}</span>}
+          label={item.label}
+        />
+      ))
+    : null;
+
   const canFavorite = showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function';
 
   const handleFavoriteToggle = () => {
@@ -346,15 +357,7 @@ export function ContactCard({
                 />
               )}
 
-              {Array.isArray(meta) && meta.length > 0 &&
-                meta.map(item => (
-                  <DetailRow
-                    key={item.key}
-                    icon={item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
-                    value={<span>{item.value}</span>}
-                    label={item.label}
-                  />
-                ))}
+              {metaRows}
             </div>
           )}
         </div>
