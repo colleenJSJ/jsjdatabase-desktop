@@ -172,6 +172,13 @@ export function ContactCard({
     ? phones.length > 0 || emails.length > 0 || addresses.length > 0 || Boolean(website) || Boolean(portalUrl) || Boolean(meta && meta.length > 0)
     : true;
 
+  const showPrimaryColumn = (
+    Boolean(contact.company) ||
+    Boolean(contact.role) ||
+    Boolean(contact.notes) ||
+    Boolean(extraContent)
+  );
+
   type DetailRowConfig = DetailRowProps & { id: string };
 
   const detailRows = useMemo<DetailRowConfig[]>(() => {
@@ -322,27 +329,34 @@ export function ContactCard({
           </div>
         </div>
 
-        <div className={cn('grid grid-cols-1 gap-5', showMetaColumn ? 'md:grid-cols-2' : undefined)}>
-          <div className="space-y-3 text-sm text-text-muted">
-            {contact.company ? (
-              <DetailRow
-                icon={<Building2 className="h-3.5 w-3.5" />}
-                value={<span>{contact.company}</span>}
-                label="Company"
-                secondary={contact.role ? <span>Role · {contact.role}</span> : undefined}
-              />
-            ) : null}
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-5',
+            showMetaColumn && showPrimaryColumn ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : undefined
+          )}
+        >
+          {showPrimaryColumn ? (
+            <div className="space-y-3 text-sm text-text-muted">
+              {contact.company ? (
+                <DetailRow
+                  icon={<Building2 className="h-3.5 w-3.5" />}
+                  value={<span>{contact.company}</span>}
+                  label="Company"
+                  secondary={contact.role ? <span>Role · {contact.role}</span> : undefined}
+                />
+              ) : null}
 
-            {contact.notes ? (
-              <DetailRow
-                icon={<MoreHorizontal className="h-3.5 w-3.5" />}
-                value={<span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>}
-                label="Notes"
-              />
-            ) : null}
+              {contact.notes ? (
+                <DetailRow
+                  icon={<MoreHorizontal className="h-3.5 w-3.5" />}
+                  value={<span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>}
+                  label="Notes"
+                />
+              ) : null}
 
-            {extraContent}
-          </div>
+              {extraContent}
+            </div>
+          ) : null}
 
           {showMetaColumn ? (
             <div className="space-y-2 text-sm text-text-muted">
