@@ -154,6 +154,9 @@ export const renderFavoriteIcon = (isFavorite: boolean | undefined | null) => {
   );
 };
 
+export const DEFAULT_SECTION_CLASS =
+  'space-y-1 text-sm text-text-muted border border-white/5 rounded-lg bg-background-tertiary/40 p-3';
+
 export const CONTACT_CARD_CLASS =
   'group relative overflow-hidden rounded-2xl border border-white/8 bg-[#30302e] p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/12 hover:bg-[#353533] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]';
 
