@@ -16,12 +16,9 @@ import {
 import {
   ACTION_BUTTON_CLASS,
   CONTACT_CARD_CLASS,
-  DEFAULT_CONTACT_AVATAR,
-  DEFAULT_SECTION_CLASS,
   formatPhoneForHref,
   formatPortalLabel,
   formatWebsiteHref,
-  getContactInitials,
   renderFavoriteIcon,
   resolveAddresses,
   resolveCategoryVisual,
@@ -29,6 +26,7 @@ import {
   resolvePhones
 } from './contact-utils';
 import { ContactCardBadge, ContactCardProps } from './contact-types';
+import { cn } from '@/lib/utils';
 
 const buildBadgeClass = (badge: ContactCardBadge) => {
   switch (badge.tone) {
@@ -46,11 +44,47 @@ const buildBadgeClass = (badge: ContactCardBadge) => {
   }
 };
 
-const DEFAULT_METADATA_ICON: Record<string, ReactNode> = {
-  phone: <Phone className="h-3.5 w-3.5 text-text-primary" />,
-  email: <Mail className="h-3.5 w-3.5 text-text-primary" />,
-  address: <MapPin className="h-3.5 w-3.5 text-text-primary" />,
-  website: <Globe className="h-3.5 w-3.5 text-text-primary" />,
+type DetailRowProps = {
+  icon: ReactNode;
+  value: ReactNode;
+  label?: string;
+  href?: string;
+  badge?: ReactNode;
+  secondary?: ReactNode;
+};
+
+const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProps) => {
+  const content = (
+    <div className="flex w-full items-start gap-3">
+      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-white/10 text-text-muted">
+        {icon}
+      </span>
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2 text-sm font-medium leading-snug text-white/90">
+          {value}
+          {badge ?? null}
+        </div>
+        {label ? <p className="text-xs text-text-muted/70">{label}</p> : null}
+        {secondary ? <div className="text-xs text-text-muted/65">{secondary}</div> : null}
+      </div>
+    </div>
+  );
+
+  if (!href) {
+    return <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">{content}</div>;
+  }
+
+  const isExternal = /^https?:/i.test(href);
+  return (
+    <a
+      href={href}
+      target={isExternal ? '_blank' : undefined}
+      rel={isExternal ? 'noopener noreferrer' : undefined}
+      className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 transition hover:border-white/20 hover:bg-black/30 hover:text-white"
+    >
+      {content}
+    </a>
+  );
 };
 
 export function ContactCard({
@@ -74,8 +108,7 @@ export function ContactCard({
   const portalUrl = contact.portal_url;
   const portalUsername = contact.portal_username;
   const portalPassword = contact.portal_password;
-  const isFavoriteInitial = Boolean(contact.is_favorite);
-  const [isFavorite, setIsFavorite] = useState(isFavoriteInitial);
+  const [isFavorite, setIsFavorite] = useState(Boolean(contact.is_favorite));
   const [copied, setCopied] = useState(false);
 
   const assignedLabel = useMemo(() => {
@@ -84,7 +117,7 @@ export function ContactCard({
       return contact.assigned_entities.map(entity => entity.label).join(', ');
     }
     if (Array.isArray(contact.related_to) && contact.related_to.length > 0) {
-      return `${contact.related_to.length} linked`;
+      return contact.related_to.length + ' linked';
     }
     return null;
   }, [assignedToLabel, contact.assigned_entities, contact.related_to]);
@@ -92,37 +125,31 @@ export function ContactCard({
   const canFavorite = showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function';
 
   const handleFavoriteToggle = () => {
+    if (!canFavorite) return;
     const next = !isFavorite;
     setIsFavorite(next);
     actionConfig?.onToggleFavorite?.(next);
   };
 
   const handleCopyAll = async () => {
-    if (actionConfig?.onCopyAll) {
-      actionConfig.onCopyAll();
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-      return;
-    }
-
     try {
       const lines: string[] = [];
       lines.push(contact.name);
       if (contact.company) lines.push(contact.company);
       if (emails.length > 0) {
-        lines.push(`Emails: ${emails.join(', ')}`);
+        lines.push('Emails: ' + emails.join(', '));
       }
       if (phones.length > 0) {
-        lines.push(`Phones: ${phones.join(', ')}`);
+        lines.push('Phones: ' + phones.join(', '));
       }
       if (addresses.length > 0) {
-        lines.push(`Addresses: ${addresses.join(' | ')}`);
+        lines.push('Addresses: ' + addresses.join(' | '));
       }
-      if (website) lines.push(`Website: ${website}`);
-      if (portalUrl) lines.push(`Portal URL: ${portalUrl}`);
-      if (portalUsername) lines.push(`Portal Username: ${portalUsername}`);
-      if (portalPassword) lines.push(`Portal Password: ${portalPassword}`);
-      if (contact.notes) lines.push(`Notes: ${contact.notes}`);
+      if (website) lines.push('Website: ' + website);
+      if (portalUrl) lines.push('Portal URL: ' + portalUrl);
+      if (portalUsername) lines.push('Portal Username: ' + portalUsername);
+      if (portalPassword) lines.push('Portal Password: ' + portalPassword);
+      if (contact.notes) lines.push('Notes: ' + contact.notes);
       await navigator.clipboard.writeText(lines.filter(Boolean).join('\n'));
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
@@ -134,234 +161,204 @@ export function ContactCard({
   const renderBadge = (badgeValue: ContactCardBadge) => (
     <span
       key={badgeValue.id}
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${buildBadgeClass(badgeValue)}`}
+      className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium', buildBadgeClass(badgeValue))}
     >
       {badgeValue.icon}
       {badgeValue.label}
     </span>
   );
 
-  const showMetaColumn = layout === 'auto' ? (phones.length > 0 || emails.length > 0 || addresses.length > 0 || website || portalUrl) : true;
+  const showMetaColumn = layout === 'auto'
+    ? phones.length > 0 || emails.length > 0 || addresses.length > 0 || Boolean(website) || Boolean(portalUrl) || Boolean(meta && meta.length > 0)
+    : true;
 
-  const renderAvatar = () => {
-    if (!contact.name) {
-      return DEFAULT_CONTACT_AVATAR;
+  type DetailRowConfig = DetailRowProps & { id: string };
+
+  const detailRows = useMemo<DetailRowConfig[]>(() => {
+    const rows: DetailRowConfig[] = [];
+
+    emails.forEach(email => {
+      rows.push({
+        id: 'email-' + email,
+        icon: <Mail className="h-3.5 w-3.5" />,
+        value: <span>{email}</span>,
+        label: 'Email',
+        href: 'mailto:' + email,
+      });
+    });
+
+    phones.forEach(phone => {
+      rows.push({
+        id: 'phone-' + phone,
+        icon: <Phone className="h-3.5 w-3.5" />,
+        value: <span>{phone}</span>,
+        label: 'Phone',
+        href: formatPhoneForHref(phone),
+      });
+    });
+
+    addresses.forEach(address => {
+      rows.push({
+        id: 'address-' + address,
+        icon: <MapPin className="h-3.5 w-3.5" />,
+        value: <span className="leading-snug">{address}</span>,
+        label: 'Address',
+      });
+    });
+
+    if (website) {
+      rows.push({
+        id: 'website',
+        icon: <Globe className="h-3.5 w-3.5" />,
+        value: <span>{website}</span>,
+        label: 'Website',
+        href: formatWebsiteHref(website),
+      });
     }
 
-    const initials = getContactInitials(contact.name);
-    return (
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-base font-semibold text-white/80">
-        {initials || <Building2 className="h-4 w-4" />}
-      </div>
-    );
-  };
+    if (portalUrl) {
+      rows.push({
+        id: 'portal',
+        icon: <Globe className="h-3.5 w-3.5" />,
+        value: <span>{formatPortalLabel(portalUrl, portalUsername)}</span>,
+        label: 'Portal',
+        href: formatWebsiteHref(portalUrl),
+        badge: portalPassword
+          ? <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-text-muted/70">Password stored</span>
+          : undefined,
+      });
+    }
+
+    if (Array.isArray(meta) && meta.length > 0) {
+      meta.forEach(item => {
+        rows.push({
+          id: 'meta-' + item.key,
+          icon: item.icon ?? <MoreHorizontal className="h-3.5 w-3.5" />,
+          value: <span>{item.value}</span>,
+          label: item.label,
+        });
+      });
+    }
+
+    return rows;
+  }, [addresses, emails, meta, phones, portalPassword, portalUrl, portalUsername, website]);
 
   return (
     <div className={CONTACT_CARD_CLASS}>
       <div
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
         aria-hidden
-        style={{
-          background: 'radial-gradient(circle at top right, rgba(148,163,184,0.15), transparent 55%)'
-        }}
+        style={{ background: 'radial-gradient(circle at top right, rgba(148,163,184,0.12), transparent 55%)' }}
       />
 
-      <div className="relative z-10 flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {renderAvatar()}
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold text-white/90">{contact.name || 'Untitled Contact'}</h3>
-                {canFavorite && (
-                  <button
-                    type="button"
-                    onClick={handleFavoriteToggle}
-                    className="text-text-muted transition hover:text-yellow-300"
-                    aria-label={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                  >
-                    {renderFavoriteIcon(isFavorite)}
-                  </button>
-                )}
-              </div>
-              {subtitle && <p className="text-sm text-text-muted/80">{subtitle}</p>}
-              {assignedLabel && (
-                <p className="text-xs text-text-muted/70">
-                  {assignedLabel}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${categoryVisual.badgeClass}`}
-            >
-              {categoryVisual.icon}
-              {categoryVisual.label}
-            </span>
-
-            {Array.isArray(badges) && badges.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                {badges.map(renderBadge)}
-              </div>
-            )}
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleCopyAll}
-                className={ACTION_BUTTON_CLASS}
-                title="Copy contact details"
-              >
-                {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
-              </button>
-              {canManage && (
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={actionConfig?.onEdit}
-                    className={ACTION_BUTTON_CLASS}
-                    title="Edit contact"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={actionConfig?.onDelete}
-                    className={ACTION_BUTTON_CLASS}
-                    title="Delete contact"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-              {actionConfig?.onOpenDetails && (
+      <div className="relative z-10 flex flex-col gap-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold leading-tight text-text-primary">
+                {contact.name || 'Untitled Contact'}
+              </h3>
+              {canFavorite && (
                 <button
                   type="button"
-                  onClick={actionConfig.onOpenDetails}
-                  className={ACTION_BUTTON_CLASS}
-                  title="Open details"
+                  onClick={handleFavoriteToggle}
+                  className="text-text-muted transition hover:text-yellow-300"
+                  aria-label={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  {renderFavoriteIcon(isFavorite)}
                 </button>
               )}
             </div>
+            {subtitle ? <p className="text-sm text-text-muted/75">{subtitle}</p> : null}
+            {assignedLabel ? <p className="text-xs uppercase tracking-wide text-text-muted/65">{assignedLabel}</p> : null}
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/85">
+              <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium', categoryVisual.badgeClass)}>
+                {categoryVisual.icon}
+                {categoryVisual.label}
+              </span>
+              {Array.isArray(badges) && badges.length > 0 && badges.map(renderBadge)}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button
+              type="button"
+              onClick={handleCopyAll}
+              className={ACTION_BUTTON_CLASS}
+              title="Copy contact details"
+            >
+              {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+            </button>
+            {canManage && (
+              <>
+                <button
+                  type="button"
+                  onClick={actionConfig?.onEdit}
+                  className={ACTION_BUTTON_CLASS}
+                  title="Edit contact"
+                >
+                  <Edit2 className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={actionConfig?.onDelete}
+                  className={ACTION_BUTTON_CLASS}
+                  title="Delete contact"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
+            {actionConfig?.onOpenDetails && (
+              <button
+                type="button"
+                onClick={actionConfig.onOpenDetails}
+                className={ACTION_BUTTON_CLASS}
+                title="Open details"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className={
-          showMetaColumn
-            ? 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]'
-            : 'grid grid-cols-1 gap-4'
-        }>
+        <div className={cn('grid grid-cols-1 gap-4', showMetaColumn ? 'md:grid-cols-2' : undefined)}>
           <div className="space-y-3 text-sm text-text-muted">
-            {contact.company && (
-              <div className={DEFAULT_SECTION_CLASS}>
-                <div className="flex items-center gap-2 text-text-primary">
-                  <Building2 className="h-3.5 w-3.5" />
-                  <span className="font-medium text-white/85">{contact.company}</span>
-                </div>
-                {contact.role && (
-                  <p className="text-xs text-text-muted/80">{contact.role}</p>
-                )}
-              </div>
-            )}
+            {contact.company ? (
+              <DetailRow
+                icon={<Building2 className="h-3.5 w-3.5" />}
+                value={<span>{contact.company}</span>}
+                label="Company"
+                secondary={contact.role ? <span>Role · {contact.role}</span> : undefined}
+              />
+            ) : null}
 
-            {contact.notes && (
-              <div className={DEFAULT_SECTION_CLASS}>
-                <p className="text-xs uppercase tracking-wide text-text-muted/60">Notes</p>
-                <p className="whitespace-pre-wrap text-sm text-text-primary">{contact.notes}</p>
-              </div>
-            )}
+            {contact.notes ? (
+              <DetailRow
+                icon={<MoreHorizontal className="h-3.5 w-3.5" />}
+                value={<span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>}
+                label="Notes"
+              />
+            ) : null}
 
             {extraContent}
           </div>
 
-          {showMetaColumn && (
-            <div className="space-y-2 text-sm text-text-muted">
-              {emails.map(email => (
-                <a
-                  key={email}
-                  href={`mailto:${email}`}
-                  className={DEFAULT_SECTION_CLASS}
-                >
-                  <div className="flex items-center gap-2 text-text-primary">
-                    <Mail className="h-3.5 w-3.5" />
-                    <span className="font-medium">{email}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Email</p>
-                </a>
+          {showMetaColumn ? (
+            <div className="space-y-3 text-sm text-text-muted">
+              {detailRows.map(row => (
+                <DetailRow
+                  key={row.id}
+                  icon={row.icon}
+                  value={row.value}
+                  label={row.label}
+                  href={row.href}
+                  badge={row.badge}
+                  secondary={row.secondary}
+                />
               ))}
-
-              {phones.map(phone => (
-                <a
-                  key={phone}
-                  href={formatPhoneForHref(phone)}
-                  className={DEFAULT_SECTION_CLASS}
-                >
-                  <div className="flex items-center gap-2 text-text-primary">
-                    <Phone className="h-3.5 w-3.5" />
-                    <span className="font-medium">{phone}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Phone</p>
-                </a>
-              ))}
-
-              {addresses.map(address => (
-                <div key={address} className={DEFAULT_SECTION_CLASS}>
-                  <div className="flex items-start gap-2 text-text-primary">
-                    <MapPin className="mt-0.5 h-3.5 w-3.5" />
-                    <span className="font-medium leading-snug">{address}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Address</p>
-                </div>
-              ))}
-
-              {website && (
-                <a
-                  href={formatWebsiteHref(website)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={DEFAULT_SECTION_CLASS}
-                >
-                  <div className="flex items-center gap-2 text-text-primary">
-                    <Globe className="h-3.5 w-3.5" />
-                    <span className="font-medium">{website}</span>
-                  </div>
-                  <p className="text-xs text-text-muted/70">Website</p>
-                </a>
-              )}
-
-              {portalUrl && (
-                <div className={DEFAULT_SECTION_CLASS}>
-                  <div className="flex items-center justify-between gap-2 text-text-primary">
-                    <span className="font-medium">{formatPortalLabel(portalUrl, portalUsername)}</span>
-                    {portalPassword && (
-                      <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-text-muted/60">
-                        Password Stored
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-text-muted/70">Portal Access</p>
-                </div>
-              )}
-
-              {Array.isArray(meta) && meta.length > 0 && (
-                <div className="space-y-2">
-                  {meta.map(item => (
-                    <div key={item.key} className={DEFAULT_SECTION_CLASS}>
-                      <div className="flex items-center gap-2 text-text-primary">
-                        {item.icon ?? DEFAULT_METADATA_ICON[item.key] ?? <MoreHorizontal className="h-3.5 w-3.5" />}
-                        <span className="font-medium">{item.value}</span>
-                      </div>
-                      <p className="text-xs text-text-muted/70">{item.label}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-          )}
+          ) : null}
         </div>
 
         {footerContent}
