@@ -56,22 +56,22 @@ type DetailRowProps = {
 const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProps) => {
   const content = (
     <div className="flex w-full items-start gap-3">
-      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-white/10 text-text-muted">
+      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-white/[0.08] text-text-muted">
         {icon}
       </span>
-      <div className="flex-1 min-w-0 space-y-1">
+      <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2 text-sm font-medium leading-snug text-white/90">
           {value}
           {badge ?? null}
         </div>
-        {label ? <p className="text-xs text-text-muted/70">{label}</p> : null}
-        {secondary ? <div className="text-xs text-text-muted/65">{secondary}</div> : null}
+        {label ? <p className="mt-1 text-xs text-text-muted/70">{label}</p> : null}
+        {secondary ? <p className="mt-1 text-xs text-text-muted/50">{secondary}</p> : null}
       </div>
     </div>
   );
 
   if (!href) {
-    return <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">{content}</div>;
+    return <div className="rounded-lg px-2 py-2">{content}</div>;
   }
 
   const isExternal = /^https?:/i.test(href);
@@ -80,7 +80,7 @@ const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProp
       href={href}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noopener noreferrer' : undefined}
-      className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 transition hover:border-white/20 hover:bg-black/30 hover:text-white"
+      className="block rounded-lg px-2 py-2 transition hover:bg-white/10"
     >
       {content}
     </a>
@@ -322,7 +322,7 @@ export function ContactCard({
           </div>
         </div>
 
-        <div className={cn('grid grid-cols-1 gap-4', showMetaColumn ? 'md:grid-cols-2' : undefined)}>
+        <div className={cn('grid grid-cols-1 gap-5', showMetaColumn ? 'md:grid-cols-2' : undefined)}>
           <div className="space-y-3 text-sm text-text-muted">
             {contact.company ? (
               <DetailRow
@@ -345,7 +345,7 @@ export function ContactCard({
           </div>
 
           {showMetaColumn ? (
-            <div className="space-y-3 text-sm text-text-muted">
+            <div className="space-y-2 text-sm text-text-muted">
               {detailRows.map(row => (
                 <DetailRow
                   key={row.id}
