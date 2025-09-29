@@ -112,14 +112,6 @@ export function ContactCard({
   const [isFavorite, setIsFavorite] = useState(Boolean(contact.is_favorite));
   const [copied, setCopied] = useState(false);
 
-  const assignedLabel = useMemo(() => {
-    if (assignedToLabel) return assignedToLabel;
-    if (Array.isArray(contact.assigned_entities) && contact.assigned_entities.length > 0) {
-      return contact.assigned_entities.map(entity => entity.label).join(', ');
-    }
-    return null;
-  }, [assignedToLabel, contact.assigned_entities]);
-
   const secondaryBadges = useMemo(() => {
     if (!Array.isArray(badges)) return [] as ContactCardBadge[];
     const categoryLabel = categoryVisual.label?.toLowerCase?.();
@@ -263,13 +255,10 @@ export function ContactCard({
                 From {categoryVisual.label}
               </span>
               {secondaryBadges.map(renderBadge)}
-              {assignedLabel ? (
-                <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-text-muted/80">
-                  {assignedLabel}
-                </span>
-              ) : null}
             </div>
-            {extraContent ? <div className="flex flex-wrap gap-2 text-sm text-text-muted/75">{extraContent}</div> : null}
+            {extraContent ? (
+              <div className="flex flex-wrap gap-2 text-xs text-text-muted/75">{extraContent}</div>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-1">

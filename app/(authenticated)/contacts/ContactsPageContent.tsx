@@ -466,15 +466,15 @@ export default function ContactsPageContent() {
 
       <div className="rounded-xl border border-gray-600/30 bg-background-secondary p-4">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
+          <div className="flex w-full items-center gap-3 md:flex-1">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <input
                 type="search"
                 value={searchQuery}
                 onChange={event => setSearchQuery(event.target.value)}
                 placeholder="Search by name, email, phone, or notes"
-                className="w-full rounded-xl border border-gray-600/30 bg-background-primary px-9 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700 md:min-w-[280px]"
+                className="w-full rounded-xl border border-gray-600/30 bg-background-primary px-9 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
               />
             </div>
           </div>
