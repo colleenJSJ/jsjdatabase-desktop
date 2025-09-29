@@ -2,7 +2,6 @@
 
 import { ReactNode, useMemo, useState } from 'react';
 import {
-  Building2,
   Copy,
   CopyCheck,
   Edit2,
@@ -28,51 +27,27 @@ import {
 import { ContactCardBadge, ContactCardProps } from './contact-types';
 import { cn } from '@/lib/utils';
 
-const buildBadgeClass = (badge: ContactCardBadge) => {
-  switch (badge.tone) {
-    case 'danger':
-      return 'bg-rose-500/15 text-rose-200 border-rose-400/30';
-    case 'success':
-      return 'bg-emerald-500/15 text-emerald-200 border-emerald-400/30';
-    case 'warning':
-      return 'bg-amber-500/15 text-amber-200 border-amber-400/30';
-    case 'primary':
-      return 'bg-primary-500/15 text-primary-200 border-primary-400/30';
-    case 'neutral':
-    default:
-      return 'bg-white/5 text-text-muted border-white/10';
-  }
-};
-
 type DetailRowProps = {
   icon: ReactNode;
   value: ReactNode;
   label?: string;
   href?: string;
-  badge?: ReactNode;
-  secondary?: ReactNode;
 };
 
-const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProps) => {
+const DetailRow = ({ icon, value, label, href }: DetailRowProps) => {
   const content = (
-    <div className="flex w-full items-start gap-3">
-      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-white/[0.08] text-text-muted">
+    <div className="flex items-start gap-3">
+      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-md bg-white/10 text-text-muted">
         {icon}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2 text-sm font-medium leading-snug text-white/90">
-          {value}
-          {badge ?? null}
-        </div>
+        <div className="text-sm font-medium text-white/90 leading-snug break-words">{value}</div>
         {label ? <p className="mt-1 text-xs text-text-muted/70">{label}</p> : null}
-        {secondary ? <p className="mt-1 text-xs text-text-muted/50">{secondary}</p> : null}
       </div>
     </div>
   );
 
-  if (!href) {
-    return <div className="rounded-lg px-2 py-2">{content}</div>;
-  }
+  if (!href) return <div className="rounded-lg px-1 py-2">{content}</div>;
 
   const isExternal = /^https?:/i.test(href);
   return (
@@ -80,7 +55,7 @@ const DetailRow = ({ icon, value, label, href, badge, secondary }: DetailRowProp
       href={href}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noopener noreferrer' : undefined}
-      className="block rounded-lg px-2 py-2 transition hover:bg-white/10"
+      className="block rounded-lg px-1 py-2 transition hover:bg-white/10"
     >
       {content}
     </a>
@@ -122,13 +97,11 @@ export function ContactCard({
     return null;
   }, [assignedToLabel, contact.assigned_entities, contact.related_to]);
 
-  const canFavorite = showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function';
-
   const handleFavoriteToggle = () => {
-    if (!canFavorite) return;
+    if (!showFavoriteToggle || typeof actionConfig?.onToggleFavorite !== 'function') return;
     const next = !isFavorite;
     setIsFavorite(next);
-    actionConfig?.onToggleFavorite?.(next);
+    actionConfig.onToggleFavorite(next);
   };
 
   const handleCopyAll = async () => {
@@ -136,21 +109,15 @@ export function ContactCard({
       const lines: string[] = [];
       lines.push(contact.name);
       if (contact.company) lines.push(contact.company);
-      if (emails.length > 0) {
-        lines.push('Emails: ' + emails.join(', '));
-      }
-      if (phones.length > 0) {
-        lines.push('Phones: ' + phones.join(', '));
-      }
-      if (addresses.length > 0) {
-        lines.push('Addresses: ' + addresses.join(' | '));
-      }
+      if (emails.length > 0) lines.push('Emails: ' + emails.join(', '));
+      if (phones.length > 0) lines.push('Phones: ' + phones.join(', '));
+      if (addresses.length > 0) lines.push('Addresses: ' + addresses.join(' | '));
       if (website) lines.push('Website: ' + website);
       if (portalUrl) lines.push('Portal URL: ' + portalUrl);
       if (portalUsername) lines.push('Portal Username: ' + portalUsername);
       if (portalPassword) lines.push('Portal Password: ' + portalPassword);
       if (contact.notes) lines.push('Notes: ' + contact.notes);
-      await navigator.clipboard.writeText(lines.filter(Boolean).join('\n'));
+      await navigator.clipboard.writeText(lines.join('\n'));
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch (error) {
@@ -168,21 +135,15 @@ export function ContactCard({
     </span>
   );
 
-  const showMetaColumn = layout === 'auto'
+  const showPrimaryColumn = Boolean(contact.company || contact.role || contact.notes || extraContent);
+  const showDetailColumn = layout === 'auto'
     ? phones.length > 0 || emails.length > 0 || addresses.length > 0 || Boolean(website) || Boolean(portalUrl) || Boolean(meta && meta.length > 0)
     : true;
 
-  const showPrimaryColumn = (
-    Boolean(contact.company) ||
-    Boolean(contact.role) ||
-    Boolean(contact.notes) ||
-    Boolean(extraContent)
-  );
+  type RowConfig = DetailRowProps & { id: string };
 
-  type DetailRowConfig = DetailRowProps & { id: string };
-
-  const detailRows = useMemo<DetailRowConfig[]>(() => {
-    const rows: DetailRowConfig[] = [];
+  const detailRows = useMemo<RowConfig[]>(() => {
+    const rows: RowConfig[] = [];
 
     emails.forEach(email => {
       rows.push({
@@ -228,11 +189,8 @@ export function ContactCard({
         id: 'portal',
         icon: <Globe className="h-3.5 w-3.5" />,
         value: <span>{formatPortalLabel(portalUrl, portalUsername)}</span>,
-        label: 'Portal',
+        label: portalPassword ? 'Portal · Password stored' : 'Portal',
         href: formatWebsiteHref(portalUrl),
-        badge: portalPassword
-          ? <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-text-muted/70">Password stored</span>
-          : undefined,
       });
     }
 
@@ -248,24 +206,18 @@ export function ContactCard({
     }
 
     return rows;
-  }, [addresses, emails, meta, phones, portalPassword, portalUrl, portalUsername, website]);
+  }, [addresses, emails, meta, phones, portalUrl, portalUsername, portalPassword, website]);
 
   return (
     <div className={CONTACT_CARD_CLASS}>
-      <div
-        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-        aria-hidden
-        style={{ background: 'radial-gradient(circle at top right, rgba(148,163,184,0.12), transparent 55%)' }}
-      />
-
-      <div className="relative z-10 flex flex-col gap-5">
+      <div className="relative z-10 flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex flex-1 flex-col gap-1.5">
+          <div className="flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-base font-semibold leading-tight text-text-primary">
                 {contact.name || 'Untitled Contact'}
               </h3>
-              {canFavorite && (
+              {showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function' ? (
                 <button
                   type="button"
                   onClick={handleFavoriteToggle}
@@ -274,102 +226,61 @@ export function ContactCard({
                 >
                   {renderFavoriteIcon(isFavorite)}
                 </button>
-              )}
+              ) : null}
             </div>
             {subtitle ? <p className="text-sm text-text-muted/75">{subtitle}</p> : null}
-            {assignedLabel ? <p className="text-xs uppercase tracking-wide text-text-muted/65">{assignedLabel}</p> : null}
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/85">
-              <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium', categoryVisual.badgeClass)}>
-                {categoryVisual.icon}
+            <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted/80">
+              <span className={cn('inline-flex items-center gap-2 rounded-full border px-3 py-1 font-medium', categoryVisual.badgeClass)}>
                 {categoryVisual.label}
               </span>
               {Array.isArray(badges) && badges.length > 0 && badges.map(renderBadge)}
+              {assignedLabel ? (
+                <span className="rounded-full border border-white/10 px-2 py-1 text-xs text-text-muted/70">
+                  {assignedLabel}
+                </span>
+              ) : null}
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            <button
-              type="button"
-              onClick={handleCopyAll}
-              className={ACTION_BUTTON_CLASS}
-              title="Copy contact details"
-            >
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={handleCopyAll} className={ACTION_BUTTON_CLASS} title="Copy contact details">
               {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
             </button>
             {canManage && (
               <>
-                <button
-                  type="button"
-                  onClick={actionConfig?.onEdit}
-                  className={ACTION_BUTTON_CLASS}
-                  title="Edit contact"
-                >
+                <button type="button" onClick={actionConfig?.onEdit} className={ACTION_BUTTON_CLASS} title="Edit contact">
                   <Edit2 className="h-4 w-4" />
                 </button>
-                <button
-                  type="button"
-                  onClick={actionConfig?.onDelete}
-                  className={ACTION_BUTTON_CLASS}
-                  title="Delete contact"
-                >
+                <button type="button" onClick={actionConfig?.onDelete} className={ACTION_BUTTON_CLASS} title="Delete contact">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </>
             )}
-            {actionConfig?.onOpenDetails && (
-              <button
-                type="button"
-                onClick={actionConfig.onOpenDetails}
-                className={ACTION_BUTTON_CLASS}
-                title="Open details"
-              >
+            {actionConfig?.onOpenDetails ? (
+              <button type="button" onClick={actionConfig.onOpenDetails} className={ACTION_BUTTON_CLASS} title="Open details">
                 <MoreHorizontal className="h-4 w-4" />
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
-        <div
-          className={cn(
-            'grid grid-cols-1 gap-5',
-            showMetaColumn && showPrimaryColumn ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : undefined
-          )}
-        >
+        <div className="space-y-3">
           {showPrimaryColumn ? (
-            <div className="space-y-3 text-sm text-text-muted">
+            <div className="space-y-2 text-sm text-text-muted">
               {contact.company ? (
-                <DetailRow
-                  icon={<Building2 className="h-3.5 w-3.5" />}
-                  value={<span>{contact.company}</span>}
-                  label="Company"
-                  secondary={contact.role ? <span>Role · {contact.role}</span> : undefined}
-                />
+                <DetailRow icon={<span className="text-text-muted">🏢</span>} value={<span>{contact.company}</span>} label={contact.role || undefined} />
               ) : null}
-
               {contact.notes ? (
-                <DetailRow
-                  icon={<MoreHorizontal className="h-3.5 w-3.5" />}
-                  value={<span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>}
-                  label="Notes"
-                />
+                <DetailRow icon={<span className="text-text-muted">📝</span>} value={<span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>} />
               ) : null}
-
               {extraContent}
             </div>
           ) : null}
 
-          {showMetaColumn ? (
+          {showDetailColumn ? (
             <div className="space-y-2 text-sm text-text-muted">
               {detailRows.map(row => (
-                <DetailRow
-                  key={row.id}
-                  icon={row.icon}
-                  value={row.value}
-                  label={row.label}
-                  href={row.href}
-                  badge={row.badge}
-                  secondary={row.secondary}
-                />
+                <DetailRow key={row.id} icon={row.icon} value={row.value} label={row.label} href={row.href} />
               ))}
             </div>
           ) : null}
