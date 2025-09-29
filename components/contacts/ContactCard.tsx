@@ -43,27 +43,37 @@ const buildBadgeClass = (badge: ContactCardBadge) => {
   }
 };
 
+const renderBadge = (badgeValue: ContactCardBadge) => (
+  <span
+    key={badgeValue.id}
+    className={cn('inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium', buildBadgeClass(badgeValue))}
+  >
+    {badgeValue.icon}
+    {badgeValue.label}
+  </span>
+);
+
 type DetailRowProps = {
   icon: ReactNode;
   value: ReactNode;
-  label?: string;
   href?: string;
+  secondary?: ReactNode;
 };
 
-const DetailRow = ({ icon, value, label, href }: DetailRowProps) => {
+const DetailRow = ({ icon, value, href, secondary }: DetailRowProps) => {
   const content = (
     <div className="flex items-start gap-3">
-      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-md bg-white/10 text-text-muted">
+      <span className="flex h-5 w-5 flex-none items-center justify-center text-text-muted">
         {icon}
       </span>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-white/90 leading-snug break-words">{value}</div>
-        {label ? <p className="mt-1 text-xs text-text-muted/70">{label}</p> : null}
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="text-sm font-medium leading-snug text-white/90 break-words">{value}</div>
+        {secondary ? <div className="text-xs text-text-muted/60">{secondary}</div> : null}
       </div>
     </div>
   );
 
-  if (!href) return <div className="rounded-lg px-1 py-2">{content}</div>;
+  if (!href) return <div className="px-1 py-2">{content}</div>;
 
   const isExternal = /^https?:/i.test(href);
   return (
@@ -71,7 +81,7 @@ const DetailRow = ({ icon, value, label, href }: DetailRowProps) => {
       href={href}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noopener noreferrer' : undefined}
-      className="block rounded-lg px-1 py-2 transition hover:bg-white/10"
+      className="block px-1 py-2 transition hover:bg-white/10"
     >
       {content}
     </a>
@@ -107,11 +117,14 @@ export function ContactCard({
     if (Array.isArray(contact.assigned_entities) && contact.assigned_entities.length > 0) {
       return contact.assigned_entities.map(entity => entity.label).join(', ');
     }
-    if (Array.isArray(contact.related_to) && contact.related_to.length > 0) {
-      return contact.related_to.length + ' linked';
-    }
     return null;
-  }, [assignedToLabel, contact.assigned_entities, contact.related_to]);
+  }, [assignedToLabel, contact.assigned_entities]);
+
+  const secondaryBadges = useMemo(() => {
+    if (!Array.isArray(badges)) return [] as ContactCardBadge[];
+    const categoryLabel = categoryVisual.label?.toLowerCase?.();
+    return badges.filter(badge => badge.label?.toLowerCase() !== categoryLabel);
+  }, [badges, categoryVisual.label]);
 
   const handleFavoriteToggle = () => {
     if (!showFavoriteToggle || typeof actionConfig?.onToggleFavorite !== 'function') return;
@@ -123,7 +136,7 @@ export function ContactCard({
   const handleCopyAll = async () => {
     try {
       const lines: string[] = [];
-      lines.push(contact.name);
+      if (contact.name) lines.push(contact.name);
       if (contact.company) lines.push(contact.company);
       if (emails.length > 0) lines.push('Emails: ' + emails.join(', '));
       if (phones.length > 0) lines.push('Phones: ' + phones.join(', '));
@@ -141,32 +154,28 @@ export function ContactCard({
     }
   };
 
-  const renderBadge = (badgeValue: ContactCardBadge) => (
-    <span
-      key={badgeValue.id}
-      className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium', buildBadgeClass(badgeValue))}
-    >
-      {badgeValue.icon}
-      {badgeValue.label}
-    </span>
-  );
-
-  const showPrimaryColumn = Boolean(contact.company || contact.role || contact.notes || extraContent);
-  const showDetailColumn = layout === 'auto'
-    ? phones.length > 0 || emails.length > 0 || addresses.length > 0 || Boolean(website) || Boolean(portalUrl) || Boolean(meta && meta.length > 0)
-    : true;
-
   type RowConfig = DetailRowProps & { id: string };
 
   const detailRows = useMemo<RowConfig[]>(() => {
     const rows: RowConfig[] = [];
+
+    if (contact.company) {
+      rows.push({ id: 'company', icon: <span className="text-text-muted">🏢</span>, value: <span>{contact.company}</span> });
+    }
+
+    if (contact.notes) {
+      rows.push({
+        id: 'notes',
+        icon: <span className="text-text-muted">📝</span>,
+        value: <span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>,
+      });
+    }
 
     emails.forEach(email => {
       rows.push({
         id: 'email-' + email,
         icon: <Mail className="h-3.5 w-3.5" />,
         value: <span>{email}</span>,
-        label: 'Email',
         href: 'mailto:' + email,
       });
     });
@@ -176,7 +185,6 @@ export function ContactCard({
         id: 'phone-' + phone,
         icon: <Phone className="h-3.5 w-3.5" />,
         value: <span>{phone}</span>,
-        label: 'Phone',
         href: formatPhoneForHref(phone),
       });
     });
@@ -185,8 +193,7 @@ export function ContactCard({
       rows.push({
         id: 'address-' + address,
         icon: <MapPin className="h-3.5 w-3.5" />,
-        value: <span className="leading-snug">{address}</span>,
-        label: 'Address',
+        value: <span>{address}</span>,
       });
     });
 
@@ -195,7 +202,6 @@ export function ContactCard({
         id: 'website',
         icon: <Globe className="h-3.5 w-3.5" />,
         value: <span>{website}</span>,
-        label: 'Website',
         href: formatWebsiteHref(website),
       });
     }
@@ -204,31 +210,38 @@ export function ContactCard({
       rows.push({
         id: 'portal',
         icon: <Globe className="h-3.5 w-3.5" />,
-        value: <span>{formatPortalLabel(portalUrl, portalUsername)}</span>,
-        label: portalPassword ? 'Portal · Password stored' : 'Portal',
+        value: (
+          <span className="flex items-center gap-2">
+            <span>{formatPortalLabel(portalUrl, portalUsername)}</span>
+            {portalPassword ? (
+              <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-text-muted/70">Password stored</span>
+            ) : null}
+          </span>
+        ),
         href: formatWebsiteHref(portalUrl),
       });
     }
 
     if (Array.isArray(meta) && meta.length > 0) {
-      meta.forEach(item => {
-        rows.push({
+      rows.push(
+        ...meta.map(item => ({
           id: 'meta-' + item.key,
           icon: item.icon ?? <MoreHorizontal className="h-3.5 w-3.5" />,
           value: <span>{item.value}</span>,
-          label: item.label,
-        });
-      });
+        }))
+      );
     }
 
     return rows;
-  }, [addresses, emails, meta, phones, portalUrl, portalUsername, portalPassword, website]);
+  }, [contact.company, contact.notes, emails, phones, addresses, website, portalUrl, portalUsername, portalPassword, meta]);
+
+  const showDetailColumn = layout === 'auto' ? detailRows.length > 0 : true;
 
   return (
     <div className={CONTACT_CARD_CLASS}>
-      <div className="relative z-10 flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex-1 space-y-2">
+      <div className="relative z-10 flex flex-col gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-base font-semibold leading-tight text-text-primary">
                 {contact.name || 'Untitled Contact'}
@@ -246,16 +259,17 @@ export function ContactCard({
             </div>
             {subtitle ? <p className="text-sm text-text-muted/75">{subtitle}</p> : null}
             <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted/80">
-              <span className={cn('inline-flex items-center gap-2 rounded-full border px-3 py-1 font-medium', categoryVisual.badgeClass)}>
-                {categoryVisual.label}
+              <span className="rounded-full border border-white/10 px-3 py-1 font-medium text-text-muted/80">
+                From {categoryVisual.label}
               </span>
-              {Array.isArray(badges) && badges.length > 0 && badges.map(renderBadge)}
+              {secondaryBadges.map(renderBadge)}
               {assignedLabel ? (
-                <span className="rounded-full border border-white/10 px-2 py-1 text-xs text-text-muted/70">
+                <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-text-muted/80">
                   {assignedLabel}
                 </span>
               ) : null}
             </div>
+            {extraContent ? <div className="flex flex-wrap gap-2 text-sm text-text-muted/75">{extraContent}</div> : null}
           </div>
 
           <div className="flex items-center gap-1">
@@ -280,27 +294,13 @@ export function ContactCard({
           </div>
         </div>
 
-        <div className="space-y-3">
-          {showPrimaryColumn ? (
-            <div className="space-y-2 text-sm text-text-muted">
-              {contact.company ? (
-                <DetailRow icon={<span className="text-text-muted">🏢</span>} value={<span>{contact.company}</span>} label={contact.role || undefined} />
-              ) : null}
-              {contact.notes ? (
-                <DetailRow icon={<span className="text-text-muted">📝</span>} value={<span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>} />
-              ) : null}
-              {extraContent}
-            </div>
-          ) : null}
-
-          {showDetailColumn ? (
-            <div className="space-y-2 text-sm text-text-muted">
-              {detailRows.map(row => (
-                <DetailRow key={row.id} icon={row.icon} value={row.value} label={row.label} href={row.href} />
-              ))}
-            </div>
-          ) : null}
-        </div>
+        {showDetailColumn ? (
+          <div className="space-y-1 text-sm text-text-muted">
+            {detailRows.map(row => (
+              <DetailRow key={row.id} icon={row.icon} value={row.value} href={row.href} secondary={row.secondary} />
+            ))}
+          </div>
+        ) : null}
 
         {footerContent}
       </div>
