@@ -51,7 +51,7 @@ export function DocumentCard({
     || doc.uploaded_by
     || 'Unknown';
   const ownerInitial = ownerDisplayName.trim().charAt(0).toUpperCase() || '?';
-  const metadataItems = [
+  const metadataItems: { label: string; tone?: 'danger' }[] = [
     { label: formatBytes(doc.file_size || 0) },
     { label: formatDate(doc.created_at) },
     { label: doc.source_page ? `From ${sourceLabel}` : 'Manual Upload' },
