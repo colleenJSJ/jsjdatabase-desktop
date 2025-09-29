@@ -3,15 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3007",
-    "dev:clean": "rm -rf .next && next dev -p 3007",
+    "dev": "NODE_ENV=development next dev -p 3007",
+    "dev:clean": "rm -rf .next && NODE_ENV=development next dev -p 3007",
     "build": "next build",
     "start": "next start -p 3007",
     "lint": "next lint",
     "hash-passwords": "tsx scripts/hash-existing-passwords.ts",
     "remove-logs": "tsx scripts/remove-console-logs.ts",
     "test:event-sync": "tsx scripts/test-event-sync.ts",
-    "clear-cache": "tsx scripts/clear-extraction-cache.ts"
+    "clear-cache": "tsx scripts/clear-extraction-cache.ts",
+    "electron": "electron electron/main.js",
+    "electron-dev": "NODE_ENV=development electron electron/main.js",
+    "electron-build": "electron-builder",
+    "dev-all": "concurrently \"npm run dev\" \"wait-on http://localhost:3007 && npm run electron-dev\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",
@@ -68,12 +72,16 @@
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.2.1",
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "15.4.6",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^9.0.1"
   }
 }

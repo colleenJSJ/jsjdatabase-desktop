@@ -5,9 +5,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import ApiClient from '@/lib/api/api-client';
 import { personService, Person } from '@/lib/services/person.service';
+import { addCSRFToHeaders } from '@/lib/security/csrf-client';
 
 export interface FamilyMember {
   id: string;
@@ -62,22 +61,25 @@ export function useFamilyMembers(): UseFamilyMembersResult {
     setError(null);
 
     try {
-      const supabase = createClient();
-      const { data, error: supabaseError } = await supabase
-        .from('family_members')
-        .select('*')
-        .order('name', { ascending: true });
+      const response = await fetch('/api/family-members', {
+        method: 'GET',
+        credentials: 'include',
+        headers: addCSRFToHeaders(),
+      });
 
-      if (supabaseError) {
-        throw new Error(supabaseError.message);
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Unauthorized');
+        }
+        throw new Error(`Failed to fetch family members: ${response.statusText}`);
       }
 
-      const members = data || [];
-      
+      const { members = [] } = await response.json();
+
       // Update global cache
       familyMembersCache = members;
       cacheTimestamp = Date.now();
-      
+
       setFamilyMembers(members);
       setError(null);
     } catch (err) {
