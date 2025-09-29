@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Tasks API</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #0f0;
+        }
+        .result {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #0f0;
+            background: #000;
+        }
+        .error {
+            color: #f00;
+            border-color: #f00;
+        }
+        .success {
+            color: #0f0;
+        }
+        pre {
+            overflow-x: auto;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tasks API Test - Error Recovery Check</h1>
+    
+    <div>
+        <button onclick="testLogin()">1. Login</button>
+        <button onclick="testTasks('all')">2. Test Tasks (All)</button>
+        <button onclick="testTasks('active')">3. Test Tasks (Active)</button>
+        <button onclick="testTasks('completed')">4. Test Tasks (Completed)</button>
+        <button onclick="testWithPerson('me')">5. Test with Person Filter (Me)</button>
+        <button onclick="testWithPerson('susan')">6. Test with Person Filter (Susan)</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        function addResult(title, data, isError = false) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${isError ? 'error' : 'success'}`;
+            resultDiv.innerHTML = `
+                <h3>${title}</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            resultsDiv.insertBefore(resultDiv, resultsDiv.firstChild);
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'susan@johnson.com',
+                        password: 'susan123'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    addResult('Login Failed', data, true);
+                } else {
+                    addResult('Login Successful', {
+                        user: data.user.email,
+                        role: data.user.role,
+                        id: data.user.id
+                    });
+                    localStorage.setItem('userId', data.user.id);
+                }
+            } catch (error) {
+                addResult('Login Error', { error: error.message }, true);
+            }
+        }
+
+        async function testTasks(status) {
+            try {
+                const url = status === 'all' 
+                    ? '/api/tasks' 
+                    : `/api/tasks?status=${status}`;
+                    
+                const response = await fetch(url, {
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    const text = await response.text();
+                    addResult(`Tasks API Error (${status})`, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: text
+                    }, true);
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // Check console for our debug logs
+                console.log('Tasks API Response:', data);
+                
+                addResult(`Tasks Fetched (${status})`, {
+                    taskCount: data.tasks?.length || 0,
+                    pagination: data.pagination,
+                    firstTask: data.tasks?.[0] || 'No tasks'
+                });
+                
+            } catch (error) {
+                addResult(`Tasks Error (${status})`, {
+                    error: error.message,
+                    stack: error.stack
+                }, true);
+            }
+        }
+
+        async function testWithPerson(person) {
+            try {
+                const url = `/api/tasks?selected_person=${person}`;
+                    
+                const response = await fetch(url, {
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    const text = await response.text();
+                    addResult(`Tasks with Person Filter (${person})`, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: text
+                    }, true);
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                addResult(`Tasks with Person Filter (${person})`, {
+                    taskCount: data.tasks?.length || 0,
+                    pagination: data.pagination,
+                    personFilter: person
+                });
+                
+            } catch (error) {
+                addResult(`Person Filter Error (${person})`, {
+                    error: error.message,
+                    stack: error.stack
+                }, true);
+            }
+        }
+    </script>
+</body>
+</html>

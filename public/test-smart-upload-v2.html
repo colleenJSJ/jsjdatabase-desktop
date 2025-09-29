@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Upload V2 Test</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 32px;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .test-section { 
+            padding: 25px; 
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .test-section:last-child {
+            border-bottom: none;
+        }
+        .test-section h2 {
+            color: #333;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status { 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 8px; 
+            border: 1px solid;
+        }
+        .success { 
+            background: #e8f5e9; 
+            color: #2e7d32; 
+            border-color: #4caf50;
+        }
+        .error { 
+            background: #ffebee; 
+            color: #c62828; 
+            border-color: #f44336;
+        }
+        .warning { 
+            background: #fff3e0; 
+            color: #f57c00; 
+            border-color: #ff9800;
+        }
+        .info {
+            background: #e3f2fd;
+            color: #1565c0;
+            border-color: #2196f3;
+        }
+        button { 
+            padding: 12px 24px; 
+            margin: 5px; 
+            cursor: pointer; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            border: none; 
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        button:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        pre { 
+            background: #f5f5f5; 
+            padding: 15px; 
+            overflow: auto; 
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            font-size: 14px;
+            max-height: 400px;
+        }
+        .loading { 
+            color: #666; 
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+        input[type="file"] {
+            display: block;
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px dashed #667eea;
+            border-radius: 6px;
+            background: #f8f9ff;
+            width: 100%;
+        }
+        .step-indicator {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 24px;
+            font-weight: bold;
+        }
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .comparison-table th {
+            background: #f5f5f5;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+        }
+        .comparison-table td {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 0 4px;
+        }
+        .badge.v1 { background: #ffecb3; color: #f57c00; }
+        .badge.v2 { background: #c8e6c9; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Smart Upload V2 Testing Suite</h1>
+            <p>Test the new hybrid extraction approach with direct file upload</p>
+        </div>
+        
+        <div class="test-section">
+            <h2><span class="step-indicator">1</span> Authentication Check</h2>
+            <button onclick="checkAuth()">Check Authentication</button>
+            <button onclick="window.location.href='/login'">Go to Login</button>
+            <div id="auth-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2><span class="step-indicator">2</span> Implementation Comparison</h2>
+            <button onclick="compareImplementations()">Compare V1 vs V2</button>
+            <div id="comparison-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2><span class="step-indicator">3</span> Test Both Endpoints</h2>
+            <input type="file" id="testFile" accept=".txt,.pdf,.png,.jpg">
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button onclick="testV1Endpoint()">
+                    Test V1 <span class="badge v1">Original</span>
+                </button>
+                <button onclick="testV2Endpoint()">
+                    Test V2 <span class="badge v2">New</span>
+                </button>
+                <button onclick="testBothEndpoints()">
+                    Compare Both
+                </button>
+            </div>
+            <div id="test-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2><span class="step-indicator">4</span> Cache Testing</h2>
+            <button onclick="testCaching()">Test Cache (Upload Same File Twice)</button>
+            <div id="cache-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2><span class="step-indicator">5</span> Document Storage Verification</h2>
+            <button onclick="checkDocumentStorage()">Check if Documents are Stored</button>
+            <div id="storage-results"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Check authentication
+        async function checkAuth() {
+            const results = document.getElementById('auth-results');
+            results.innerHTML = '<div class="loading">Checking authentication...</div>';
+            
+            try {
+                const response = await fetch('/api/auth/me', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const user = await response.json();
+                    results.innerHTML = `
+                        <div class="status success">
+                            <h4>✅ Authenticated</h4>
+                            <pre>${JSON.stringify(user, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    results.innerHTML = `
+                        <div class="status error">
+                            <h4>❌ Not Authenticated</h4>
+                            <p>Please log in first</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <h4>Error</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Compare implementations
+        function compareImplementations() {
+            const results = document.getElementById('comparison-results');
+            results.innerHTML = `
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>V1 (Original)</th>
+                            <th>V2 (Hybrid)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Flow</strong></td>
+                            <td>Upload → Store → Fetch → Extract</td>
+                            <td>Upload → Extract → Store (async)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Storage Dependency</strong></td>
+                            <td>❌ Required before extraction</td>
+                            <td>✅ Optional, done after</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Performance</strong></td>
+                            <td>Slower (multiple network calls)</td>
+                            <td>Faster (direct processing)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Caching</strong></td>
+                            <td>By document_id</td>
+                            <td>By content hash + user</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Re-extraction</strong></td>
+                            <td>✅ Supported</td>
+                            <td>✅ Supported (both paths)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Error Points</strong></td>
+                            <td>Multiple (storage, fetch, extract)</td>
+                            <td>Single (extract only)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        // Test V1 endpoint
+        async function testV1Endpoint() {
+            const file = document.getElementById('testFile').files[0];
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<div class="loading">Testing V1 endpoint...</div>';
+            
+            const startTime = Date.now();
+            
+            try {
+                // Step 1: Upload to documents
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('category', 'travel');
+                
+                const uploadResponse = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                if (!uploadResponse.ok) throw new Error('Upload failed');
+                
+                const uploadResult = await uploadResponse.json();
+                const documentId = uploadResult.document?.id;
+                
+                // Step 2: Extract with V1
+                const extractResponse = await fetch('/api/ai/travel-extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ document_id: documentId }),
+                    credentials: 'include'
+                });
+                
+                const extractResult = await extractResponse.json();
+                const elapsed = Date.now() - startTime;
+                
+                results.innerHTML = `
+                    <div class="status ${extractResult.success ? 'success' : 'error'}">
+                        <h4>V1 Endpoint Result (${elapsed}ms)</h4>
+                        <pre>${JSON.stringify(extractResult, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <h4>V1 Endpoint Error</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Test V2 endpoint
+        async function testV2Endpoint() {
+            const file = document.getElementById('testFile').files[0];
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<div class="loading">Testing V2 endpoint...</div>';
+            
+            const startTime = Date.now();
+            
+            try {
+                // Direct extraction with V2
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('storeDocument', 'true');
+                
+                const response = await fetch('/api/ai/travel-extract-v2', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                const result = await response.json();
+                const elapsed = Date.now() - startTime;
+                
+                results.innerHTML = `
+                    <div class="status ${result.success ? 'success' : 'error'}">
+                        <h4>V2 Endpoint Result (${elapsed}ms)</h4>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <h4>V2 Endpoint Error</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Test both endpoints
+        async function testBothEndpoints() {
+            await testV1Endpoint();
+            const v1Results = document.getElementById('test-results').innerHTML;
+            
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+            
+            await testV2Endpoint();
+            const v2Results = document.getElementById('test-results').innerHTML;
+            
+            document.getElementById('test-results').innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h3>V1 Results</h3>
+                        ${v1Results}
+                    </div>
+                    <div>
+                        <h3>V2 Results</h3>
+                        ${v2Results}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Test caching
+        async function testCaching() {
+            const file = document.getElementById('testFile').files[0];
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const results = document.getElementById('cache-results');
+            results.innerHTML = '<div class="loading">Testing cache...</div>';
+            
+            try {
+                // First upload
+                const formData1 = new FormData();
+                formData1.append('file', file);
+                formData1.append('storeDocument', 'false'); // Don't store for cache test
+                
+                const start1 = Date.now();
+                const response1 = await fetch('/api/ai/travel-extract-v2', {
+                    method: 'POST',
+                    body: formData1,
+                    credentials: 'include'
+                });
+                const result1 = await response1.json();
+                const time1 = Date.now() - start1;
+                
+                // Second upload (should hit cache)
+                await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+                
+                const formData2 = new FormData();
+                formData2.append('file', file);
+                formData2.append('storeDocument', 'false');
+                
+                const start2 = Date.now();
+                const response2 = await fetch('/api/ai/travel-extract-v2', {
+                    method: 'POST',
+                    body: formData2,
+                    credentials: 'include'
+                });
+                const result2 = await response2.json();
+                const time2 = Date.now() - start2;
+                
+                results.innerHTML = `
+                    <div class="status info">
+                        <h4>Cache Test Results</h4>
+                        <p><strong>First Request:</strong> ${time1}ms (cached: ${result1.cached || false})</p>
+                        <p><strong>Second Request:</strong> ${time2}ms (cached: ${result2.cached || false})</p>
+                        <p><strong>Speed Improvement:</strong> ${Math.round((1 - time2/time1) * 100)}%</p>
+                        ${result2.cached ? 
+                            '<p class="success">✅ Cache is working! Second request was cached.</p>' : 
+                            '<p class="warning">⚠️ Cache might not be working as expected.</p>'
+                        }
+                    </div>
+                `;
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <h4>Cache Test Error</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Check document storage
+        async function checkDocumentStorage() {
+            const results = document.getElementById('storage-results');
+            results.innerHTML = '<div class="loading">Checking document storage...</div>';
+            
+            try {
+                const response = await fetch('/api/documents?category=travel&limit=5', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const docs = await response.json();
+                    results.innerHTML = `
+                        <div class="status info">
+                            <h4>Recent Travel Documents</h4>
+                            <p>Found ${docs.documents?.length || 0} travel documents</p>
+                            <pre>${JSON.stringify(docs.documents?.slice(0, 3) || [], null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    results.innerHTML = `
+                        <div class="status error">
+                            <h4>Failed to fetch documents</h4>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <h4>Error</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Auto-check auth on load
+        window.onload = () => {
+            checkAuth();
+            compareImplementations();
+        };
+    </script>
+</body>
+</html>

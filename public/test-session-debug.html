@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Session Debug Tool</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status { padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        pre { background: #f4f4f4; padding: 10px; overflow: auto; border-radius: 4px; }
+        .loading { color: #666; font-style: italic; }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Session Debug Tool</h1>
+        <p>Use this tool to diagnose authentication issues with the Smart Upload feature.</p>
+        
+        <div class="test-section">
+            <h2>Step 1: Check Authentication Status</h2>
+            <button onclick="checkAllAuth()">Run All Checks</button>
+            <button onclick="checkCookies()">Check Cookies</button>
+            <button onclick="clearAndLogin()">Clear Session & Login</button>
+            <div id="auth-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 2: Test Upload Endpoint</h2>
+            <button onclick="testUploadEndpoint()">Test Document Upload</button>
+            <div id="upload-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 3: Test Smart Upload Flow</h2>
+            <input type="file" id="fileInput" accept=".txt,.pdf,.png,.jpg">
+            <button onclick="testFullSmartUpload()">Test Full Smart Upload</button>
+            <div id="smart-results"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Cookies & Storage Info</h2>
+            <button onclick="showStorageInfo()">Show Storage Info</button>
+            <div id="storage-info"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Check all authentication endpoints
+        async function checkAllAuth() {
+            const results = document.getElementById('auth-results');
+            results.innerHTML = '<div class="loading">Running authentication checks...</div>';
+            
+            let html = '';
+            
+            // 1. Check new test endpoint
+            try {
+                const testResponse = await fetch('/api/test-auth-status', {
+                    credentials: 'include'
+                });
+                const testData = await testResponse.json();
+                
+                if (testData.authenticated) {
+                    html += `<div class="status success">
+                        <h4>✅ /api/test-auth-status - Authenticated</h4>
+                        <pre>${JSON.stringify(testData, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    html += `<div class="status error">
+                        <h4>❌ /api/test-auth-status - Not Authenticated</h4>
+                        <pre>${JSON.stringify(testData, null, 2)}</pre>
+                    </div>`;
+                }
+            } catch (error) {
+                html += `<div class="status error">
+                    <h4>❌ /api/test-auth-status - Error</h4>
+                    <p>${error.message}</p>
+                </div>`;
+            }
+            
+            // 2. Check /api/auth/me
+            try {
+                const meResponse = await fetch('/api/auth/me', {
+                    credentials: 'include',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                const contentType = meResponse.headers.get('content-type');
+                
+                if (contentType && contentType.includes('text/html')) {
+                    html += `<div class="status error">
+                        <h4>❌ /api/auth/me - Redirecting to Login</h4>
+                        <p>Response is HTML (login redirect)</p>
+                        <p>Status: ${meResponse.status}</p>
+                    </div>`;
+                } else if (meResponse.ok) {
+                    const userData = await meResponse.json();
+                    html += `<div class="status success">
+                        <h4>✅ /api/auth/me - Authenticated</h4>
+                        <pre>${JSON.stringify(userData, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    html += `<div class="status error">
+                        <h4>❌ /api/auth/me - Not Authenticated</h4>
+                        <p>Status: ${meResponse.status}</p>
+                    </div>`;
+                }
+            } catch (error) {
+                html += `<div class="status error">
+                    <h4>❌ /api/auth/me - Error</h4>
+                    <p>${error.message}</p>
+                </div>`;
+            }
+            
+            // 3. Check Supabase session
+            try {
+                const sessionResponse = await fetch('/api/auth/check-session', {
+                    credentials: 'include'
+                });
+                
+                if (sessionResponse.ok) {
+                    const sessionData = await sessionResponse.json();
+                    html += `<div class="status success">
+                        <h4>✅ Supabase Session Active</h4>
+                        <pre>${JSON.stringify(sessionData, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    html += `<div class="status warning">
+                        <h4>⚠️ Supabase Session Check Failed</h4>
+                        <p>Status: ${sessionResponse.status}</p>
+                    </div>`;
+                }
+            } catch (error) {
+                html += `<div class="status warning">
+                    <h4>⚠️ Supabase Session Check Error</h4>
+                    <p>${error.message}</p>
+                </div>`;
+            }
+            
+            results.innerHTML = html;
+        }
+        
+        // Check cookies
+        function checkCookies() {
+            const results = document.getElementById('auth-results');
+            const cookies = document.cookie;
+            
+            let html = '<div class="status warning"><h4>Browser Cookies</h4>';
+            if (cookies) {
+                const cookieList = cookies.split('; ').map(c => {
+                    const [name, value] = c.split('=');
+                    return `<li><strong>${name}</strong>: ${value ? value.substring(0, 20) + '...' : '(empty)'}</li>`;
+                });
+                html += '<ul>' + cookieList.join('') + '</ul>';
+                
+                // Check for Supabase auth cookies
+                const hasSupabaseAuth = cookies.includes('sb-') || cookies.includes('supabase');
+                if (hasSupabaseAuth) {
+                    html += '<p style="color: green;">✓ Found Supabase authentication cookies</p>';
+                } else {
+                    html += '<p style="color: red;">✗ No Supabase authentication cookies found</p>';
+                }
+            } else {
+                html += '<p>No cookies found</p>';
+            }
+            html += '</div>';
+            
+            results.innerHTML = html;
+        }
+        
+        // Test upload endpoint
+        async function testUploadEndpoint() {
+            const results = document.getElementById('upload-results');
+            results.innerHTML = '<div class="loading">Testing upload endpoint...</div>';
+            
+            try {
+                // Create a small test file
+                const blob = new Blob(['Test document content'], { type: 'text/plain' });
+                const formData = new FormData();
+                formData.append('file', blob, 'test.txt');
+                formData.append('category', 'travel');
+                formData.append('title', 'Test Upload');
+                
+                const response = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                // Log response headers for debugging
+                console.log('Upload response headers:', Object.fromEntries(response.headers.entries()));
+                
+                const contentType = response.headers.get('content-type');
+                
+                if (contentType && contentType.includes('text/html')) {
+                    const text = await response.text();
+                    results.innerHTML = `<div class="status error">
+                        <h4>❌ Upload Failed - Authentication Issue</h4>
+                        <p>The server returned HTML instead of JSON (login redirect)</p>
+                        <p>Status: ${response.status}</p>
+                        <p>Response preview: ${text.substring(0, 100)}...</p>
+                        <h5>Solution:</h5>
+                        <ol>
+                            <li>Click "Clear Session & Login" button above</li>
+                            <li>Log in with your credentials</li>
+                            <li>Come back to this page and test again</li>
+                        </ol>
+                    </div>`;
+                } else if (response.ok) {
+                    const data = await response.json();
+                    results.innerHTML = `<div class="status success">
+                        <h4>✅ Upload Successful!</h4>
+                        <p>Document ID: ${data.document?.id}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    let errorData;
+                    try {
+                        errorData = await response.json();
+                    } catch {
+                        errorData = { message: response.statusText };
+                    }
+                    results.innerHTML = `<div class="status error">
+                        <h4>❌ Upload Failed</h4>
+                        <p>Status: ${response.status}</p>
+                        <pre>${JSON.stringify(errorData, null, 2)}</pre>
+                    </div>`;
+                }
+                
+            } catch (error) {
+                results.innerHTML = `<div class="status error">
+                    <h4>❌ Upload Test Failed</h4>
+                    <p>${error.message}</p>
+                </div>`;
+            }
+        }
+        
+        // Test full smart upload
+        async function testFullSmartUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const results = document.getElementById('smart-results');
+            results.innerHTML = '<div class="loading">Testing smart upload...</div>';
+            
+            try {
+                // Step 1: Upload
+                results.innerHTML += '<p>Step 1: Uploading document...</p>';
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('category', 'travel');
+                
+                const uploadResponse = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error(`Upload failed: ${uploadResponse.status}`);
+                }
+                
+                const uploadResult = await uploadResponse.json();
+                const documentId = uploadResult.document?.id;
+                
+                results.innerHTML += `<p class="success">✓ Upload successful (ID: ${documentId})</p>`;
+                
+                // Step 2: Extract
+                results.innerHTML += '<p>Step 2: Extracting with AI...</p>';
+                
+                const extractResponse = await fetch('/api/ai/travel-extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ document_id: documentId }),
+                    credentials: 'include'
+                });
+                
+                if (!extractResponse.ok) {
+                    throw new Error(`Extraction failed: ${extractResponse.status}`);
+                }
+                
+                const extractResult = await extractResponse.json();
+                
+                results.innerHTML = `<div class="status success">
+                    <h4>✅ Smart Upload Complete!</h4>
+                    <pre>${JSON.stringify(extractResult, null, 2)}</pre>
+                </div>`;
+                
+            } catch (error) {
+                results.innerHTML = `<div class="status error">
+                    <h4>❌ Smart Upload Failed</h4>
+                    <p>${error.message}</p>
+                </div>`;
+            }
+        }
+        
+        // Clear session and redirect to login
+        function clearAndLogin() {
+            // Clear all cookies
+            document.cookie.split(";").forEach(function(c) { 
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+            });
+            
+            // Clear local storage
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Redirect to login
+            window.location.href = '/login';
+        }
+        
+        // Show storage info
+        function showStorageInfo() {
+            const info = document.getElementById('storage-info');
+            
+            let html = '<h4>Local Storage</h4><ul>';
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                html += `<li><strong>${key}</strong>: ${value ? value.substring(0, 50) + '...' : '(empty)'}</li>`;
+            }
+            html += '</ul>';
+            
+            html += '<h4>Session Storage</h4><ul>';
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                const value = sessionStorage.getItem(key);
+                html += `<li><strong>${key}</strong>: ${value ? value.substring(0, 50) + '...' : '(empty)'}</li>`;
+            }
+            html += '</ul>';
+            
+            info.innerHTML = `<div class="status warning">${html}</div>`;
+        }
+        
+        // Run checks on load
+        window.onload = () => {
+            checkAllAuth();
+        };
+    </script>
+</body>
+</html>
