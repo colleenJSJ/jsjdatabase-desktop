@@ -1,8 +1,67 @@
 const { app, BrowserWindow, ipcMain, Notification, shell } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const path = require('path')
 
 let mainWindow
 let ipcRegistered = false
+let autoUpdaterInitialized = false
+
+const UPDATE_CHANNELS = {
+  CURRENT_VERSION: 'update:current-version',
+  AVAILABLE: 'update:available',
+  PROGRESS: 'update:download-progress',
+  DOWNLOADED: 'update:downloaded',
+  ERROR: 'update:error'
+}
+
+const isDevEnvironment = () => process.env.NODE_ENV === 'development' || !app.isPackaged
+const shouldUseAutoUpdater = () => app.isPackaged && process.env.SKIP_AUTO_UPDATE !== '1'
+
+const sendToRenderer = (channel, payload) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try {
+    mainWindow.webContents.send(channel, payload)
+  } catch (error) {
+    console.error('[Electron] Failed to send update event', channel, error)
+  }
+}
+
+function initializeAutoUpdater() {
+  if (autoUpdaterInitialized || !shouldUseAutoUpdater()) {
+    return
+  }
+
+  autoUpdaterInitialized = true
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = false
+
+  autoUpdater.on('error', (error) => {
+    console.error('[Electron] Auto-updater error', error)
+    sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'There was a problem checking for updates.' })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    sendToRenderer(UPDATE_CHANNELS.AVAILABLE, info)
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendToRenderer(UPDATE_CHANNELS.PROGRESS, progress)
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendToRenderer(UPDATE_CHANNELS.DOWNLOADED, info)
+  })
+
+  // Trigger a check shortly after start
+  setTimeout(() => {
+    autoUpdater
+      .checkForUpdates()
+      .catch((error) => {
+        console.error('[Electron] Initial update check failed', error)
+        sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'Could not check for updates.' })
+      })
+  }, 3000)
+}
 
 function registerIpcHandlers() {
   if (ipcRegistered) return
@@ -30,11 +89,62 @@ function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('app:get-version', () => app.getVersion())
+
+  ipcMain.handle('update:check', async () => {
+    initializeAutoUpdater()
+    if (!shouldUseAutoUpdater()) {
+      return { ok: false, error: 'auto-update-disabled' }
+    }
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      return { ok: true, info: result?.updateInfo || null }
+    } catch (error) {
+      console.error('[Electron] Failed to check for updates', error)
+      sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'Could not check for updates.' })
+      return { ok: false, error: error?.message || 'check-failed' }
+    }
+  })
+
+  ipcMain.handle('update:download', async () => {
+    initializeAutoUpdater()
+    if (!shouldUseAutoUpdater()) {
+      return { ok: false, error: 'auto-update-disabled' }
+    }
+
+    try {
+      await autoUpdater.downloadUpdate()
+      return { ok: true }
+    } catch (error) {
+      console.error('[Electron] Failed to download update', error)
+      sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'Download failed. Please try again.' })
+      return { ok: false, error: error?.message || 'download-failed' }
+    }
+  })
+
+  ipcMain.handle('update:install', async () => {
+    initializeAutoUpdater()
+    if (!shouldUseAutoUpdater()) {
+      return { ok: false, error: 'auto-update-disabled' }
+    }
+
+    try {
+      setImmediate(() => {
+        autoUpdater.quitAndInstall(false, true)
+      })
+      return { ok: true }
+    } catch (error) {
+      console.error('[Electron] Failed to install update', error)
+      sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'Install failed.' })
+      return { ok: false, error: error?.message || 'install-failed' }
+    }
+  })
+
   ipcRegistered = true
 }
 
 function createWindow() {
-  const isDev = process.env.NODE_ENV === 'development'
+  const isDev = isDevEnvironment()
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -71,6 +181,13 @@ function createWindow() {
     if (!isAppUrl) {
       event.preventDefault()
       shell.openExternal(url)
+    }
+  })
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    sendToRenderer(UPDATE_CHANNELS.CURRENT_VERSION, { version: app.getVersion() })
+    if (shouldUseAutoUpdater()) {
+      initializeAutoUpdater()
     }
   })
 

@@ -2,6 +2,7 @@
   "name": "johnson-database-v1",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "NODE_ENV=development next dev -p 3007",
     "dev:clean": "rm -rf .next && NODE_ENV=development next dev -p 3007",
@@ -15,6 +16,8 @@
     "electron": "electron electron/main.js",
     "electron-dev": "NODE_ENV=development electron electron/main.js",
     "electron-build": "electron-builder",
+    "dist": "npm run build && electron-builder",
+    "release": "npm run build && electron-builder --publish always",
     "dev-all": "concurrently \"npm run dev\" \"wait-on http://localhost:3007 && npm run electron-dev\""
   },
   "dependencies": {
@@ -44,6 +47,7 @@
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "electron-updater": "^6.6.2",
     "framer-motion": "^12.23.12",
     "fuse.js": "^7.1.0",
     "googleapis": "^156.0.0",
@@ -81,7 +85,55 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.4",
-    "typescript": "^5",
+    "typescript": "5.9.2",
     "wait-on": "^9.0.1"
+  },
+  "build": {
+    "appId": "com.familyoffice.desktop",
+    "productName": "JSJ Database",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "electron/resources"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "colleenJSJ",
+        "repo": "jsjdatabase-desktop"
+      }
+    ]
   }
 }

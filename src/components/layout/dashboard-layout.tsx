@@ -10,6 +10,8 @@ import { NotificationsProvider } from '@/contexts/notifications-context';
 import { PreferencesProvider } from '@/contexts/preferences-context';
 import { NotificationsToasts } from '@/components/notifications/Toasts';
 import RealtimeBridge from '@/components/notifications/RealtimeBridge';
+import { TaskReminderManager } from '@/components/tasks/TaskReminderManager';
+import { UpdateBanner } from '@/components/updates/UpdateBanner';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -41,6 +43,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <Header onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
               </div>
               <main className="app-content-main flex-1 p-2 sm:p-4 lg:p-8 pb-16 sm:pb-20 lg:pb-8 min-h-0 max-w-full overflow-x-hidden">
+                <UpdateBanner />
                 {children}
               </main>
               <div className="app-mobile-nav">
@@ -49,6 +52,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
             <NotificationsToasts />
             <RealtimeBridge />
+            <TaskReminderManager />
           </div>
           </NotificationsProvider>
         </PreferencesProvider>
