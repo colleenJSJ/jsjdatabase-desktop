@@ -213,7 +213,7 @@ export function DocumentCard({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#7A7A78]">
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[#7A7A78]">
           {metadataItems.map((item, index) => (
             <div key={`${item.label}-${index}`} className="flex items-center gap-2">
               {index !== 0 && <span className="h-3 w-px bg-[#4A4A48]/50" />}
@@ -223,7 +223,7 @@ export function DocumentCard({
         </div>
 
         <div
-          className="flex items-center justify-between gap-2 text-[12px] text-[#C2C0B6]"
+          className="mt-2 flex items-center justify-between gap-2 text-[12px] text-[#C2C0B6]"
           title={assignedSummary || uploaderName || undefined}
         >
           <div className="flex min-w-0 items-center gap-2">
