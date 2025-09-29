@@ -118,7 +118,7 @@ export function DocumentCard({
 
   return (
     <div
-      className={`group relative mx-auto flex w-full max-w-[370px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
+      className={`group relative mx-auto flex w-full max-w-[330px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
         onOpen ? 'cursor-pointer' : ''
       }`}
       onClick={onOpen ? handleOpen : undefined}
@@ -187,7 +187,7 @@ export function DocumentCard({
           )}
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+      <div className="flex flex-1 flex-col gap-1.5 p-2">
         <div className="flex items-start justify-between gap-2">
           <p
             className="flex-1 truncate text-[14px] font-medium text-white"
