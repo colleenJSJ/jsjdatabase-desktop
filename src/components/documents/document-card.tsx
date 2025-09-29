@@ -118,7 +118,7 @@ export function DocumentCard({
 
   return (
     <div
-      className={`group relative mx-auto flex w-full max-w-[360px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
+      className={`group relative mx-auto flex w-full max-w-[420px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
         onOpen ? 'cursor-pointer' : ''
       }`}
       onClick={onOpen ? handleOpen : undefined}
@@ -126,7 +126,47 @@ export function DocumentCard({
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
     >
-      <div className="relative h-[216px] w-full overflow-hidden bg-[#2C2C2A]">
+      <div className="pointer-events-none absolute inset-0 rounded-[10px] bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-50 group-focus-within:opacity-50 z-10" />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-20">
+        <div className="invisible flex gap-3 rounded-full bg-[#1F1F1E]/85 px-3 py-2 text-text-primary opacity-0 shadow-lg ring-1 ring-[#4A4A48]/70 transition duration-200 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 pointer-events-auto">
+          <button
+            type="button"
+            onClick={(event) => handleAction(event, onCopy, () => {
+              setIsCopying(true);
+              setTimeout(() => setIsCopying(false), 2000);
+            })}
+            className={`flex h-10 w-10 items-center justify-center rounded-full border border-[#4A4A48]/70 bg-[#2A2A28]/90 transition-colors hover:border-[#6C6C6A] hover:text-white ${
+              isCopying ? 'text-green-400' : 'text-[#D2D2D0]'
+            }`}
+            title="Copy link"
+            aria-label="Copy document link"
+          >
+            {isCopying ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={(event) => handleAction(event, onDownload)}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#4A4A48]/70 bg-[#2A2A28]/90 text-[#D2D2D0] transition-colors hover:border-[#6C6C6A] hover:text-[#A8E6A1]"
+            title="Download"
+            aria-label="Download document"
+          >
+            <Download className="h-4 w-4" />
+          </button>
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(event) => handleAction(event, onDelete)}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#4A4A48]/70 bg-[#2A2A28]/90 text-[#D2D2D0] transition-colors hover:border-[#6C6C6A] hover:text-[#F28482]"
+              title="Delete"
+              aria-label="Delete document"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="relative z-0 h-[216px] w-full overflow-hidden bg-[#2C2C2A]">
         <div className="absolute inset-0 rounded-t-[10px] bg-black/10 opacity-0 transition-opacity duration-200 group-hover:opacity-20 group-focus-within:opacity-20" />
         <div className="flex h-full w-full items-center justify-center text-text-primary">
           {thumbnailUrl ? (
@@ -156,57 +196,19 @@ export function DocumentCard({
           >
             {cleanDocumentTitle(doc.title, doc.file_name)}
           </p>
-          <div className="flex items-center gap-1">
-            {onStarToggle && (
-              <button
-                type="button"
-                onClick={(event) => handleAction(event, onStarToggle)}
-                className={`h-7 w-7 shrink-0 rounded-full bg-transparent text-[0px] transition-colors ${
-                  doc.is_starred ? 'text-[#E9C46A]' : 'text-[#7A7A78] hover:text-[#E9C46A]'
-                }`}
-                title={doc.is_starred ? 'Unstar' : 'Star'}
-                aria-label={doc.is_starred ? 'Remove star' : 'Add star'}
-              >
-                <Star className="mx-auto h-4 w-4" fill={doc.is_starred ? 'currentColor' : 'none'} />
-              </button>
-            )}
-            <div className="flex items-center gap-1 pl-1 opacity-0 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-              <button
-                type="button"
-                onClick={(event) => handleAction(event, onCopy, () => {
-                  setIsCopying(true);
-                  setTimeout(() => setIsCopying(false), 2000);
-                })}
-                className={`flex h-7 w-7 items-center justify-center rounded-full border border-[#4A4A48]/80 bg-[#383836] text-[#C6C6C4] transition-colors hover:border-[#5C5C5A] hover:text-white ${
-                  isCopying ? 'text-green-400' : ''
-                }`}
-                title="Copy link"
-                aria-label="Copy document link"
-              >
-                {isCopying ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                type="button"
-                onClick={(event) => handleAction(event, onDownload)}
-                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#4A4A48]/80 bg-[#383836] text-[#C6C6C4] transition-colors hover:border-[#5C5C5A] hover:text-[#A8E6A1]"
-                title="Download"
-                aria-label="Download document"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </button>
-              {onDelete && (
-                <button
-                  type="button"
-                  onClick={(event) => handleAction(event, onDelete)}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#4A4A48]/80 bg-[#383836] text-[#C6C6C4] transition-colors hover:border-[#5C5C5A] hover:text-[#F28482]"
-                  title="Delete"
-                  aria-label="Delete document"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
+          {onStarToggle && (
+            <button
+              type="button"
+              onClick={(event) => handleAction(event, onStarToggle)}
+              className={`h-7 w-7 shrink-0 rounded-full bg-transparent text-[0px] transition-colors ${
+                doc.is_starred ? 'text-[#E9C46A]' : 'text-[#7A7A78] hover:text-[#E9C46A]'
+              }`}
+              title={doc.is_starred ? 'Unstar' : 'Star'}
+              aria-label={doc.is_starred ? 'Remove star' : 'Add star'}
+            >
+              <Star className="mx-auto h-4 w-4" fill={doc.is_starred ? 'currentColor' : 'none'} />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#7A7A78]">
