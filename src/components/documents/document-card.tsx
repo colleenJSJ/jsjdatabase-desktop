@@ -47,9 +47,8 @@ export function DocumentCard({
     file_name: doc.file_name,
     file_url: doc.file_url,
   });
-  const ownerDisplayName = (familyMemberMap && doc.uploaded_by && familyMemberMap[doc.uploaded_by])
-    || doc.uploaded_by
-    || 'Unknown';
+  const uploaderName = familyMemberMap && doc.uploaded_by ? familyMemberMap[doc.uploaded_by] : undefined;
+  const ownerDisplayName = assignedSummary || uploaderName || 'Shared/Family';
   const ownerInitial = ownerDisplayName.trim().charAt(0).toUpperCase() || '?';
   const metadataItems: { label: string; tone?: 'danger' }[] = [
     { label: formatBytes(doc.file_size || 0) },
@@ -119,7 +118,7 @@ export function DocumentCard({
 
   return (
     <div
-      className={`group relative mx-auto flex w-full max-w-[280px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
+      className={`group relative mx-auto flex w-full max-w-[360px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
         onOpen ? 'cursor-pointer' : ''
       }`}
       onClick={onOpen ? handleOpen : undefined}
@@ -221,7 +220,7 @@ export function DocumentCard({
 
         <div
           className="flex items-center justify-between gap-2 text-[12px] text-[#C2C0B6]"
-          title={assignedSummary || undefined}
+          title={assignedSummary || uploaderName || undefined}
         >
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5A4AE3] to-[#C784FF] text-[10px] font-semibold text-white">
