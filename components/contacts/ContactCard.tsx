@@ -255,10 +255,8 @@ export function ContactCard({
                 From {categoryVisual.label}
               </span>
               {secondaryBadges.map(renderBadge)}
+              {extraContent}
             </div>
-            {extraContent ? (
-              <div className="flex flex-wrap gap-2 text-xs text-text-muted/75">{extraContent}</div>
-            ) : null}
           </div>
 
           <div className="flex items-center gap-1">
