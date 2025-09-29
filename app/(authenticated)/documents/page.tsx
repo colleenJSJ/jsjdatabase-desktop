@@ -526,7 +526,7 @@ export default function DocumentsPage() {
           </div>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(420px,1fr))] gap-x-8 gap-y-10 justify-items-center">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(370px,1fr))] gap-x-7 gap-y-9 justify-items-center">
           {filteredDocuments.map(doc => (
             <DocumentCard
               key={doc.id}

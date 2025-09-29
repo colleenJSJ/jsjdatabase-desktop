@@ -1027,7 +1027,7 @@ export default function TravelPageClient() {
                 {filtered.documents.length === 0 ? (
                   <div className="py-6 text-center text-text-muted">No documents</div>
                 ) : (
-                  <div className="grid grid-cols-[repeat(auto-fit,minmax(420px,1fr))] gap-x-8 gap-y-10 justify-items-center">
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(370px,1fr))] gap-x-7 gap-y-9 justify-items-center">
                     {(filtered.documents as Document[]).map((doc) => (
                       <DocumentCard
                         key={doc.id}
