@@ -409,9 +409,6 @@ export default function DocumentsPage() {
             <div className="mt-4 pt-4 border-t border-gray-600/30">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Category
-                  </label>
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
@@ -424,16 +421,10 @@ export default function DocumentsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Filter by
-                  </label>
                   <PersonSelector className="w-full" showLabel={false} />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Sort By
-                  </label>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
@@ -446,9 +437,6 @@ export default function DocumentsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Quick Filters
-                  </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => setFilters(prev => ({ ...prev, starred: !prev.starred }))}
@@ -458,7 +446,6 @@ export default function DocumentsPage() {
                           : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
                       }`}
                     >
-                      <Star className="h-4 w-4" fill={filters.starred ? 'currentColor' : 'none'} />
                       Starred
                     </button>
                     <button
@@ -469,7 +456,6 @@ export default function DocumentsPage() {
                           : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
                       }`}
                     >
-                      <Clock className="h-4 w-4" />
                       Expiring
                     </button>
                     <button
@@ -480,7 +466,7 @@ export default function DocumentsPage() {
                           : 'bg-background-primary text-text-muted border-gray-600/30 hover:bg-gray-700/20'
                       }`}
                     >
-                      Show Archived
+                      Archived
                     </button>
                   </div>
                 </div>
