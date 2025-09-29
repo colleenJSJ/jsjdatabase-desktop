@@ -1,35 +1,131 @@
-# Dependencies
-node_modules/
-.pnp/
-.pnp.js
-
-# Testing
-coverage/
-.nyc_output
-
-# Next.js
-.next/
-out/
-build/
-dist/
-
-# Production
+# Logs
+logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Instrumented libs
+lib-cov
+
+# Coverage
+coverage/
+.nyc_output
+*.lcov
+
+# Build artifacts
+.grunt
+bower_components
+build/Release
+build/
+dist/
+out/
+
+# Dependency directories
+node_modules/
+jspm_packages/
+pnp/
+.pnp/
+.pnp.js
+web_modules/
+
+# Package manager caches
+.npm
+.yarn-integrity
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+
+# Tool caches
+.eslintcache
+.stylelintcache
+
+# REPL history
+.node_repl_history
+
+# npm pack output
+*.tgz
 
 # Environment files
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
+# Parcel/Vite caches
+.cache
+.parcel-cache
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Next.js
+.next/
+
+# Nuxt.js
+.nuxt
+
+# Gatsby
+.cache/
+# public
+
+# Vuepress
+.vuepress/dist
+.temp
+
+# SvelteKit
+.svelte-kit/
+
+# VitePress
+**/.vitepress/dist
+**/.vitepress/cache
+
+# Docusaurus
+.docusaurus
+
+# Serverless
+.serverless/
+
+# FuseBox
+.fusebox/
+
+# DynamoDB Local
+.dynamodb/
+
+# Firebase
+.firebase/
+
+# TernJS
+.tern-port
+
+# VSCode testing
+.vscode-test
+
+# Testing
+.nyc_output
+
+# Production
+
 # Vercel
 .vercel
 
-# IDE
+# IDE and editor
 .vscode/
 .idea/
 *.swp
@@ -47,6 +143,9 @@ Thumbs.db
 uploads/
 temp/
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Misc
+coverage
