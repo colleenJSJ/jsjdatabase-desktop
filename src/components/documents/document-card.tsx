@@ -66,17 +66,19 @@ export function DocumentCard({
   useEffect(() => {
     if (!isImage) {
       setThumbnailUrl(null);
+      setThumbnailLoaded(false);
       return;
     }
 
-    setThumbnailLoaded(false);
     const cache = (window as any).__docThumbCache ?? ((window as any).__docThumbCache = new Map<string, string>());
     const cached = cache.get(doc.id);
     if (cached) {
       setThumbnailUrl(cached);
+      setThumbnailLoaded(true);
       return;
     }
 
+    setThumbnailLoaded(false);
     const url = `/api/documents/preview/${doc.id}?mode=thumbnail`;
     cache.set(doc.id, url);
     setThumbnailUrl(url);
@@ -211,7 +213,7 @@ export function DocumentCard({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#7A7A78]">
+        <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#7A7A78]">
           {metadataItems.map((item, index) => (
             <div key={`${item.label}-${index}`} className="flex items-center gap-2">
               {index !== 0 && <span className="h-3 w-px bg-[#4A4A48]/50" />}
