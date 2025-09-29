@@ -10,7 +10,6 @@ import { NotificationsProvider } from '@/contexts/notifications-context';
 import { PreferencesProvider } from '@/contexts/preferences-context';
 import { NotificationsToasts } from '@/components/notifications/Toasts';
 import RealtimeBridge from '@/components/notifications/RealtimeBridge';
-import { TaskReminderManager } from '@/components/tasks/TaskReminderManager';
 import { UpdateBanner } from '@/components/updates/UpdateBanner';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -52,7 +51,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
             <NotificationsToasts />
             <RealtimeBridge />
-            <TaskReminderManager />
           </div>
           </NotificationsProvider>
         </PreferencesProvider>
