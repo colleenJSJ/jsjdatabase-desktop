@@ -158,7 +158,7 @@ export function DocumentList({ category, sourcePage, limit, refreshKey, filterFn
 
   return (
     <>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-5">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] justify-items-center gap-5">
         {documents.map((doc) => (
           <DocumentCard
             key={doc.id}

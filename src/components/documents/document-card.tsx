@@ -47,6 +47,22 @@ export function DocumentCard({
     file_name: doc.file_name,
     file_url: doc.file_url,
   });
+  const ownerDisplayName = (familyMemberMap && doc.uploaded_by && familyMemberMap[doc.uploaded_by])
+    || doc.uploaded_by
+    || 'Unknown';
+  const ownerInitial = ownerDisplayName.trim().charAt(0).toUpperCase() || '?';
+  const metadataItems = [
+    { label: formatBytes(doc.file_size || 0) },
+    { label: formatDate(doc.created_at) },
+    { label: doc.source_page ? `From ${sourceLabel}` : 'Manual Upload' },
+  ];
+
+  if (expirationBadge !== null) {
+    metadataItems.push({
+      label: expirationBadge > 0 ? `Expires in ${expirationBadge} days` : 'Expired',
+      tone: expirationBadge <= 30 ? 'danger' : undefined,
+    });
+  }
 
   useEffect(() => {
     if (!isImage) {
@@ -103,66 +119,17 @@ export function DocumentCard({
 
   return (
     <div
-      className={`relative group flex flex-col items-center justify-between rounded-xl border border-transparent bg-[#30302E] p-4 min-h-[190px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#3A3A38] focus-within:border-[#3A3A38] ${onOpen ? 'cursor-pointer' : ''}`}
+      className={`group relative flex w-[280px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
+        onOpen ? 'cursor-pointer' : ''
+      }`}
       onClick={onOpen ? handleOpen : undefined}
       onKeyDown={handleKeyDown}
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-xl bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 z-10" />
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="invisible flex gap-2 rounded-lg bg-[#262625]/90 p-2 shadow-sm ring-1 ring-gray-700/60 opacity-0 transition duration-200 ease-out group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 z-20 pointer-events-auto">
-          <button
-            type="button"
-            onClick={(event) => handleAction(event, onCopy, () => {
-              setIsCopying(true);
-              setTimeout(() => setIsCopying(false), 2000);
-            })}
-            className={`flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-gray-500 hover:bg-[#262625] ${isCopying ? 'text-green-400' : ''}`}
-            title="Copy link"
-            aria-label="Copy document link"
-          >
-            {isCopying ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            onClick={(event) => handleAction(event, onDownload)}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-green-400/60 hover:text-green-400"
-            title="Download"
-            aria-label="Download document"
-          >
-            <Download className="h-4 w-4" />
-          </button>
-          {onDelete && (
-            <button
-              type="button"
-              onClick={(event) => handleAction(event, onDelete)}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-600/40 bg-[#262625]/80 text-text-primary transition hover:border-red-400/60 hover:text-red-400"
-              title="Delete"
-              aria-label="Delete document"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {onStarToggle && (
-        <button
-          type="button"
-          onClick={(event) => handleAction(event, onStarToggle)}
-          className={`absolute top-3 right-3 z-30 rounded p-1 transition-colors ${
-            doc.is_starred ? 'text-yellow-500' : 'text-gray-500 hover:text-yellow-500'
-          }`}
-          title={doc.is_starred ? 'Unstar' : 'Star'}
-          aria-label={doc.is_starred ? 'Remove star' : 'Add star'}
-        >
-          <Star className="h-4 w-4" fill={doc.is_starred ? 'currentColor' : 'none'} />
-        </button>
-      )}
-
-      <div className="relative z-10 flex w-full flex-1 flex-col items-center gap-2 text-center">
-        <div className="flex h-[88px] w-full items-center justify-center overflow-hidden rounded-lg bg-gray-700/40 text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60">
+      <div className="relative h-[216px] w-full overflow-hidden bg-[#2C2C2A]">
+        <div className="absolute inset-0 rounded-t-[10px] bg-black/10 opacity-0 transition-opacity duration-200 group-hover:opacity-20 group-focus-within:opacity-20" />
+        <div className="flex h-full w-full items-center justify-center text-text-primary">
           {thumbnailUrl ? (
             <img
               src={thumbnailUrl}
@@ -175,49 +142,103 @@ export function DocumentCard({
               }}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex h-full w-full items-center justify-center text-text-primary/80">
               {getFileIcon(doc.file_type, doc.file_name || doc.file_url)}
             </div>
           )}
         </div>
-        <p
-          className="text-sm font-semibold text-text-primary transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60"
-          style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-          title={cleanDocumentTitle(doc.title, doc.file_name)}
-        >
-          {cleanDocumentTitle(doc.title, doc.file_name)}
-        </p>
-        <div className="flex items-center gap-1 text-[11px] text-text-muted transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30">
-          <span>{formatBytes(doc.file_size || 0)}</span>
-          <span>•</span>
-          <span>{formatDate(doc.created_at)}</span>
-        </div>
-        <span className="text-[11px] font-medium text-[#AB9BBF] transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30">
-          {doc.source_page ? `From ${sourceLabel}` : 'Manual Upload'}
-        </span>
-        {assignedSummary && (
-          <span
-            className="w-full truncate px-1 text-[10px] text-[#C2C0B6] transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30"
-            title={assignedSummary}
-          >
-            {assignedSummary}
-          </span>
-        )}
-        {expirationBadge !== null && (
-          <span
-            className={`text-[10px] transition-opacity duration-200 group-hover:opacity-30 group-focus-within:opacity-30 ${expirationBadge <= 30 ? 'text-red-400' : 'text-text-muted'}`}
-          >
-            {expirationBadge > 0 ? `Expires in ${expirationBadge} days` : 'Expired'}
-          </span>
-        )}
       </div>
+      <div className="flex flex-1 flex-col gap-2.5 p-3.5">
+        <div className="flex items-start justify-between gap-2">
+          <p
+            className="flex-1 truncate text-[14px] font-medium text-white"
+            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+            title={cleanDocumentTitle(doc.title, doc.file_name)}
+          >
+            {cleanDocumentTitle(doc.title, doc.file_name)}
+          </p>
+          <div className="flex items-center gap-1">
+            {onStarToggle && (
+              <button
+                type="button"
+                onClick={(event) => handleAction(event, onStarToggle)}
+                className={`h-7 w-7 shrink-0 rounded-full bg-transparent text-[0px] transition-colors ${
+                  doc.is_starred ? 'text-[#E9C46A]' : 'text-[#7A7A78] hover:text-[#E9C46A]'
+                }`}
+                title={doc.is_starred ? 'Unstar' : 'Star'}
+                aria-label={doc.is_starred ? 'Remove star' : 'Add star'}
+              >
+                <Star className="mx-auto h-4 w-4" fill={doc.is_starred ? 'currentColor' : 'none'} />
+              </button>
+            )}
+            <div className="flex items-center gap-1 pl-1 opacity-0 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <button
+                type="button"
+                onClick={(event) => handleAction(event, onCopy, () => {
+                  setIsCopying(true);
+                  setTimeout(() => setIsCopying(false), 2000);
+                })}
+                className={`flex h-7 w-7 items-center justify-center rounded-full border border-[#4A4A48]/80 bg-[#383836] text-[#C6C6C4] transition-colors hover:border-[#5C5C5A] hover:text-white ${
+                  isCopying ? 'text-green-400' : ''
+                }`}
+                title="Copy link"
+                aria-label="Copy document link"
+              >
+                {isCopying ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={(event) => handleAction(event, onDownload)}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-[#4A4A48]/80 bg-[#383836] text-[#C6C6C4] transition-colors hover:border-[#5C5C5A] hover:text-[#A8E6A1]"
+                title="Download"
+                aria-label="Download document"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(event) => handleAction(event, onDelete)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#4A4A48]/80 bg-[#383836] text-[#C6C6C4] transition-colors hover:border-[#5C5C5A] hover:text-[#F28482]"
+                  title="Delete"
+                  aria-label="Delete document"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
 
-      <span
-        className={`relative z-10 mt-3 inline-flex items-center rounded-md px-2 py-1 text-[10px] font-medium text-white transition-opacity duration-200 group-hover:opacity-60 group-focus-within:opacity-60 ${categoryBadge?.className ?? ''}`}
-        style={categoryBadge?.style}
-      >
-        {categoryBadge?.name || doc.category}
-      </span>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#7A7A78]">
+          {metadataItems.map((item, index) => (
+            <div key={`${item.label}-${index}`} className="flex items-center gap-2">
+              {index !== 0 && <span className="h-3 w-px bg-[#4A4A48]/50" />}
+              <span className={item.tone === 'danger' ? 'text-[#F28482]' : undefined}>{item.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="flex items-center justify-between gap-2 text-[12px] text-[#C2C0B6]"
+          title={assignedSummary || undefined}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5A4AE3] to-[#C784FF] text-[10px] font-semibold text-white">
+              {ownerInitial}
+            </div>
+            <span className="truncate">{ownerDisplayName}</span>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white ${
+              categoryBadge?.className ?? ''
+            }`}
+            style={categoryBadge?.style}
+          >
+            {(categoryBadge?.name || doc.category || '').toUpperCase() || 'UNCATEGORIZED'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
