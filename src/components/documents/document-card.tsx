@@ -118,7 +118,7 @@ export function DocumentCard({
 
   return (
     <div
-      className={`group relative mx-auto flex w-full max-w-[420px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
+      className={`group relative mx-auto flex w-full max-w-[460px] flex-col overflow-hidden rounded-[10px] border border-[#3A3A38] bg-[#30302E] shadow-sm transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#4A4A48] hover:shadow-lg focus-within:border-[#4A4A48] ${
         onOpen ? 'cursor-pointer' : ''
       }`}
       onClick={onOpen ? handleOpen : undefined}
