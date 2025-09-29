@@ -89,7 +89,8 @@ async function resolveOwnerAndShared(contact: UnifiedContact): Promise<{
   const sharedWith: string[] = [];
 
   if (resolvedUsers.length > 0) {
-    [ownerId, ...sharedWith] = resolvedUsers;
+    ownerId = resolvedUsers[0];
+    sharedWith.push(...resolvedUsers.slice(1));
   }
 
   if (!ownerId && contact.owner_id) {
