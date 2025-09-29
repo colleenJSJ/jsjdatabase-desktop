@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
 import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
+import {
+  syncPortalCredentialsForContact,
+  deletePortalCredentialsForContact,
+} from '@/app/api/_helpers/contact-portal-sync';
 
 export async function GET(
   request: NextRequest,
@@ -56,6 +60,11 @@ export async function PUT(
 
     const body = await request.json();
     const sanitized = sanitizeContactPayload(body);
+
+    let plainPortalPassword: string | null | undefined = undefined;
+    if (Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'portal_password')) {
+      plainPortalPassword = sanitized.portal_password ? sanitized.portal_password : null;
+    }
 
     const updateData: Record<string, unknown> = {
       name: sanitized.name,
@@ -116,6 +125,14 @@ export async function PUT(
       return NextResponse.json({ error: 'Failed to update contact' }, { status: 500 });
     }
 
+    try {
+      await syncPortalCredentialsForContact(contact as any, {
+        plainPassword: plainPortalPassword,
+      });
+    } catch (syncError) {
+      console.error('[Contacts API PUT] Failed to sync portal credentials', syncError);
+    }
+
     return NextResponse.json({ contact });
   } catch (error) {
     console.error('Error in PUT /api/contacts/[id]:', error);
@@ -151,7 +168,28 @@ export async function DELETE(
     // Get the contact to check creator from unified table
     const { data: contact, error: fetchError } = await supabase
       .from('contacts_unified')
-      .select('created_by')
+      .select(
+        `
+          id,
+          created_by,
+          module,
+          contact_type,
+          category,
+          source_type,
+          source_page,
+          source_id,
+          source_reference,
+          portal_url,
+          portal_username,
+          portal_password,
+          related_to,
+          assigned_entities,
+          patients,
+          pets,
+          owner_id,
+          shared_with
+        `
+      )
       .eq('id', id)
       .single();
 
@@ -165,6 +203,12 @@ export async function DELETE(
     // Check permissions
     if (userRecord.role !== 'admin' && contact.created_by !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    try {
+      await deletePortalCredentialsForContact(contact as any);
+    } catch (syncError) {
+      console.error('[Contacts API DELETE] Failed to remove portal credentials', syncError);
     }
 
     // Delete contact from unified table

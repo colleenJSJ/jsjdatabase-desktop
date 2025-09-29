@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
 import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
+import { syncPortalCredentialsForContact } from '@/app/api/_helpers/contact-portal-sync';
 
 export async function GET(request: NextRequest) {
   try {
@@ -101,6 +102,14 @@ export async function POST(request: NextRequest) {
         await logRlsDenied({ userId: user.id, error, endpoint: '/api/contacts', entityType: 'contact', page: 'household' });
       } catch {}
       return NextResponse.json({ error: 'Failed to create contact' }, { status: 500 });
+    }
+
+    try {
+      await syncPortalCredentialsForContact({
+        ...(contact as any),
+      }, { plainPassword: sanitized.portal_password ?? null });
+    } catch (syncError) {
+      console.error('[Contacts API POST] Failed to sync portal credentials', syncError);
     }
 
     return NextResponse.json({ contact }, { status: 201 });
