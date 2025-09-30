@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { X, Edit, Trash2, Lock } from 'lucide-react';
 import { CalendarEvent, CalendarEventCategory, User } from '@/lib/supabase/types';
 import { Category, CategoriesClient } from '@/lib/categories/categories-client';
-import { parseDateFlexible } from '@/lib/utils/date-utils';
+import { formatInTimeZone, parseDateFlexible } from '@/lib/utils/date-utils';
+import { usePreferences } from '@/contexts/preferences-context';
 import { CalendarSelector } from './CalendarSelector';
 import { RecentContactsAutocomplete } from '@/components/ui/recent-contacts-autocomplete';
 import { DateDisplay } from '@/components/ui/date-display';
@@ -27,6 +28,8 @@ export function ViewEditEventModal({
   onEventUpdated,
   onEventsChange,
 }: ViewEditEventModalProps) {
+  const { preferences } = usePreferences();
+  const eventTimezone = event?.timezone || event?.metadata?.timezone || preferences.timezone;
   // Initialize all hooks first (React rules of hooks - must be called in same order every render)
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(event?.title || '');
@@ -40,9 +43,14 @@ export function ViewEditEventModal({
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   });
-  const [startTime, setStartTime] = useState(
-    event?.start_time && !event?.all_day ? parseDateFlexible(event.start_time).toTimeString().slice(0, 5) : '12:00'
-  );
+  const [startTime, setStartTime] = useState(() => {
+    if (!event?.start_time || event?.all_day) return '12:00';
+    return formatInTimeZone(
+      event.start_time,
+      eventTimezone,
+      { hour: '2-digit', minute: '2-digit', hour12: false }
+    );
+  });
   const [endDate, setEndDate] = useState(() => {
     if (!event?.end_time) return '';
     const d = parseDateFlexible(event.end_time);
@@ -51,9 +59,14 @@ export function ViewEditEventModal({
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   });
-  const [endTime, setEndTime] = useState(
-    event?.end_time && !event?.all_day ? parseDateFlexible(event.end_time).toTimeString().slice(0, 5) : '13:00'
-  );
+  const [endTime, setEndTime] = useState(() => {
+    if (!event?.end_time || event?.all_day) return '13:00';
+    return formatInTimeZone(
+      event.end_time,
+      eventTimezone,
+      { hour: '2-digit', minute: '2-digit', hour12: false }
+    );
+  });
   const [allDay, setAllDay] = useState(event?.all_day || false);
   const [showTimeInputs, setShowTimeInputs] = useState(!event?.all_day);
   const [location, setLocation] = useState(event?.location || '');

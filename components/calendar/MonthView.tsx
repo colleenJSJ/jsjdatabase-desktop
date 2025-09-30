@@ -4,7 +4,7 @@ import { useState, useRef, useMemo, useCallback } from 'react';
 import { CalendarEvent, CalendarEventCategory } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { Plus } from 'lucide-react';
-import { parseDateFlexible, eventOverlapsDate, formatDateForStorage, getEventRangeLocal, getEventTimeZone, toInstantFromNaive, getZonedParts } from '@/lib/utils/date-utils';
+import { parseDateFlexible, eventOverlapsDate, formatDateForStorage, getEventRangeLocal, getEventTimeZone, getZonedParts } from '@/lib/utils/date-utils';
 import { usePreferences } from '@/contexts/preferences-context';
 import { getEventColor } from '@/lib/utils/event-colors';
 import { normalizeRichText } from '@/lib/utils/text';
@@ -88,7 +88,7 @@ export function MonthView({
   const vMonth = viewerParts.month; // 1-12
   // First of month (viewer tz midnight instant)
   const firstOfMonthNaive = `${vYear}-${String(vMonth).padStart(2,'0')}-01T00:00:00`;
-  const firstOfMonthInstant = toInstantFromNaive(firstOfMonthNaive, preferences.timezone);
+  const firstOfMonthInstant = toInstantFromEventString(firstOfMonthNaive, preferences.timezone);
   // Day of week for the first (0=Sun)
   const firstDayOfWeek = new Date(vYear, vMonth - 1, 1).getDay();
   // Days in viewer month
@@ -116,8 +116,8 @@ export function MonthView({
       events.forEach(event => {
         const evTz = getEventTimeZone(event, googleCalendars, calById);
         // Convert to true instants
-        const startInstant = toInstantFromNaive(event.start_time, evTz);
-        let endInstant = toInstantFromNaive(event.end_time, evTz);
+        const startInstant = toInstantFromEventString(event.start_time, evTz);
+        let endInstant = toInstantFromEventString(event.end_time, evTz);
 
         if (event.all_day) {
           endInstant = new Date(endInstant.getTime() - 1);
