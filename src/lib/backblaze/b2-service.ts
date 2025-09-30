@@ -9,9 +9,9 @@ interface B2FileUploadResponse {
 }
 
 export class BackblazeService {
-  private b2: any;
-  private bucketId: string;
-  private bucketName: string;
+  private b2?: any;
+  private bucketId?: string;
+  private bucketName?: string;
   private authToken: string | null = null;
   private downloadUrl: string | null = null;
   private uploadUrl: string | null = null;
@@ -19,14 +19,23 @@ export class BackblazeService {
 
   constructor() {
     const isProd = process.env.NODE_ENV === 'production';
+    const isBuild = process.env.NEXT_PHASE === 'phase-production-build';
+
     if (!isProd) {
       console.log('[B2] Initializing Backblaze service...');
       console.log('[B2] Environment check:', {
         hasKeyId: !!process.env.BACKBLAZE_KEY_ID,
         hasAppKey: !!process.env.BACKBLAZE_APPLICATION_KEY,
         hasBucketId: !!process.env.BACKBLAZE_BUCKET_ID,
-        hasBucketName: !!process.env.BACKBLAZE_BUCKET_NAME
+        hasBucketName: !!process.env.BACKBLAZE_BUCKET_NAME,
+        isBuild
       });
+    }
+
+    // Skip validation during build phase (Next.js pre-rendering)
+    if (isBuild) {
+      console.log('[B2] Skipping Backblaze init during build phase');
+      return;
     }
 
     if (!process.env.BACKBLAZE_KEY_ID || !process.env.BACKBLAZE_APPLICATION_KEY) {
@@ -41,11 +50,14 @@ export class BackblazeService {
       applicationKeyId: process.env.BACKBLAZE_KEY_ID,
       applicationKey: process.env.BACKBLAZE_APPLICATION_KEY,
     });
-    this.bucketId = process.env.BACKBLAZE_BUCKET_ID;
-    this.bucketName = process.env.BACKBLAZE_BUCKET_NAME;
+    this.bucketId = process.env.BACKBLAZE_BUCKET_ID!;
+    this.bucketName = process.env.BACKBLAZE_BUCKET_NAME!;
   }
 
   private async authorize() {
+    if (!this.b2) {
+      throw new Error('[B2] Service not initialized - missing credentials');
+    }
     const isProd = process.env.NODE_ENV === 'production';
     if (!isProd) console.log('[B2] Step 1: Authorizing with Backblaze...');
     try {
