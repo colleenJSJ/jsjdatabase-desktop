@@ -149,3 +149,4 @@ next-env.d.ts
 
 # Misc
 coverage
+.env.production.local
