@@ -14,8 +14,8 @@ jobs:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
       SKIP_AUTO_UPDATE: '1'
       # Dummy values for build phase (not used at runtime)
-      NEXT_PUBLIC_SUPABASE_URL: 'https://placeholder.supabase.co'
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'placeholder-key-for-build'
+      NEXT_PUBLIC_SUPABASE_URL: 'https://xxxxxxxxxxxxxxxxxxxx.supabase.co'
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTg0MDAsImV4cCI6MTk2MDc3NDQwMH0.placeholder'
       BACKBLAZE_KEY_ID: 'placeholder'
       BACKBLAZE_APPLICATION_KEY: 'placeholder'
       BACKBLAZE_BUCKET_ID: 'placeholder'
