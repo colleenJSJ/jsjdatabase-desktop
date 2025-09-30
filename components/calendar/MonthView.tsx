@@ -4,7 +4,7 @@ import { useState, useRef, useMemo, useCallback } from 'react';
 import { CalendarEvent, CalendarEventCategory } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { Plus } from 'lucide-react';
-import { parseDateFlexible, eventOverlapsDate, formatDateForStorage, getEventRangeLocal, getEventTimeZone, getZonedParts } from '@/lib/utils/date-utils';
+import { parseDateFlexible, eventOverlapsDate, formatDateForStorage, getEventRangeLocal, getEventTimeZone, getZonedParts, toInstantFromEventString } from '@/lib/utils/date-utils';
 import { usePreferences } from '@/contexts/preferences-context';
 import { getEventColor } from '@/lib/utils/event-colors';
 import { normalizeRichText } from '@/lib/utils/text';
