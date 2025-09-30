@@ -159,8 +159,25 @@ function createWindow() {
     title: 'Family Office'
   })
 
-  const url = isDev ? 'http://localhost:3007' : 'https://app.familyoffice.com'
-  mainWindow.loadURL(url)
+  // Start local Next.js server in production
+  if (!isDev) {
+    const { createServer } = require('http')
+    const next = require('next')
+    const nextApp = next({ dev: false, dir: path.join(__dirname, '..') })
+    const handle = nextApp.getRequestHandler()
+
+    nextApp.prepare().then(() => {
+      const server = createServer((req, res) => handle(req, res))
+      server.listen(0, 'localhost', () => {
+        const port = server.address().port
+        mainWindow.loadURL(`http://localhost:${port}`)
+      })
+    }).catch((err) => {
+      console.error('[Electron] Failed to start Next.js server:', err)
+    })
+  } else {
+    mainWindow.loadURL('http://localhost:3007')
+  }
 
   mainWindow.once('ready-to-show', () => {
     if (!mainWindow) return
