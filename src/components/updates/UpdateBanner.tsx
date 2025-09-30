@@ -93,8 +93,8 @@ export function UpdateBanner() {
       }) ?? (() => {})
     );
 
-    // Kick off an initial check
-    updates.checkForUpdates?.().catch(() => {});
+    // Don't kick off automatic check - main.js already does this silently on startup
+    // Only show UI if an update is actually available or if user manually checks
 
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe && unsubscribe());

@@ -37,11 +37,18 @@ function initializeAutoUpdater() {
 
   autoUpdater.on('error', (error) => {
     console.error('[Electron] Auto-updater error', error)
-    sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'There was a problem checking for updates.' })
+    // Only show error in UI if user manually triggered check, not on automatic checks
+    // Don't send error to renderer for silent background checks
   })
 
   autoUpdater.on('update-available', (info) => {
+    console.log('[Electron] Update available:', info)
     sendToRenderer(UPDATE_CHANNELS.AVAILABLE, info)
+  })
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[Electron] No update available, already on latest version')
+    // Don't send anything to renderer - no need to show UI
   })
 
   autoUpdater.on('download-progress', (progress) => {
