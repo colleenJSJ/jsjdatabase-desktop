@@ -69,6 +69,9 @@ web_modules/
 .env.test.local
 .env.production.local
 
+# MCP configuration (contains credentials)
+.mcp.json
+
 # Parcel/Vite caches
 .cache
 .parcel-cache
