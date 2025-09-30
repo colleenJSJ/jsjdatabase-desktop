@@ -165,6 +165,20 @@ function createWindow() {
   if (!isDev) {
     const { createServer } = require('http')
 
+    // Load environment variables from .env file
+    const envPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'app', '.env')
+      : path.join(__dirname, '..', '.env.production.local')
+
+    console.log('[Electron] Loading environment from:', envPath)
+
+    if (require('fs').existsSync(envPath)) {
+      require('dotenv').config({ path: envPath })
+      console.log('[Electron] Environment variables loaded')
+    } else {
+      console.warn('[Electron] Warning: .env file not found at', envPath)
+    }
+
     // Use standalone Next.js server (doesn't require npm)
     const appPath = app.isPackaged
       ? path.join(process.resourcesPath, 'app', '.next', 'standalone')

@@ -60,5 +60,22 @@ jobs:
       - name: Build application
         run: NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
+      - name: Create runtime .env file for packaged app
+        run: |
+          cat > .env << EOF
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKBLAZE_KEY_ID=${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY=${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_BUCKET_ID=${{ secrets.BACKBLAZE_BUCKET_ID }}
+          BACKBLAZE_BUCKET_NAME=${{ secrets.BACKBLAZE_BUCKET_NAME }}
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          EOF
+
       - name: Package desktop app (macOS)
         run: npx electron-builder --publish always --mac dmg
