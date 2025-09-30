@@ -21,16 +21,23 @@ export function parseLocalDate(dateString: string): Date {
  * - If no timezone is present, treat as local wall-clock.
  */
 export function parseDateFlexible(dateString: string): Date {
-  // For calendar UI rendering, always interpret timestamps as local wall-clock
-  // to avoid shifts when a trailing timezone accidentally sneaks in. This
-  // aligns with our storage convention (naive local strings).
   if (!dateString) return new Date(NaN);
-  let s = dateString.trim();
-  // Strip any trailing timezone markers (Z or +/-hh:mm)
-  s = s.replace(/(Z|[+-]\d{2}:?\d{2})$/i, '');
-  // Ensure seconds
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) s += ':00';
-  return new Date(s);
+  const trimmed = dateString.trim();
+
+  // If the input contains an explicit timezone or Z suffix, respect it so the
+  // resulting Date represents the real instant in time (critical for Google
+  // Calendar events which include offsets like -04:00).
+  if (/(Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)) {
+    return new Date(trimmed);
+  }
+
+  // Otherwise treat it as a local wall-clock value (the format we store in the
+  // database). Ensure seconds are present for stable parsing across browsers.
+  let normalized = trimmed;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)) {
+    normalized += ':00';
+  }
+  return new Date(normalized);
 }
 
 /**

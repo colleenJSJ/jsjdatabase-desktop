@@ -136,6 +136,20 @@ export class SyncService {
           payload.meeting_link = (input as any).virtual_link;
         }
         delete payload.virtual_link;
+        // Ensure we persist wall-clock strings with timezone offsets intact.
+        const normalizeDateTime = (value: any) => {
+          if (typeof value !== 'string') return value;
+          const trimmed = value.trim();
+          if (/(Z|[+-]\d{2}:\d{2})$/i.test(trimmed)) {
+            // Keep offset; add seconds if missing
+            return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)
+              ? `${trimmed}:00`
+              : trimmed;
+          }
+          return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed) ? `${trimmed}:00` : trimmed;
+        };
+        payload.start_time = normalizeDateTime(payload.start_time);
+        payload.end_time = normalizeDateTime(payload.end_time);
         // Ensure created_by is set for RLS/ownership
         if (currentUserId && !payload.created_by) {
           payload.created_by = currentUserId;

@@ -139,19 +139,19 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Normalize incoming times: strip trailing zone markers and ensure seconds
-    const stripZone = (s: string) => s.replace(/(Z|[+-]\d{2}:?\d{2})$/, '');
+    // Normalize incoming times: ensure seconds but preserve explicit timezone offsets
     const ensureSeconds = (s: string) => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s) ? `${s}:00` : s);
-    if (typeof event.start_time === 'string') {
-      const before = event.start_time;
-      event.start_time = ensureSeconds(stripZone(event.start_time));
-      if (before !== event.start_time) console.log('[Calendar API POST] Normalized start_time', { before, after: event.start_time });
-    }
-    if (typeof event.end_time === 'string') {
-      const before = event.end_time;
-      event.end_time = ensureSeconds(stripZone(event.end_time));
-      if (before !== event.end_time) console.log('[Calendar API POST] Normalized end_time', { before, after: event.end_time });
-    }
+    const normalizeDateTime = (value: any) => {
+      if (typeof value !== 'string') return value;
+      const trimmed = value.trim();
+      if (/(Z|[+-]\d{2}:\d{2})$/i.test(trimmed)) {
+        const withSeconds = ensureSeconds(trimmed.replace(/:([0-9]{2})$/, ':$1:00'));
+        return withSeconds;
+      }
+      return ensureSeconds(trimmed);
+    };
+    event.start_time = normalizeDateTime(event.start_time);
+    event.end_time = normalizeDateTime(event.end_time);
 
     // Normalize end_time based on event type and category
     let finalEndTime = event.end_time;

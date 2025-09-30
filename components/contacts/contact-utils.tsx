@@ -158,7 +158,7 @@ export const DEFAULT_SECTION_CLASS =
   'space-y-1 text-sm text-text-muted border border-white/5 rounded-lg bg-background-tertiary/40 p-3';
 
 export const CONTACT_CARD_CLASS =
-  'group relative overflow-hidden rounded-2xl border border-white/8 bg-[#30302e] p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/12 hover:bg-[#353533] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]';
+  'group relative overflow-hidden rounded-[10px] border border-[#3a3a38] bg-[#30302e] p-5 transition-all duration-200 hover:border-[#4a4a48]';
 
 export const ACTION_BUTTON_CLASS =
-  'inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-transparent text-text-muted transition hover:border-white/20 hover:text-white';
+  'inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/5 text-[#C2C0B6] transition-all hover:bg-white/10 hover:text-white';

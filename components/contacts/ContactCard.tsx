@@ -5,6 +5,7 @@ import {
   Copy,
   CopyCheck,
   Edit2,
+  Eye,
   Globe,
   Mail,
   MapPin,
@@ -62,18 +63,18 @@ type DetailRowProps = {
 
 const DetailRow = ({ icon, value, href, secondary }: DetailRowProps) => {
   const content = (
-    <div className="flex items-start gap-3">
-      <span className="flex h-5 w-5 flex-none items-center justify-center text-text-muted">
+    <div className="flex items-center gap-2.5">
+      <span className="flex h-4 w-4 flex-none items-center justify-center text-[#7A7A78]">
         {icon}
       </span>
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="text-sm font-medium leading-snug text-white/90 break-words">{value}</div>
-        {secondary ? <div className="text-xs text-text-muted/60">{secondary}</div> : null}
+      <div className="flex-1 min-w-0">
+        <div className="text-sm leading-snug text-[#C2C0B6] break-words">{value}</div>
+        {secondary ? <div className="text-xs text-text-muted/60 mt-0.5">{secondary}</div> : null}
       </div>
     </div>
   );
 
-  if (!href) return <div className="px-1 py-2">{content}</div>;
+  if (!href) return <div className="py-2.5">{content}</div>;
 
   const isExternal = /^https?:/i.test(href);
   return (
@@ -81,7 +82,7 @@ const DetailRow = ({ icon, value, href, secondary }: DetailRowProps) => {
       href={href}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noopener noreferrer' : undefined}
-      className="block px-1 py-2 transition hover:bg-white/10"
+      className="block py-2.5 transition hover:opacity-80"
     >
       {content}
     </a>
@@ -186,6 +187,7 @@ export function ContactCard({
         id: 'address-' + address,
         icon: <MapPin className="h-3.5 w-3.5" />,
         value: <span>{address}</span>,
+        href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`,
       });
     });
 
@@ -231,66 +233,80 @@ export function ContactCard({
 
   return (
     <div className={CONTACT_CARD_CLASS}>
-      <div className="relative z-10 flex flex-col gap-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-semibold leading-tight text-text-primary">
-                {contact.name || 'Untitled Contact'}
-              </h3>
-              {showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function' ? (
-                <button
-                  type="button"
-                  onClick={handleFavoriteToggle}
-                  className="text-text-muted transition hover:text-yellow-300"
-                  aria-label={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                >
-                  {renderFavoriteIcon(isFavorite)}
-                </button>
-              ) : null}
-            </div>
-            {subtitle ? <p className="text-sm text-text-muted/75">{subtitle}</p> : null}
-            <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted/80">
-              <span className="rounded-full border border-white/10 px-3 py-1 font-medium text-text-muted/80">
-                From {categoryVisual.label}
-              </span>
-              {secondaryBadges.map(renderBadge)}
-              {extraContent}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={handleCopyAll} className={ACTION_BUTTON_CLASS} title="Copy contact details">
-              {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
-            </button>
-            {canManage && (
-              <>
-                <button type="button" onClick={actionConfig?.onEdit} className={ACTION_BUTTON_CLASS} title="Edit contact">
-                  <Edit2 className="h-4 w-4" />
-                </button>
-                <button type="button" onClick={actionConfig?.onDelete} className={ACTION_BUTTON_CLASS} title="Delete contact">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </>
-            )}
-            {actionConfig?.onOpenDetails ? (
-              <button type="button" onClick={actionConfig.onOpenDetails} className={ACTION_BUTTON_CLASS} title="Open details">
-                <MoreHorizontal className="h-4 w-4" />
+      {/* Header with name and actions */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-lg font-semibold text-white">
+              {contact.name || 'Untitled Contact'}
+            </h3>
+            {showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function' ? (
+              <button
+                type="button"
+                onClick={handleFavoriteToggle}
+                className="text-text-muted transition hover:text-yellow-300 flex-shrink-0"
+                aria-label={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+              >
+                {renderFavoriteIcon(isFavorite)}
               </button>
             ) : null}
           </div>
+          <div className="text-xs text-[#7A7A78]">
+            From {categoryVisual.label}
+          </div>
         </div>
 
-        {showDetailColumn ? (
-          <div className="space-y-1 text-sm text-text-muted">
-            {detailRows.map(row => (
-              <DetailRow key={row.id} icon={row.icon} value={row.value} href={row.href} secondary={row.secondary} />
-            ))}
-          </div>
-        ) : null}
-
-        {footerContent}
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={handleCopyAll} className={ACTION_BUTTON_CLASS} title="Copy contact details">
+            {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+          </button>
+          {canManage && (
+            <>
+              <button type="button" onClick={actionConfig?.onEdit} className={ACTION_BUTTON_CLASS} title="Edit contact">
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button type="button" onClick={actionConfig?.onDelete} className={ACTION_BUTTON_CLASS} title="Delete contact">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          {actionConfig?.onOpenDetails ? (
+            <button type="button" onClick={actionConfig.onOpenDetails} className={ACTION_BUTTON_CLASS} title="View details">
+              <Eye className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
+
+      {/* Subtitle if provided */}
+      {subtitle ? <p className="text-sm text-text-muted/75 mb-3">{subtitle}</p> : null}
+
+      {/* Tags/badges section */}
+      {(secondaryBadges.length > 0 || extraContent) && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          {secondaryBadges.map(badge => (
+            <span
+              key={badge.id}
+              className="inline-flex items-center gap-1 rounded-xl bg-[#262625] px-2.5 py-1 text-xs text-[#C2C0B6]"
+            >
+              {badge.icon}
+              {badge.label}
+            </span>
+          ))}
+          {extraContent}
+        </div>
+      )}
+
+      {/* Contact details */}
+      {showDetailColumn ? (
+        <div className="space-y-0">
+          {detailRows.map(row => (
+            <DetailRow key={row.id} icon={row.icon} value={row.value} href={row.href} secondary={row.secondary} />
+          ))}
+        </div>
+      ) : null}
+
+      {footerContent}
     </div>
   );
 }

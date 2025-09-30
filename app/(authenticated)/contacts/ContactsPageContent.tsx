@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Plus, Filter, Users, Grid3X3, List as ListIcon } from 'lucide-react';
+import { Search, Plus, Filter, Users, Grid3X3, List as ListIcon, Mail, Phone, MapPin, Edit2, Trash2, Eye, Star, Copy, CopyCheck } from 'lucide-react';
 
 import { ContactCard } from '@/components/contacts/ContactCard';
 import {
@@ -592,8 +592,30 @@ export default function ContactsPageContent() {
           {filteredContacts.map(contact => renderContactCard(contact, 'auto'))}
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredContacts.map(contact => renderContactCard(contact, 'compact'))}
+        <div className="bg-background-secondary border border-gray-600/30 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-900 border-b border-gray-600/30">
+              <tr>
+                <th className="text-left px-4 py-3 text-text-primary font-semibold">Name</th>
+                <th className="text-left px-4 py-3 text-text-primary font-semibold">Contact Info</th>
+                <th className="text-left px-4 py-3 text-text-primary font-semibold">Category</th>
+                <th className="text-left px-4 py-3 text-text-primary font-semibold">Related To</th>
+                <th className="text-left px-4 py-3 text-text-primary font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-600/30">
+              {filteredContacts.map(contact => (
+                <ContactListItem
+                  key={contact.id}
+                  contact={contact}
+                  familyMembers={familyMembers}
+                  onEdit={() => handleEdit(contact)}
+                  onDelete={() => handleDelete(contact.id)}
+                  onView={() => setViewingContact(contact)}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -640,3 +662,195 @@ const renderContactChips = (names: string[]) => (
     ))}
   </div>
 );
+
+// List view component
+function ContactListItem({
+  contact,
+  familyMembers,
+  onEdit,
+  onDelete,
+  onView,
+}: {
+  contact: ContactRecord;
+  familyMembers: FamilyMember[];
+  onEdit: () => void;
+  onDelete: () => void;
+  onView: () => void;
+}) {
+  const [isFavorite, setIsFavorite] = useState(contact.is_favorite || false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState(false);
+
+  const emails = resolveEmails(contact);
+  const phones = resolvePhones(contact);
+  const addresses = resolveAddresses(contact);
+  const initial = contact.name?.charAt(0).toUpperCase() || '?';
+
+  const relatedFamilyMembers = useMemo(() => {
+    if (!Array.isArray(contact.related_to)) return [];
+    return contact.related_to
+      .map(id => familyMembers.find(fm => fm.id === id))
+      .filter(Boolean)
+      .map(fm => fm!.name);
+  }, [contact.related_to, familyMembers]);
+
+  const copyToClipboard = async (text: string, type: 'email' | 'phone') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (type === 'email') {
+        setCopiedEmail(true);
+        setTimeout(() => setCopiedEmail(false), 2000);
+      } else {
+        setCopiedPhone(true);
+        setTimeout(() => setCopiedPhone(false), 2000);
+      }
+    } catch (error) {
+      console.error('Copy failed:', error);
+    }
+  };
+
+  return (
+    <tr className="hover:bg-gray-800/40 transition-colors">
+      {/* Name column */}
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onEdit}
+                className="text-left text-sm font-semibold text-text-primary truncate hover:text-blue-400 transition-colors"
+                title={contact.name}
+              >
+                {contact.name || 'Untitled Contact'}
+              </button>
+              <button
+                onClick={() => setIsFavorite(!isFavorite)}
+                className={`p-1 rounded transition-colors ${isFavorite ? 'text-yellow-500' : 'text-text-muted hover:text-yellow-500'}`}
+                title={isFavorite ? 'Unfavorite' : 'Favorite'}
+              >
+                <Star className="h-4 w-4" fill={isFavorite ? 'currentColor' : 'none'} />
+              </button>
+            </div>
+            {contact.company && (
+              <div className="text-xs text-text-muted truncate" title={contact.company}>
+                {contact.company}
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+
+      {/* Contact Info column */}
+      <td className="px-4 py-3">
+        <div className="space-y-1.5 text-sm">
+          {emails.length > 0 && (
+            <div className="flex items-center gap-2 text-text-primary group/email">
+              <Mail className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
+              <a
+                href={`mailto:${emails[0]}`}
+                className="truncate hover:text-blue-400 transition-colors"
+                title={emails[0]}
+              >
+                {emails[0]}
+              </a>
+              <button
+                onClick={() => copyToClipboard(emails[0], 'email')}
+                className={`opacity-0 group-hover/email:opacity-100 transition-opacity text-text-muted hover:text-text-primary ${copiedEmail ? 'text-green-500 opacity-100' : ''}`}
+                title="Copy email"
+              >
+                {copiedEmail ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )}
+          {phones.length > 0 && (
+            <div className="flex items-center gap-2 text-text-primary group/phone">
+              <Phone className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
+              <a
+                href={`tel:${phones[0]}`}
+                className="truncate hover:text-blue-400 transition-colors"
+                title={phones[0]}
+              >
+                {phones[0]}
+              </a>
+              <button
+                onClick={() => copyToClipboard(phones[0], 'phone')}
+                className={`opacity-0 group-hover/phone:opacity-100 transition-opacity text-text-muted hover:text-text-primary ${copiedPhone ? 'text-green-500 opacity-100' : ''}`}
+                title="Copy phone"
+              >
+                {copiedPhone ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )}
+          {addresses.length > 0 && (
+            <div className="flex items-center gap-2 text-text-muted">
+              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addresses[0])}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="truncate hover:text-blue-400 transition-colors text-xs"
+                title={addresses[0]}
+              >
+                {addresses[0]}
+              </a>
+            </div>
+          )}
+        </div>
+      </td>
+
+      {/* Category column */}
+      <td className="px-4 py-3">
+        <span className="inline-block px-2.5 py-1 rounded-xl bg-[#262625] text-xs text-[#C2C0B6]">
+          {contact.category || 'General'}
+        </span>
+      </td>
+
+      {/* Related To column */}
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap gap-1">
+          {relatedFamilyMembers.length > 0 ? (
+            relatedFamilyMembers.slice(0, 2).map(name => (
+              <span key={name} className="inline-block px-2 py-0.5 rounded-lg bg-white/5 text-xs text-text-muted">
+                {name}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-text-muted">—</span>
+          )}
+          {relatedFamilyMembers.length > 2 && (
+            <span className="inline-block px-2 py-0.5 text-xs text-text-muted">
+              +{relatedFamilyMembers.length - 2}
+            </span>
+          )}
+        </div>
+      </td>
+
+      {/* Actions column */}
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onView}
+            className="p-1.5 rounded-md bg-white/5 text-[#C2C0B6] hover:bg-white/10 hover:text-white transition-all"
+            title="View details"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onEdit}
+            className="p-1.5 rounded-md bg-white/5 text-[#C2C0B6] hover:bg-white/10 hover:text-white transition-all"
+            title="Edit contact"
+          >
+            <Edit2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-md bg-white/5 text-[#C2C0B6] hover:bg-white/10 hover:text-red-400 transition-all"
+            title="Delete contact"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
