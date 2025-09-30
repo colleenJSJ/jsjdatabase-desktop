@@ -164,9 +164,9 @@ function createWindow() {
     const { createServer } = require('http')
     const next = require('next')
 
-    // Use process.resourcesPath for packaged app (handles ASAR unpacking)
+    // Use process.resourcesPath for packaged app (no ASAR)
     const appPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'app.asar.unpacked')
+      ? path.join(process.resourcesPath, 'app')
       : path.join(__dirname, '..')
 
     const nextApp = next({ dev: false, dir: appPath })

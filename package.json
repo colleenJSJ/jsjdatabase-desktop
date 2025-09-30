@@ -91,12 +91,7 @@
   "build": {
     "appId": "com.familyoffice.desktop",
     "productName": "JSJ Database",
-    "asar": true,
-    "asarUnpack": [
-      ".next/**/*",
-      "node_modules/next/**/*",
-      "node_modules/sharp/**/*"
-    ],
+    "asar": false,
     "directories": {
       "output": "dist",
       "buildResources": "electron/resources"
