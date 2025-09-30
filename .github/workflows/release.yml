@@ -16,10 +16,15 @@ jobs:
       # Dummy values for build phase (not used at runtime)
       NEXT_PUBLIC_SUPABASE_URL: 'https://xxxxxxxxxxxxxxxxxxxx.supabase.co'
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTg0MDAsImV4cCI6MTk2MDc3NDQwMH0.placeholder'
+      SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTY0NTE5ODQwMCwiZXhwIjoxOTYwNzc0NDAwfQ.placeholder'
       BACKBLAZE_KEY_ID: 'placeholder'
       BACKBLAZE_APPLICATION_KEY: 'placeholder'
       BACKBLAZE_BUCKET_ID: 'placeholder'
       BACKBLAZE_BUCKET_NAME: 'placeholder'
+      ANTHROPIC_API_KEY: 'sk-ant-placeholder'
+      GOOGLE_CLIENT_ID: 'placeholder.apps.googleusercontent.com'
+      GOOGLE_CLIENT_SECRET: 'placeholder'
+      GOOGLE_REDIRECT_URI: 'http://localhost:3000/api/auth/callback/google'
 
     steps:
       - name: Checkout

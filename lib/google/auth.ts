@@ -1,10 +1,21 @@
 import { google } from 'googleapis';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy initialization to avoid build-time errors
+let supabase: ReturnType<typeof createClient> | null = null;
+
+function getSupabase() {
+  if (!supabase) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error('Missing Supabase environment variables');
+    }
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+  return supabase;
+}
 
 export class GoogleAuthService {
   private oauth2Client: any;
@@ -22,7 +33,7 @@ export class GoogleAuthService {
    */
   async getAuthenticatedClient(userId: string) {
     // Get stored tokens
-    const { data: tokenData, error: tokenError } = await supabase
+    const { data: tokenData, error: tokenError } = await getSupabase()
       .from('user_google_tokens')
       .select('*')
       .eq('user_id', userId)
@@ -51,7 +62,7 @@ export class GoogleAuthService {
         const { credentials } = await this.oauth2Client.refreshAccessToken();
         
         // Update stored tokens
-        const { error: updateError } = await supabase
+        const { error: updateError } = await getSupabase()
           .from('user_google_tokens')
           .update({
             access_token: credentials.access_token!,
@@ -86,7 +97,7 @@ export class GoogleAuthService {
    * Check if user has valid OAuth tokens
    */
   async hasValidTokens(userId: string): Promise<boolean> {
-    const { data: tokenData, error } = await supabase
+    const { data: tokenData, error } = await getSupabase()
       .from('user_google_tokens')
       .select('expires_at')
       .eq('user_id', userId)
@@ -110,7 +121,7 @@ export class GoogleAuthService {
   async revokeTokens(userId: string): Promise<void> {
     try {
       // Get stored tokens
-      const { data: tokenData, error: tokenError } = await supabase
+      const { data: tokenData, error: tokenError } = await getSupabase()
         .from('user_google_tokens')
         .select('access_token')
         .eq('user_id', userId)
@@ -122,7 +133,7 @@ export class GoogleAuthService {
       }
 
       // Delete from database
-      await supabase
+      await getSupabase()
         .from('user_google_tokens')
         .delete()
         .eq('user_id', userId);
