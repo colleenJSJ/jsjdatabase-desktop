@@ -162,34 +162,41 @@ function createWindow() {
   // Start local Next.js server in production
   if (!isDev) {
     const { createServer } = require('http')
-    const next = require('next')
 
-    // Use process.resourcesPath for packaged app (no ASAR)
+    // Use standalone Next.js server (doesn't require npm)
     const appPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'app')
-      : path.join(__dirname, '..')
+      ? path.join(process.resourcesPath, 'app', '.next', 'standalone')
+      : path.join(__dirname, '..', '.next', 'standalone')
 
-    const nextApp = next({ dev: false, dir: appPath })
-    const handle = nextApp.getRequestHandler()
+    const serverPath = path.join(appPath, 'server.js')
 
-    console.log('[Electron] Starting Next.js server in production mode...')
+    console.log('[Electron] Starting Next.js standalone server...')
     console.log('[Electron] App packaged:', app.isPackaged)
-    console.log('[Electron] Next.js dir:', appPath)
+    console.log('[Electron] Server path:', serverPath)
 
-    nextApp.prepare().then(() => {
-      console.log('[Electron] Next.js prepared successfully')
-      const server = createServer((req, res) => handle(req, res))
-      server.listen(0, 'localhost', () => {
-        const port = server.address().port
-        console.log('[Electron] Next.js server listening on port:', port)
+    try {
+      // Set NODE_ENV and hostname for Next.js standalone
+      process.env.NODE_ENV = 'production'
+      process.env.HOSTNAME = 'localhost'
+
+      // Start the standalone server
+      const nextServer = require(serverPath)
+
+      // The standalone server automatically starts on a port
+      // We need to find which port and load it
+      setTimeout(() => {
+        // Standalone server runs on port 3000 by default
+        const port = process.env.PORT || 3000
+        console.log('[Electron] Next.js server should be on port:', port)
         mainWindow.loadURL(`http://localhost:${port}`)
-      })
-    }).catch((err) => {
+      }, 2000)
+
+    } catch (err) {
       console.error('[Electron] Failed to start Next.js server:', err)
       // Show window anyway with error message
       mainWindow.show()
-      mainWindow.loadURL(`data:text/html,<html><body><h1>Error starting application</h1><pre>${err.message}</pre></body></html>`)
-    })
+      mainWindow.loadURL(`data:text/html,<html><body><h1>Error starting application</h1><pre>${err.message}</pre><pre>${err.stack}</pre></body></html>`)
+    }
   } else {
     mainWindow.loadURL('http://localhost:3007')
   }

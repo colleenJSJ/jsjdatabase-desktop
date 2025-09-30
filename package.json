@@ -98,11 +98,10 @@
     },
     "files": [
       "electron/**/*",
-      ".next/**/*",
+      ".next/standalone/**/*",
+      ".next/static/**/*",
       "public/**/*",
-      "package.json",
-      "next.config.ts",
-      "node_modules/next/**/*"
+      "package.json"
     ],
     "extraMetadata": {
       "main": "electron/main.js"
