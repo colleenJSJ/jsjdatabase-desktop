@@ -229,9 +229,8 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     if (!mainWindow) return
     mainWindow.show()
-    if (isDev) {
-      mainWindow.webContents.openDevTools({ mode: 'detach' })
-    }
+    // Always open DevTools for now (debugging)
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   })
 
   // Fallback: show window after 10 seconds if still not shown
