@@ -45,14 +45,14 @@ export class GoogleAuthService {
 
     // Set credentials
     this.oauth2Client.setCredentials({
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
+      access_token: tokenData.access_token as string,
+      refresh_token: tokenData.refresh_token as string,
       token_type: 'Bearer',
-      expiry_date: new Date(tokenData.expires_at).getTime()
+      expiry_date: new Date(tokenData.expires_at as string).getTime()
     });
 
     // Check if token is expired or will expire in next 5 minutes
-    const expiryDate = new Date(tokenData.expires_at);
+    const expiryDate = new Date(tokenData.expires_at as string);
     const now = new Date();
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
 
@@ -107,9 +107,9 @@ export class GoogleAuthService {
       return false;
     }
 
-    const expiryDate = new Date(tokenData.expires_at);
+    const expiryDate = new Date(tokenData.expires_at as string);
     const now = new Date();
-    
+
     // Consider valid if not expired and has at least 5 minutes left
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
     return expiryDate > fiveMinutesFromNow;
@@ -129,7 +129,7 @@ export class GoogleAuthService {
 
       if (!tokenError && tokenData?.access_token) {
         // Revoke token with Google
-        await this.oauth2Client.revokeToken(tokenData.access_token);
+        await this.oauth2Client.revokeToken(tokenData.access_token as string);
       }
 
       // Delete from database
