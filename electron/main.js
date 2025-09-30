@@ -69,6 +69,16 @@ function initializeAutoUpdater() {
           // Don't show error in UI for automatic checks
         })
     }, 10000) // Wait 10 seconds to let app load first
+
+    // Check for updates every 6 hours while app is running
+    setInterval(() => {
+      console.log('[Electron] Periodic update check...')
+      autoUpdater
+        .checkForUpdates()
+        .catch((error) => {
+          console.error('[Electron] Periodic update check failed', error)
+        })
+    }, 6 * 60 * 60 * 1000) // 6 hours
   }
 }
 

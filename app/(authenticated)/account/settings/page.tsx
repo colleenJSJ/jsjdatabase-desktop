@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useUser } from '@/contexts/user-context';
-import { Shield, Smartphone, Lock, Mail, Trash2, CheckCircle, Palette, Sun, Moon, Eye, EyeOff, User, Clock, ShieldCheck, RefreshCw, Edit2, Save, X } from 'lucide-react';
+import { Shield, Smartphone, Lock, Mail, Trash2, CheckCircle, Palette, Sun, Moon, Eye, EyeOff, User, Clock, ShieldCheck, RefreshCw, Edit2, Save, X, Download } from 'lucide-react';
+import { isElectronEnvironment } from '@/lib/is-electron';
 import { TrustedDevice } from '@/lib/supabase/types';
 
 export default function AccountSettingsPage() {
@@ -42,9 +43,14 @@ export default function AccountSettingsPage() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [showTwoFactorSetup, setShowTwoFactorSetup] = useState(false);
 
+  // App version and update state (Electron only)
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  const [updateCheckMessage, setUpdateCheckMessage] = useState<string | null>(null);
+
   useEffect(() => {
     fetchTrustedDevices();
-    
+
     // Load theme from localStorage
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
     if (savedTheme) {
@@ -52,11 +58,11 @@ export default function AccountSettingsPage() {
       document.documentElement.classList.toggle('dark', savedTheme === 'dark');
       document.documentElement.classList.toggle('light', savedTheme === 'light');
     }
-    
+
     // Load session timeout from localStorage
     const savedTimeout = localStorage.getItem('sessionTimeout') || '1';
     setSessionTimeout(savedTimeout);
-    
+
     // Update profile form when user data changes
     if (user) {
       setProfileForm({
@@ -64,6 +70,13 @@ export default function AccountSettingsPage() {
         email: user.email || '',
         phone: user.phone || ''
       });
+    }
+
+    // Get app version if in Electron
+    if (isElectronEnvironment() && window.electron?.updates?.getCurrentVersion) {
+      window.electron.updates.getCurrentVersion().then((version) => {
+        if (version) setAppVersion(version);
+      }).catch(() => {});
     }
   }, [user]);
 
@@ -185,6 +198,33 @@ export default function AccountSettingsPage() {
     document.documentElement.classList.toggle('dark', newTheme === 'dark');
     document.documentElement.classList.toggle('light', newTheme === 'light');
     setSuccess(`Theme changed to ${newTheme} mode`);
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (!isElectronEnvironment() || !window.electron?.updates?.checkForUpdates) {
+      return;
+    }
+
+    setCheckingForUpdates(true);
+    setUpdateCheckMessage(null);
+
+    try {
+      const result = await window.electron.updates.checkForUpdates();
+      if (result && 'ok' in result) {
+        if (result.ok) {
+          setUpdateCheckMessage('Checking for updates...');
+        } else {
+          setUpdateCheckMessage('No updates available. You are on the latest version!');
+        }
+      }
+    } catch (error) {
+      setUpdateCheckMessage('Unable to check for updates. Please try again later.');
+    } finally {
+      setTimeout(() => {
+        setCheckingForUpdates(false);
+        setTimeout(() => setUpdateCheckMessage(null), 5000);
+      }, 1000);
+    }
   };
 
   return (
@@ -769,6 +809,52 @@ export default function AccountSettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* App Updates Section - Only in Electron */}
+          {isElectronEnvironment() && (
+            <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <Download className="h-5 w-5 text-primary-500" />
+                <h2 className="text-lg font-medium text-white">Desktop App Updates</h2>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-sm text-neutral-400">
+                  Stay up to date with the latest features and improvements
+                </p>
+
+                {appVersion && (
+                  <div className="flex items-center justify-between p-4 bg-neutral-700/50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-white">Current Version</p>
+                      <p className="text-xs text-neutral-400 mt-1 font-mono">{appVersion}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCheckForUpdates}
+                    disabled={checkingForUpdates}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${checkingForUpdates ? 'animate-spin' : ''}`} />
+                    {checkingForUpdates ? 'Checking...' : 'Check for Updates'}
+                  </button>
+
+                  {updateCheckMessage && (
+                    <p className="text-sm text-neutral-400">{updateCheckMessage}</p>
+                  )}
+                </div>
+
+                <div className="mt-4 p-4 bg-neutral-700/50 rounded-lg">
+                  <p className="text-sm text-neutral-400">
+                    <span className="font-medium">Auto-update:</span> The app automatically checks for updates every 6 hours while running. Updates will appear as a banner when available.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
