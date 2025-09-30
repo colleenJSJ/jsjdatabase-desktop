@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "NODE_ENV=development next dev -p 3007",
     "dev:clean": "rm -rf .next && NODE_ENV=development next dev -p 3007",
-    "build": "next build",
+    "build": "next build && npm run build:copy-standalone",
+    "build:copy-standalone": "cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public",
     "start": "next start -p 3007",
     "lint": "next lint",
     "hash-passwords": "tsx scripts/hash-existing-passwords.ts",
@@ -99,8 +100,6 @@
     "files": [
       "electron/**/*",
       ".next/standalone/**/*",
-      ".next/static/**/*",
-      "public/**/*",
       "package.json"
     ],
     "extraMetadata": {
