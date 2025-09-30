@@ -52,15 +52,17 @@ function initializeAutoUpdater() {
     sendToRenderer(UPDATE_CHANNELS.DOWNLOADED, info)
   })
 
-  // Trigger a check shortly after start
-  setTimeout(() => {
-    autoUpdater
-      .checkForUpdates()
-      .catch((error) => {
-        console.error('[Electron] Initial update check failed', error)
-        sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'Could not check for updates.' })
-      })
-  }, 3000)
+  // Trigger a check shortly after start (only if not skipped)
+  if (shouldUseAutoUpdater()) {
+    setTimeout(() => {
+      autoUpdater
+        .checkForUpdates()
+        .catch((error) => {
+          console.error('[Electron] Initial update check failed', error)
+          // Don't show error in UI for automatic checks
+        })
+    }, 10000) // Wait 10 seconds to let app load first
+  }
 }
 
 function registerIpcHandlers() {
@@ -179,17 +181,40 @@ function createWindow() {
       process.env.NODE_ENV = 'production'
       process.env.HOSTNAME = 'localhost'
 
+      // Show a loading screen first
+      mainWindow.loadURL(`data:text/html,<html><body style="margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#1f1f1e;color:#fff;font-family:system-ui"><div style="text-align:center"><h1>Starting JSJ Database...</h1><p>Please wait</p></div></body></html>`)
+      mainWindow.show()
+
       // Start the standalone server
       const nextServer = require(serverPath)
 
-      // The standalone server automatically starts on a port
-      // We need to find which port and load it
-      setTimeout(() => {
-        // Standalone server runs on port 3000 by default
+      // Wait for server to be ready before loading
+      const checkServer = async () => {
         const port = process.env.PORT || 3000
-        console.log('[Electron] Next.js server should be on port:', port)
-        mainWindow.loadURL(`http://localhost:${port}`)
-      }, 2000)
+        try {
+          const http = require('http')
+          const options = { hostname: 'localhost', port, path: '/', method: 'GET', timeout: 1000 }
+
+          await new Promise((resolve, reject) => {
+            const req = http.request(options, (res) => {
+              console.log('[Electron] Server is responding!')
+              resolve()
+            })
+            req.on('error', reject)
+            req.on('timeout', reject)
+            req.end()
+          })
+
+          console.log('[Electron] Next.js server ready on port:', port)
+          mainWindow.loadURL(`http://localhost:${port}`)
+        } catch (err) {
+          console.log('[Electron] Server not ready yet, retrying...')
+          setTimeout(checkServer, 1000)
+        }
+      }
+
+      // Start checking after 2 seconds
+      setTimeout(checkServer, 2000)
 
     } catch (err) {
       console.error('[Electron] Failed to start Next.js server:', err)
