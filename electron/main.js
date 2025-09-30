@@ -166,14 +166,25 @@ function createWindow() {
     const { createServer } = require('http')
 
     // Load environment variables from .env file
+    const fs = require('fs')
     const envPath = app.isPackaged
       ? path.join(process.resourcesPath, 'app', '.env')
       : path.join(__dirname, '..', '.env.production.local')
 
     console.log('[Electron] Loading environment from:', envPath)
 
-    if (require('fs').existsSync(envPath)) {
-      require('dotenv').config({ path: envPath })
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, 'utf8')
+      envContent.split('\n').forEach(line => {
+        const trimmed = line.trim()
+        if (trimmed && !trimmed.startsWith('#')) {
+          const [key, ...valueParts] = trimmed.split('=')
+          if (key && valueParts.length > 0) {
+            const value = valueParts.join('=').trim()
+            process.env[key.trim()] = value
+          }
+        }
+      })
       console.log('[Electron] Environment variables loaded')
     } else {
       console.warn('[Electron] Warning: .env file not found at', envPath)

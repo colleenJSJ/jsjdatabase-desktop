@@ -78,7 +78,6 @@
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
-    "dotenv": "^17.2.3",
     "electron": "^38.2.0",
     "electron-builder": "^26.0.12",
     "eslint": "^9",
