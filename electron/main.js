@@ -163,17 +163,32 @@ function createWindow() {
   if (!isDev) {
     const { createServer } = require('http')
     const next = require('next')
-    const nextApp = next({ dev: false, dir: path.join(__dirname, '..') })
+
+    // Use process.resourcesPath for packaged app (handles ASAR unpacking)
+    const appPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar.unpacked')
+      : path.join(__dirname, '..')
+
+    const nextApp = next({ dev: false, dir: appPath })
     const handle = nextApp.getRequestHandler()
 
+    console.log('[Electron] Starting Next.js server in production mode...')
+    console.log('[Electron] App packaged:', app.isPackaged)
+    console.log('[Electron] Next.js dir:', appPath)
+
     nextApp.prepare().then(() => {
+      console.log('[Electron] Next.js prepared successfully')
       const server = createServer((req, res) => handle(req, res))
       server.listen(0, 'localhost', () => {
         const port = server.address().port
+        console.log('[Electron] Next.js server listening on port:', port)
         mainWindow.loadURL(`http://localhost:${port}`)
       })
     }).catch((err) => {
       console.error('[Electron] Failed to start Next.js server:', err)
+      // Show window anyway with error message
+      mainWindow.show()
+      mainWindow.loadURL(`data:text/html,<html><body><h1>Error starting application</h1><pre>${err.message}</pre></body></html>`)
     })
   } else {
     mainWindow.loadURL('http://localhost:3007')
@@ -186,6 +201,15 @@ function createWindow() {
       mainWindow.webContents.openDevTools({ mode: 'detach' })
     }
   })
+
+  // Fallback: show window after 10 seconds if still not shown
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('[Electron] Window not visible after 10s, forcing show')
+      mainWindow.show()
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    }
+  }, 10000)
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

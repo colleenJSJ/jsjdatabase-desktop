@@ -92,6 +92,11 @@
     "appId": "com.familyoffice.desktop",
     "productName": "JSJ Database",
     "asar": true,
+    "asarUnpack": [
+      ".next/**/*",
+      "node_modules/next/**/*",
+      "node_modules/sharp/**/*"
+    ],
     "directories": {
       "output": "dist",
       "buildResources": "electron/resources"
@@ -101,7 +106,8 @@
       ".next/**/*",
       "public/**/*",
       "package.json",
-      "next.config.ts"
+      "next.config.ts",
+      "node_modules/next/**/*"
     ],
     "extraMetadata": {
       "main": "electron/main.js"
