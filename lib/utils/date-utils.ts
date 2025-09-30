@@ -205,7 +205,8 @@ export function toInstantFromNaive(naive: string, tz: string): Date {
   try {
     const [d, t = '00:00:00'] = naive.split('T');
     const [y, m, day] = d.split('-').map((n) => parseInt(n, 10));
-    const [hh, mm = '00', ss = '00'] = t.split(':');
+    const timePart = t.replace(/([+-]\d{2}):?\d{2}$/i, '');
+    const [hh, mm = '00', ss = '00'] = timePart.split(':');
     const desiredUtc = Date.UTC(y, (m || 1) - 1, day || 1, parseInt(hh, 10), parseInt(mm, 10), parseInt(ss, 10));
     const guess = new Date(desiredUtc);
     const parts = getCachedFormatter(tz, {
@@ -254,9 +255,19 @@ export function formatInstantInTimeZone(d: Date, timeZone: string, options: Intl
  * Determine if an event (stored as naive local strings in its own timezone)
  * overlaps a target day when viewed in viewerTz.
  */
+const OFFSET_REGEX = /(Z|[+-]\d{2}:?\d{2})$/i;
+
+function toInstantFromEventString(value: string, tz: string): Date {
+  if (!value) return new Date(NaN);
+  if (OFFSET_REGEX.test(value.trim())) {
+    return new Date(value);
+  }
+  return toInstantFromNaive(value, tz);
+}
+
 export function isEventOnDayInViewerTZ(startString: string, endString: string, eventTz: string, targetDate: Date, viewerTz: string): boolean {
-  const startInstant = toInstantFromNaive(startString, eventTz);
-  const endInstant = toInstantFromNaive(endString, eventTz);
+  const startInstant = toInstantFromEventString(startString, eventTz);
+  const endInstant = toInstantFromEventString(endString, eventTz);
   const start = getZonedParts(startInstant, viewerTz);
   const end = getZonedParts(endInstant, viewerTz);
   const target = getZonedParts(targetDate, viewerTz);
@@ -268,8 +279,8 @@ export function isEventOnDayInViewerTZ(startString: string, endString: string, e
  * as naive strings in eventTz.
  */
 export function getStartEndMinutesOnDayInViewerTZ(startString: string, endString: string, eventTz: string, targetDate: Date, viewerTz: string): { startMin: number; endMin: number } {
-  const startInstant = toInstantFromNaive(startString, eventTz);
-  const endInstant = toInstantFromNaive(endString, eventTz);
+  const startInstant = toInstantFromEventString(startString, eventTz);
+  const endInstant = toInstantFromEventString(endString, eventTz);
   const start = getZonedParts(startInstant, viewerTz);
   const end = getZonedParts(endInstant, viewerTz);
   const target = getZonedParts(targetDate, viewerTz);
