@@ -815,7 +815,7 @@ export default function AccountSettingsPage() {
             <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-6">
               <div className="flex items-center gap-3 mb-6">
                 <Download className="h-5 w-5 text-primary-500" />
-                <h2 className="text-lg font-medium text-white">Desktop App Updates</h2>
+                <h2 className="text-lg font-medium text-white">App Updates</h2>
               </div>
 
               <div className="space-y-4">
