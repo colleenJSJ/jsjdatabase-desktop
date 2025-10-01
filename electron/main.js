@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, Notification, shell } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
 
+app.setName('JSJ Database')
+
 let mainWindow
 let ipcRegistered = false
 let autoUpdaterInitialized = false
