@@ -1,6 +1,6 @@
 {
   "name": "johnson-database-v1",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -109,7 +109,8 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "artifactName": "${productName}-${version}.${ext}"
     },
