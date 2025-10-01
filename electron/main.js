@@ -5,6 +5,8 @@ const path = require('path')
 let mainWindow
 let ipcRegistered = false
 let autoUpdaterInitialized = false
+let updateReadyToInstall = false
+let quittingForUpdate = false
 
 const UPDATE_CHANNELS = {
   CURRENT_VERSION: 'update:current-version',
@@ -33,10 +35,12 @@ function initializeAutoUpdater() {
 
   autoUpdaterInitialized = true
   autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.autoInstallOnAppQuit = false
 
   autoUpdater.on('error', (error) => {
     console.error('[Electron] Auto-updater error', error)
+    updateReadyToInstall = false
+    quittingForUpdate = false
     // Only show error in UI if user manually triggered check, not on automatic checks
     // Don't send error to renderer for silent background checks
   })
@@ -56,7 +60,12 @@ function initializeAutoUpdater() {
   })
 
   autoUpdater.on('update-downloaded', (info) => {
+    updateReadyToInstall = true
     sendToRenderer(UPDATE_CHANNELS.DOWNLOADED, info)
+  })
+
+  autoUpdater.on('before-quit-for-update', () => {
+    quittingForUpdate = true
   })
 
   // Trigger a check shortly after start (only if not skipped)
@@ -149,13 +158,16 @@ function registerIpcHandlers() {
 
     try {
       setImmediate(() => {
-        if (process.platform === 'darwin' && autoUpdater.autoInstallOnAppQuit) {
-          console.log('[Electron] macOS auto-install triggered via app.quit()')
-          app.quit()
-          return
+        try {
+          updateReadyToInstall = false
+          quittingForUpdate = true
+          autoUpdater.quitAndInstall()
+        } catch (error) {
+          quittingForUpdate = false
+          updateReadyToInstall = true
+          console.error('[Electron] quitAndInstall threw', error)
+          sendToRenderer(UPDATE_CHANNELS.ERROR, { message: error?.message || 'Install failed.' })
         }
-
-        autoUpdater.quitAndInstall()
       })
       return { ok: true }
     } catch (error) {
@@ -339,6 +351,28 @@ app.whenReady().then(() => {
 
   registerIpcHandlers()
   createWindow()
+
+  app.on('before-quit', (event) => {
+    if (!shouldUseAutoUpdater()) {
+      return
+    }
+
+    if (updateReadyToInstall && !quittingForUpdate) {
+      console.log('[Electron] Intercepting quit to install update')
+      event.preventDefault()
+      updateReadyToInstall = false
+      quittingForUpdate = true
+      setImmediate(() => {
+        try {
+          autoUpdater.quitAndInstall()
+        } catch (error) {
+          console.error('[Electron] Failed to trigger quitAndInstall during app quit', error)
+          quittingForUpdate = false
+          updateReadyToInstall = true
+        }
+      })
+    }
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
