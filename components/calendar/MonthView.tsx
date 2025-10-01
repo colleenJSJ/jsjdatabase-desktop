@@ -482,8 +482,17 @@ export function MonthView({
                             <>
                               {!segment.event.all_day && (
                                 <span className="mr-1 opacity-75">
-                                  {new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: preferences.timezone })
-                                    .format(toInstantFromNaive(segment.event.start_time, getEventTimeZone(segment.event, googleCalendars, calById)))}
+                                  {new Intl.DateTimeFormat('en-US', {
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                    hour12: true,
+                                    timeZone: preferences.timezone
+                                  }).format(
+                                    toInstantFromEventString(
+                                      segment.event.start_time,
+                                      getEventTimeZone(segment.event, googleCalendars, calById)
+                                    )
+                                  )}
                                 </span>
                               )}
                               {segment.event.title}
