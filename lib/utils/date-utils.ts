@@ -257,7 +257,7 @@ export function formatInstantInTimeZone(d: Date, timeZone: string, options: Intl
  */
 const OFFSET_REGEX = /(Z|[+-]\d{2}:?\d{2})$/i;
 
-function toInstantFromEventString(value: string, tz: string): Date {
+export function toInstantFromEventString(value: string, tz: string): Date {
   if (!value) return new Date(NaN);
   if (OFFSET_REGEX.test(value.trim())) {
     return new Date(value);
