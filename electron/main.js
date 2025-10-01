@@ -37,7 +37,7 @@ function initializeAutoUpdater() {
   autoUpdaterInitialized = true
   autoUpdater.logger = log
   autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.autoInstallOnAppQuit = false
 
   autoUpdater.on('error', (error) => {
     console.error('[Electron] Auto-updater error', error)
@@ -153,7 +153,7 @@ function registerIpcHandlers() {
 
     try {
       setImmediate(() => {
-        app.quit()
+        autoUpdater.quitAndInstall(false, true)
       })
       return { ok: true }
     } catch (error) {
