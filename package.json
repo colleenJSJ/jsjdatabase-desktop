@@ -1,6 +1,6 @@
 {
   "name": "johnson-database-v1",
-  "version": "0.1.35",
+  "version": "0.1.36",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -50,6 +50,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "electron-updater": "^6.6.2",
+    "electron-log": "^5.1.4",
     "framer-motion": "^12.23.12",
     "fuse.js": "^7.1.0",
     "googleapis": "^156.0.0",
