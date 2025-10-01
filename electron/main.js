@@ -149,6 +149,12 @@ function registerIpcHandlers() {
 
     try {
       setImmediate(() => {
+        if (process.platform === 'darwin' && autoUpdater.autoInstallOnAppQuit) {
+          console.log('[Electron] macOS auto-install triggered via app.quit()')
+          app.quit()
+          return
+        }
+
         autoUpdater.quitAndInstall()
       })
       return { ok: true }
