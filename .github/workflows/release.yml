@@ -78,4 +78,4 @@ jobs:
           EOF
 
       - name: Package desktop app (macOS)
-        run: npx electron-builder --publish always --mac dmg
+        run: npx electron-builder --publish always --mac
