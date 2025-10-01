@@ -819,10 +819,6 @@ export default function AccountSettingsPage() {
               </div>
 
               <div className="space-y-4">
-                <p className="text-sm text-neutral-400">
-                  Stay up to date with the latest features and improvements
-                </p>
-
                 {appVersion && (
                   <div className="flex items-center justify-between p-4 bg-neutral-700/50 rounded-lg">
                     <div>
