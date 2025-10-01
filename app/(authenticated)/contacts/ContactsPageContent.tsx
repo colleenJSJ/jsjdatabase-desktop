@@ -609,8 +609,8 @@ export default function ContactsPageContent() {
                   key={contact.id}
                   contact={contact}
                   familyMembers={familyMembers}
-                  onEdit={() => handleEdit(contact)}
-                  onDelete={() => handleDelete(contact.id)}
+                  onEdit={() => { setEditingContact(contact); setShowModal(true); }}
+                  onDelete={() => handleDeleteContact(contact.id)}
                   onView={() => setViewingContact(contact)}
                 />
               ))}
