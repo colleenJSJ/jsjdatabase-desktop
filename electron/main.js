@@ -153,7 +153,7 @@ function registerIpcHandlers() {
 
     try {
       setImmediate(() => {
-        autoUpdater.quitAndInstall()
+        app.quit()
       })
       return { ok: true }
     } catch (error) {
