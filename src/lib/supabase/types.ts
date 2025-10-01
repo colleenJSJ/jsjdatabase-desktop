@@ -198,5 +198,6 @@ export type CalendarEvent = {
   source_reference?: string;
   google_event_id?: string;
   external_id?: string;
+  timezone?: string;
   metadata?: Record<string, any>;
 };
