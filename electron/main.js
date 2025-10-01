@@ -271,8 +271,10 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     if (!mainWindow) return
     mainWindow.show()
-    // Always open DevTools for now (debugging)
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
+    // Open DevTools only in development
+    if (isDev) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    }
   })
 
   // Fallback: show window after 10 seconds if still not shown
@@ -280,7 +282,9 @@ function createWindow() {
     if (mainWindow && !mainWindow.isVisible()) {
       console.log('[Electron] Window not visible after 10s, forcing show')
       mainWindow.show()
-      mainWindow.webContents.openDevTools({ mode: 'detach' })
+      if (isDev) {
+        mainWindow.webContents.openDevTools({ mode: 'detach' })
+      }
     }
   }, 10000)
 
