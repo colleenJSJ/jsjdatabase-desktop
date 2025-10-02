@@ -2,12 +2,16 @@ const { app, BrowserWindow, ipcMain, Notification, shell } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const log = require('electron-log')
 const path = require('path')
+const http = require('http')
 
 app.setName('JSJ Database')
 
 let mainWindow
 let ipcRegistered = false
 let autoUpdaterInitialized = false
+let standaloneServer = null
+let serverShutdownPromise = null
+let quittingApp = false
 
 const UPDATE_CHANNELS = {
   CURRENT_VERSION: 'update:current-version',
@@ -29,6 +33,38 @@ const sendToRenderer = (channel, payload) => {
   }
 }
 
+const closeStandaloneServer = () => {
+  if (!standaloneServer) {
+    return Promise.resolve()
+  }
+
+  if (serverShutdownPromise) {
+    return serverShutdownPromise
+  }
+
+  serverShutdownPromise = new Promise((resolve) => {
+    try {
+      standaloneServer.close((error) => {
+        if (error) {
+          console.error('[Electron] Failed to close standalone Next.js server', error)
+        } else {
+          console.log('[Electron] Standalone Next.js server closed')
+        }
+        standaloneServer = null
+        serverShutdownPromise = null
+        resolve()
+      })
+    } catch (error) {
+      console.error('[Electron] Error while closing standalone Next.js server', error)
+      standaloneServer = null
+      serverShutdownPromise = null
+      resolve()
+    }
+  })
+
+  return serverShutdownPromise
+}
+
 function initializeAutoUpdater() {
   if (autoUpdaterInitialized || !shouldUseAutoUpdater()) {
     return
@@ -37,7 +73,7 @@ function initializeAutoUpdater() {
   autoUpdaterInitialized = true
   autoUpdater.logger = log
   autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = false
+  autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on('error', (error) => {
     console.error('[Electron] Auto-updater error', error)
@@ -152,9 +188,8 @@ function registerIpcHandlers() {
     }
 
     try {
-      setImmediate(() => {
-        autoUpdater.quitAndInstall(false, true)
-      })
+      await closeStandaloneServer()
+      autoUpdater.quitAndInstall(false, true)
       return { ok: true }
     } catch (error) {
       console.error('[Electron] Failed to install update', error)
@@ -184,7 +219,6 @@ function createWindow() {
 
   // Start local Next.js server in production
   if (!isDev) {
-    const { createServer } = require('http')
 
     // Load environment variables from .env file
     const fs = require('fs')
@@ -231,8 +265,30 @@ function createWindow() {
       mainWindow.loadURL(`data:text/html,<html><body style="margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#1f1f1e;color:#fff;font-family:system-ui"><div style="text-align:center"><h1>Starting JSJ Database...</h1><p>Please wait</p></div></body></html>`)
       mainWindow.show()
 
-      // Start the standalone server
-      const nextServer = require(serverPath)
+      const originalCreateServer = http.createServer
+      let serverCaptured = false
+
+      http.createServer = (...args) => {
+        const server = Reflect.apply(originalCreateServer, http, args)
+        if (!serverCaptured) {
+          serverCaptured = true
+          standaloneServer = server
+          server.on('close', () => {
+            if (standaloneServer === server) {
+              standaloneServer = null
+            }
+          })
+          console.log('[Electron] Standalone Next.js server created')
+        }
+        return server
+      }
+
+      try {
+        // Start the standalone server
+        require(serverPath)
+      } finally {
+        http.createServer = originalCreateServer
+      }
 
       // Wait for server to be ready before loading
       const checkServer = async () => {
@@ -337,6 +393,26 @@ app.whenReady().then(() => {
 
   registerIpcHandlers()
   createWindow()
+
+  app.on('before-quit', (event) => {
+    if (quittingApp) {
+      return
+    }
+
+    if (!standaloneServer && !serverShutdownPromise) {
+      return
+    }
+
+    event.preventDefault()
+    closeStandaloneServer()
+      .catch((error) => {
+        console.error('[Electron] Failed to close server during quit', error)
+      })
+      .finally(() => {
+        quittingApp = true
+        app.quit()
+      })
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
