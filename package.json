@@ -1,6 +1,6 @@
 {
   "name": "johnson-database-v1",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -110,6 +110,10 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "JSJ_ICON.icns",
+      "extendInfo": {
+        "CFBundleName": "JSJ Database",
+        "CFBundleDisplayName": "JSJ Database"
+      },
       "target": [
         "dmg",
         "zip"
