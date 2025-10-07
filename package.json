@@ -99,8 +99,9 @@
     "productName": "JSJ Database",
     "asar": true,
     "asarUnpack": [
-      "**/.next/**",
-      "**/.env*"
+      ".next/standalone/**",
+      ".env",
+      ".env.*"
     ],
     "afterSign": "scripts/notarize.js",
     "directories": {
