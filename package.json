@@ -97,7 +97,7 @@
   "build": {
     "appId": "com.familyoffice.desktop",
     "productName": "JSJ Database",
-    "asar": false,
+    "asar": true,
     "afterSign": "scripts/notarize.js",
     "directories": {
       "output": "dist",
