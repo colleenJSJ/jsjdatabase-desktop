@@ -22,6 +22,7 @@
     "dev-all": "concurrently \"npm run dev\" \"wait-on http://localhost:3007 && npm run electron-dev\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
     "@googlemaps/js-api-loader": "^1.16.10",
     "@hookform/resolvers": "^5.2.1",
     "@radix-ui/react-alert-dialog": "^1.1.14",
