@@ -223,7 +223,7 @@ function createWindow() {
     // Load environment variables from .env file
     const fs = require('fs')
     const envPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'app', '.env')
+      ? path.join(app.getAppPath(), '.env')
       : path.join(__dirname, '..', '.env.production.local')
 
     console.log('[Electron] Loading environment from:', envPath)
@@ -247,7 +247,7 @@ function createWindow() {
 
     // Use standalone Next.js server (doesn't require npm)
     const appPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'app', '.next', 'standalone')
+      ? path.join(app.getAppPath(), '.next', 'standalone')
       : path.join(__dirname, '..', '.next', 'standalone')
 
     const serverPath = path.join(appPath, 'server.js')
