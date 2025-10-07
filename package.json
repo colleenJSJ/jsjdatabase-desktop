@@ -1,6 +1,6 @@
 {
   "name": "johnson-database-v1",
-  "version": "0.1.46",
+  "version": "0.1.47",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
