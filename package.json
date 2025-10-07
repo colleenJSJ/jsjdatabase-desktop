@@ -99,6 +99,7 @@
     "productName": "JSJ Database",
     "asar": true,
     "afterSign": "scripts/notarize.js",
+    "afterPack": "scripts/after-pack.js",
     "directories": {
       "output": "dist",
       "buildResources": "electron/resources"
@@ -108,12 +109,6 @@
       ".next/standalone/**/*",
       ".next/static/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "node_modules",
-        "to": "node_modules"
-      }
     ],
     "extraMetadata": {
       "main": "electron/main.js"
