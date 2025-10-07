@@ -221,7 +221,7 @@ function createWindow() {
  if (!isDev) {
 
     const appBasePath = app.isPackaged
-      ? path.join(process.resourcesPath, 'app.asar.unpacked')
+      ? process.resourcesPath
       : path.join(__dirname, '..')
 
     // Load environment variables from .env file

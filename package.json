@@ -98,11 +98,6 @@
     "appId": "com.familyoffice.desktop",
     "productName": "JSJ Database",
     "asar": true,
-    "asarUnpack": [
-      ".next/standalone/**",
-      ".env",
-      ".env.*"
-    ],
     "afterSign": "scripts/notarize.js",
     "directories": {
       "output": "dist",
@@ -111,7 +106,18 @@
     "files": [
       "electron/**/*",
       ".next/standalone/**/*",
+      ".next/static/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": ".next/standalone"
+      },
+      {
+        "from": ".next/static",
+        "to": ".next/static"
+      }
     ],
     "extraMetadata": {
       "main": "electron/main.js"
