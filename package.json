@@ -98,6 +98,10 @@
     "appId": "com.familyoffice.desktop",
     "productName": "JSJ Database",
     "asar": true,
+    "asarUnpack": [
+      "**/.next/**",
+      "**/.env*"
+    ],
     "afterSign": "scripts/notarize.js",
     "directories": {
       "output": "dist",

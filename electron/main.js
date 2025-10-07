@@ -218,13 +218,15 @@ function createWindow() {
   })
 
   // Start local Next.js server in production
-  if (!isDev) {
+ if (!isDev) {
+
+    const appBasePath = app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar.unpacked')
+      : path.join(__dirname, '..')
 
     // Load environment variables from .env file
     const fs = require('fs')
-    const envPath = app.isPackaged
-      ? path.join(app.getAppPath(), '.env')
-      : path.join(__dirname, '..', '.env.production.local')
+    const envPath = path.join(appBasePath, '.env')
 
     console.log('[Electron] Loading environment from:', envPath)
 
@@ -246,9 +248,7 @@ function createWindow() {
     }
 
     // Use standalone Next.js server (doesn't require npm)
-    const appPath = app.isPackaged
-      ? path.join(app.getAppPath(), '.next', 'standalone')
-      : path.join(__dirname, '..', '.next', 'standalone')
+    const appPath = path.join(appBasePath, '.next', 'standalone')
 
     const serverPath = path.join(appPath, 'server.js')
 
