@@ -111,12 +111,8 @@
     ],
     "extraResources": [
       {
-        "from": ".next/standalone",
-        "to": ".next/standalone"
-      },
-      {
-        "from": ".next/static",
-        "to": ".next/static"
+        "from": "node_modules",
+        "to": "node_modules"
       }
     ],
     "extraMetadata": {
