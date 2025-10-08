@@ -34,6 +34,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Clean previous build artifacts
+        run: rm -rf .next dist
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -57,8 +60,5 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm certificate.p12
 
-      - name: Build application
-        run: NODE_OPTIONS="--max-old-space-size=4096" npm run build
-
-      - name: Package desktop app (macOS)
-        run: npx electron-builder --publish always --mac
+      - name: Build and package desktop app (macOS)
+        run: NODE_OPTIONS="--max-old-space-size=4096" npm run dist -- --publish always --mac
