@@ -4,7 +4,7 @@ const log = require('electron-log')
 const path = require('path')
 const http = require('http')
 
-app.setName('JSJ Database')
+app.setName('Johnson Family Office')
 
 let mainWindow
 let ipcRegistered = false
@@ -139,7 +139,7 @@ function registerIpcHandlers() {
 
     try {
       const notification = new Notification({
-        title: title || 'Family Office',
+        title: title || 'Johnson Family Office',
         body: body || ''
       })
       notification.show()
@@ -216,7 +216,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, 'icon.png'),
-    title: 'Family Office'
+    title: 'Johnson Family Office'
   })
 
   // Start local Next.js server in production
@@ -264,7 +264,7 @@ function createWindow() {
       process.env.HOSTNAME = 'localhost'
 
       // Show a loading screen first
-      mainWindow.loadURL(`data:text/html,<html><body style="margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#1f1f1e;color:#fff;font-family:system-ui"><div style="text-align:center"><h1>Starting JSJ Database...</h1><p>Please wait</p></div></body></html>`)
+      mainWindow.loadURL(`data:text/html,<html><body style="margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#1f1f1e;color:#fff;font-family:system-ui"><div style="text-align:center"><h1>Starting Johnson Family Office...</h1><p>Please wait</p></div></body></html>`)
       mainWindow.show()
 
       const originalCreateServer = http.createServer
