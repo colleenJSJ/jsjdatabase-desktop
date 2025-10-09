@@ -23,16 +23,6 @@ import { resolveEmails, resolvePhones } from '@/components/contacts/contact-util
 import { usePasswordSecurityOptional } from '@/contexts/password-security-context';
 import { Category } from '@/lib/categories/categories-client';
 
-const renderContactChips = (names: string[]) => (
-  <div className="flex flex-wrap gap-2">
-    {names.map(name => (
-      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
-        {name}
-      </span>
-    ))}
-  </div>
-);
-
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 import { Upload } from 'lucide-react';
 
@@ -351,12 +341,6 @@ export default function J3AcademicsPageClient() {
   };
 
   const renderContactCard = (contact: ContactRecord) => {
-    const studentNames = (contact.related_to ?? [])
-      .map(id => filteredKids.find(student => student.id === id)?.name)
-      .filter((name): name is string => Boolean(name));
-
-    const extraContent = studentNames.length > 0 ? renderContactChips(studentNames) : null;
-
     const canManage = user?.role === 'admin';
 
     return (
@@ -364,7 +348,6 @@ export default function J3AcademicsPageClient() {
         key={contact.id}
         contact={contact}
         subtitle={contact.role ?? undefined}
-        extraContent={extraContent}
         showFavoriteToggle={false}
         canManage={canManage}
         onOpen={() => setViewingContact(contact)}

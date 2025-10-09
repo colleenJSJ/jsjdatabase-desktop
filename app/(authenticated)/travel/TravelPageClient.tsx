@@ -480,10 +480,6 @@ export default function TravelPageClient() {
   }, [data.trips]);
 
   const renderContactCard = (contact: ContactRecord) => {
-    const relatedNames = (contact.related_to ?? [])
-      .map(id => familyMemberMap[id])
-      .filter((name): name is string => Boolean(name));
-
     const trip = contact.trip_id ? tripsById.get(contact.trip_id) : null;
     const tripLabel = contact.trip_label || trip?.destination || trip?.name || '';
 
@@ -505,7 +501,6 @@ export default function TravelPageClient() {
         key={contact.id}
         contact={contact}
         subtitle={contact.company ?? undefined}
-        extraContent={relatedNames.length > 0 ? renderContactChips(relatedNames) : null}
         badges={badges}
         showFavoriteToggle={false}
         canManage={false}
@@ -1939,12 +1934,3 @@ function AddAccommodationModal({ trips, onClose, onSaved, accommodation, default
     </div>
   );
 }
-const renderContactChips = (names: string[]) => (
-  <div className="flex flex-wrap gap-2">
-    {names.map(name => (
-      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
-        {name}
-      </span>
-    ))}
-  </div>
-);

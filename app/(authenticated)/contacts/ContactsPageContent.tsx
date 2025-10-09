@@ -389,11 +389,6 @@ export default function ContactsPageContent() {
     }
   };
 
-  const getFamilyMemberName = useCallback(
-    (id: string) => familyMembers.find(member => member.id === id)?.name || '',
-    [familyMembers]
-  );
-
   const buildBadgesForContact = (contact: ContactRecord): ContactCardBadge[] => {
     const badges: ContactCardBadge[] = [];
     if (contact.is_emergency) {
@@ -413,12 +408,6 @@ export default function ContactsPageContent() {
   };
 
   const renderContactCard = (contact: ContactRecord) => {
-    const relatedNames = (contact.related_to ?? [])
-      .map(getFamilyMemberName)
-      .filter(Boolean);
-
-    const extraContent = relatedNames.length > 0 ? renderContactChips(relatedNames) : null;
-
     const canManage = user?.role === 'admin' || contact.created_by === user?.id;
 
     return (
@@ -427,7 +416,6 @@ export default function ContactsPageContent() {
         contact={contact}
         subtitle={contact.company ?? undefined}
         badges={buildBadgesForContact(contact)}
-        extraContent={extraContent}
         canManage={canManage}
         actionConfig={{
           onEdit: canManage
@@ -670,16 +658,6 @@ export default function ContactsPageContent() {
     </div>
   );
 }
-const renderContactChips = (names: string[]) => (
-  <div className="flex flex-wrap gap-2">
-    {names.map(name => (
-      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
-        {name}
-      </span>
-    ))}
-  </div>
-);
-
 // List view component
 function ContactListItem({
   contact,

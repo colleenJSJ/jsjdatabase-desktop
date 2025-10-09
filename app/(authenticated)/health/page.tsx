@@ -1446,13 +1446,6 @@ function DoctorCard({
   isAdmin?: boolean;
   portal?: any;
 }) {
-  const patientNames = useMemo(() => {
-    return (doctor.patients || []).map(patientId => {
-      const member = familyMembers.find(m => m.id === patientId);
-      return member ? member.name : patientId;
-    }).filter((name): name is string => Boolean(name));
-  }, [doctor.patients, familyMembers]);
-
   const contactRecord = useMemo(() => {
     const portalUrl = portal?.portal_url ?? portal?.url ?? doctor.portal_url ?? null;
     const portalUsername = portal?.username ?? doctor.portal_username ?? null;
@@ -1482,7 +1475,6 @@ function DoctorCard({
         contact={contactRecord}
         subtitle={doctor.specialty || undefined}
         badges={badges}
-        extraContent={patientNames.length > 0 ? renderContactChips(patientNames) : null}
         showFavoriteToggle={false}
         canManage={isAdmin}
         actionConfig={isAdmin ? { onEdit, onDelete } : undefined}
@@ -1519,16 +1511,6 @@ const doctorToContactRecord = (doctor: Doctor): ContactRecord => {
     updated_at: doctor.updated_at,
   } as ContactRecord;
 };
-
-const renderContactChips = (names: string[]) => (
-  <div className="flex flex-wrap gap-2">
-    {names.map(name => (
-      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
-        {name}
-      </span>
-    ))}
-  </div>
-);
 
 function MedicationModal({ 
   medication, 

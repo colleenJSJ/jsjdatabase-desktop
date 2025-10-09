@@ -216,10 +216,6 @@ export default function PetsPageClient() {
   };
 
   const renderContactCard = (contact: ContactRecord) => {
-    const relatedPetNames = (contact.pets ?? contact.related_to ?? [])
-      .map(id => pets.find(pet => pet.id === id)?.name)
-      .filter((name): name is string => Boolean(name));
-
     const badges = contact.contact_subtype === 'vet'
       ? [{ id: `${contact.id}-vet`, label: 'Vet', tone: 'primary' as const }]
       : [];
@@ -230,7 +226,6 @@ export default function PetsPageClient() {
         contact={contact}
         subtitle={contact.company ?? undefined}
         badges={badges}
-        extraContent={relatedPetNames.length > 0 ? renderContactChips(relatedPetNames) : null}
         showFavoriteToggle={false}
         canManage={canManageContacts}
         onOpen={() => setViewingContact(contact)}
@@ -1230,12 +1225,3 @@ function AddPetPortalModal({
     </Modal>
   );
 }
-const renderContactChips = (names: string[]) => (
-  <div className="flex flex-wrap gap-2">
-    {names.map(name => (
-      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
-        {name}
-      </span>
-    ))}
-  </div>
-);
