@@ -1,15 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { buildInternalApiHeaders } from '@/lib/utils/auth-helpers';
 import { resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
 import { buildTravelVisibilityContext, shouldIncludeTravelRecord } from '@/lib/travel/visibility';
 import { normalizeTravelerIds } from '@/lib/travel/travelers';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
+
+const parseTimeToMinutes = (time?: string | null) => {
+  if (!time) return null;
+  const [hours, minutes] = time.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+};
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -39,16 +48,15 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('[Travel Details API] Supabase query failed', error);
-      return NextResponse.json(
-        {
-          error: 'Failed to fetch travel details',
+      return jsonError('Failed to fetch travel details', {
+        status: 500,
+        meta: {
           code: (error as any)?.code ?? null,
           message: (error as any)?.message ?? null,
           hint: (error as any)?.hint ?? null,
           details: (error as any)?.details ?? null,
         },
-        { status: 500 }
-      );
+      });
     }
 
     const filteredDetails = (details || []).filter((detail: Record<string, unknown>) =>
@@ -70,24 +78,28 @@ export async function GET(request: NextRequest) {
         : null
     }));
 
-    return NextResponse.json({ details: enhancedDetails });
+    return jsonSuccess({ details: enhancedDetails }, {
+      legacy: { details: enhancedDetails },
+    });
   } catch (error) {
     console.error('[Travel Details API] Unexpected error', error);
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
         message: error instanceof Error ? error.message : String(error),
       },
-      { status: 500 }
-    );
+    });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -136,8 +148,8 @@ export async function POST(request: NextRequest) {
     };
     
     // Extract time parts from datetime strings or handle time-only strings
-    let departure_time_only = null;
-    let arrival_time_only = null;
+    let departure_time_only: string | null = null;
+    let arrival_time_only: string | null = null;
     
     // For multi-day events (like flights), we should NOT store times in the time-only fields
     // The check_travel_times constraint expects arrival_time > departure_time which fails
@@ -152,8 +164,12 @@ export async function POST(request: NextRequest) {
       if (data.departure_time) {
         if (data.departure_time.includes('T')) {
           // It's a full datetime string, extract time part
-          const timePart = data.departure_time.split('T')[1];
+          const [datePart, timePartRaw] = data.departure_time.split('T');
+          const timePart = timePartRaw || '';
           departure_time_only = timePart ? timePart.split('.')[0].split('Z')[0] : null;
+          if (!travel_date && datePart) {
+            travel_date = datePart;
+          }
         } else if (data.departure_time.includes(':')) {
           // It's already a time-only string
           departure_time_only = data.departure_time.split('.')[0].split('Z')[0];
@@ -163,7 +179,8 @@ export async function POST(request: NextRequest) {
       if (data.arrival_time) {
         if (data.arrival_time.includes('T')) {
           // It's a full datetime string, extract time part
-          const timePart = data.arrival_time.split('T')[1];
+          const [arrivalDatePart, timePartRaw] = data.arrival_time.split('T');
+          const timePart = timePartRaw || '';
           arrival_time_only = timePart ? timePart.split('.')[0].split('Z')[0] : null;
         } else if (data.arrival_time.includes(':')) {
           // It's already a time-only string
@@ -171,7 +188,7 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    
+
     console.log('[Travel Details API] Attempting to insert with data:', {
       type: data.type,
       travel_date: travel_date,
@@ -190,7 +207,7 @@ export async function POST(request: NextRequest) {
     
     // Handle travelers - accept multiple formats
     let travelerUUIDs: string[] = [];
-    let travelerNames = [];
+    let travelerNames: string[] = [];
     
     // If we have attendee_ids (from calendar), use those as UUIDs
     if (data.attendee_ids && Array.isArray(data.attendee_ids)) {
@@ -224,22 +241,48 @@ export async function POST(request: NextRequest) {
     const creatorFamilyMemberId = await resolveCurrentUserToFamilyMember(user.id);
     const normalizedTravelerIds = normalizeTravelerIds(travelerUUIDs, creatorFamilyMemberId);
     
+    const fallbackArrivalDate =
+      data.arrival_date ||
+      (data.arrival_time && data.arrival_time.includes('T')
+        ? data.arrival_time.split('T')[0]
+        : null) ||
+      travel_date ||
+      null;
+
+    const shouldStoreTimes = Boolean(departure_time_only && arrival_time_only && !isDifferentDays);
+
+    let finalTravelDate = travel_date;
+    let finalDepartureTime = shouldStoreTimes ? departure_time_only : null;
+    let finalArrivalTime = shouldStoreTimes ? arrival_time_only : null;
+
+    if (
+      finalArrivalTime &&
+      finalDepartureTime &&
+      finalTravelDate &&
+      fallbackArrivalDate &&
+      fallbackArrivalDate === finalTravelDate
+    ) {
+      const dep = parseTimeToMinutes(finalDepartureTime);
+      const arr = parseTimeToMinutes(finalArrivalTime);
+      if (dep !== null && arr !== null && arr <= dep) {
+        finalArrivalTime = null;
+      }
+    }
+
     const { data: detail, error } = await supabase
       .from('travel_details')
       .insert({
         type: data.type,
-        travel_date: travel_date, // Required field
+        travel_date: finalTravelDate, // Required field
         details: details, // Required field
-        travelers: normalizedTravelerIds.length > 0 ? normalizedTravelerIds : null, // Store UUIDs for filtering
-        traveler_names: travelerNames.length > 0 ? travelerNames : null, // Store names for display
+        travelers: normalizedTravelerIds,
+        traveler_names: travelerNames,
         provider: data.provider || null,
         confirmation_number: data.confirmation_number || null,
         departure_location: data.departure_location || null,
         arrival_location: data.arrival_location || null,
-        // Only set time fields if both are available and valid
-        // The check_travel_times constraint requires both to be NULL or both to be NOT NULL
-        departure_time: (departure_time_only && arrival_time_only) ? departure_time_only : null,
-        arrival_time: (departure_time_only && arrival_time_only) ? arrival_time_only : null,
+        departure_time: finalDepartureTime,
+        arrival_time: finalArrivalTime,
         airline: data.airline || null,
         flight_number: data.flight_number || null,
         departure_airport: data.departure_airport || null,
@@ -255,10 +298,11 @@ export async function POST(request: NextRequest) {
       console.error('[Travel Details API] Failed to create travel detail:', error);
       console.error('[Travel Details API] Full error object:', JSON.stringify(error, null, 2));
       console.error('[Travel Details API] Data that failed:', JSON.stringify(data, null, 2));
-      return NextResponse.json(
-        { error: 'Failed to create travel detail', details: error.message, code: error.code },
-        { status: 500 }
-      );
+      return jsonError('Failed to create travel detail', {
+        status: 500,
+        code: (error as any)?.code,
+        meta: { details: error.message },
+      });
     }
 
     let calendarEvent = null;
@@ -418,18 +462,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      travelDetailId: detail.id,
-      calendarEventId: calendarEvent?.id,
-      detail,
-      calendarEvent
-    });
+    return jsonSuccess(
+      { detail, calendarEvent },
+      {
+        status: 201,
+        legacy: {
+          travelDetailId: detail.id,
+          calendarEventId: calendarEvent?.id ?? null,
+          detail,
+          calendarEvent,
+        },
+      }
+    );
   } catch (error) {
     console.error('[Travel Details API] Error creating travel detail:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

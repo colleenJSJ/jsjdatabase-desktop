@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser } from '@/contexts/user-context';
-import { Shield, Smartphone, Lock, Mail, Trash2, CheckCircle, Palette, Sun, Moon, Eye, EyeOff, User, Clock, ShieldCheck, RefreshCw, Edit2, Save, X, Download } from 'lucide-react';
+import { Shield, Smartphone, Lock, Trash2, CheckCircle, Palette, Sun, Moon, User, Clock, ShieldCheck, RefreshCw, Edit2, Save, X, Download } from 'lucide-react';
 import { isElectronEnvironment } from '@/lib/is-electron';
 import { TrustedDevice } from '@/lib/supabase/types';
 
@@ -30,7 +30,6 @@ export default function AccountSettingsPage() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   
   // Profile state
-  const [showPassword, setShowPassword] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
@@ -87,8 +86,7 @@ export default function AccountSettingsPage() {
         const data = await response.json();
         setTrustedDevices(data.devices);
       }
-    } catch (error) {
-
+    } catch {
     } finally {
       setLoading(false);
     }
@@ -127,7 +125,7 @@ export default function AccountSettingsPage() {
         const data = await response.json();
         setError(data.error || 'Failed to update password');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
@@ -167,7 +165,7 @@ export default function AccountSettingsPage() {
         const data = await response.json();
         setError(data.error || 'Failed to update PIN');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
@@ -186,8 +184,7 @@ export default function AccountSettingsPage() {
         setTrustedDevices(trustedDevices.filter(d => d.device_id !== deviceId));
         setSuccess('Device removed successfully');
       }
-    } catch (error) {
-
+    } catch {
       setError('Failed to remove device');
     }
   };
@@ -217,7 +214,7 @@ export default function AccountSettingsPage() {
           setUpdateCheckMessage('No updates available. You are on the latest version!');
         }
       }
-    } catch (error) {
+    } catch {
       setUpdateCheckMessage('Unable to check for updates. Please try again later.');
     } finally {
       setTimeout(() => {
@@ -371,7 +368,7 @@ export default function AccountSettingsPage() {
                     const data = await response.json();
                     setError(data.error || 'Failed to update profile');
                   }
-                } catch (err) {
+                } catch {
                   setError('An error occurred. Please try again.');
                 } finally {
                   setIsLoading(false);

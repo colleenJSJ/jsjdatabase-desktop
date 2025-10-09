@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/app/api/_helpers/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     if (process.env.NODE_ENV === 'production') {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const authResult = await requireAdmin();
+    const authResult = await requireAdmin(request);
     if ('error' in authResult) {
       return authResult.error;
     }

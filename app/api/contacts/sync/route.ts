@@ -1,12 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
-import { cleanStringArray, sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { cleanStringArray, sanitizeContactPayload, cleanNullableString } from '@/app/api/_helpers/contact-normalizer';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -15,9 +20,10 @@ export async function POST(request: NextRequest) {
     const { source_type, source_id, contact_data } = body;
 
     if (!source_type || !source_id || !contact_data) {
-      return NextResponse.json({ 
-        error: 'Missing required fields: source_type, source_id, contact_data' 
-      }, { status: 400 });
+      return jsonError('Missing required fields: source_type, source_id, contact_data', {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+      });
     }
 
     // Check if contact already exists for this source in unified table
@@ -30,7 +36,11 @@ export async function POST(request: NextRequest) {
 
     if (checkError && checkError.code !== 'PGRST116') {
       console.error('Error checking existing contact:', checkError);
-      return NextResponse.json({ error: 'Failed to check existing contact' }, { status: 500 });
+      return jsonError('Failed to check existing contact', {
+        status: 500,
+        code: 'CONTACT_CHECK_FAILED',
+        meta: { details: checkError.message },
+      });
     }
 
     const sanitized = sanitizeContactPayload(contact_data);
@@ -38,9 +48,18 @@ export async function POST(request: NextRequest) {
     const encryptedPortalPassword = sanitized.portal_password
       ? await (async () => {
           const { encrypt } = await import('@/lib/encryption');
-          return encrypt(sanitized.portal_password as string);
+          return await encrypt(sanitized.portal_password as string);
         })()
       : null;
+
+    const servicesProvided = cleanStringArray(contact_data?.services_provided);
+    const specialties = cleanStringArray(contact_data?.specialties);
+    const accountNumber = cleanNullableString(contact_data?.account_number);
+    const hoursOfOperation = cleanNullableString(contact_data?.hours_of_operation);
+
+    const relatedTo = sanitized.related_to.length > 0
+      ? sanitized.related_to
+      : cleanStringArray(contact_data?.patients, contact_data?.pets);
 
     const contactRecord = {
       contact_type: 'general',
@@ -50,17 +69,11 @@ export async function POST(request: NextRequest) {
       category: getCategoryFromSource(source_type),
       contact_subtype: sanitized.contact_subtype,
       email: sanitized.email,
-      emails: sanitized.emails,
       phone: sanitized.phone,
-      phones: sanitized.phones,
       address: sanitized.address,
-      addresses: sanitized.addresses,
-      tags: sanitized.tags,
-      related_to: sanitized.related_to.length > 0
-        ? sanitized.related_to
-        : cleanStringArray(contact_data?.patients, contact_data?.pets),
+      related_to: relatedTo.length > 0 ? relatedTo : null,
+      pets: sanitized.pets.length > 0 ? sanitized.pets : null,
       source_type,
-      source_page: sanitized.source_page ?? source_type,
       source_id,
       notes: sanitized.notes,
       website: sanitized.website,
@@ -68,8 +81,14 @@ export async function POST(request: NextRequest) {
       portal_username: sanitized.portal_username,
       portal_password: encryptedPortalPassword,
       is_emergency: sanitized.is_emergency,
+      is_emergency_contact: sanitized.is_emergency,
+      is_preferred: sanitized.is_preferred,
       is_archived: sanitized.is_archived,
-      created_by: user.id
+      created_by: user.id,
+      services_provided: servicesProvided.length > 0 ? servicesProvided : null,
+      specialties: specialties.length > 0 ? specialties : null,
+      account_number: accountNumber,
+      hours_of_operation: hoursOfOperation,
     };
 
     if (existingContact) {
@@ -86,12 +105,15 @@ export async function POST(request: NextRequest) {
 
       if (updateError) {
         console.error('Error updating synced contact:', updateError);
-        return NextResponse.json({ error: 'Failed to update synced contact' }, { status: 500 });
+        return jsonError('Failed to update synced contact', {
+          status: 500,
+          code: 'CONTACT_SYNC_UPDATE_FAILED',
+          meta: { details: updateError.message },
+        });
       }
 
-      return NextResponse.json({ 
-        contact: updatedContact,
-        action: 'updated'
+      return jsonSuccess({ contact: updatedContact, action: 'updated' }, {
+        legacy: { contact: updatedContact, action: 'updated' },
       });
     } else {
       // Create new contact in unified table
@@ -103,17 +125,21 @@ export async function POST(request: NextRequest) {
 
       if (insertError) {
         console.error('Error creating synced contact:', insertError);
-        return NextResponse.json({ error: 'Failed to create synced contact' }, { status: 500 });
+        return jsonError('Failed to create synced contact', {
+          status: 500,
+          code: 'CONTACT_SYNC_CREATE_FAILED',
+          meta: { details: insertError.message },
+        });
       }
 
-      return NextResponse.json({ 
-        contact: newContact,
-        action: 'created'
-      }, { status: 201 });
+      return jsonSuccess({ contact: newContact, action: 'created' }, {
+        status: 201,
+        legacy: { contact: newContact, action: 'created' },
+      });
     }
   } catch (error) {
     console.error('Error in POST /api/contacts/sync:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }
 

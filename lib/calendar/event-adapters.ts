@@ -59,6 +59,8 @@ export interface TravelEventData extends BaseEventData {
   arrivalAirport?: string;
   departureDate?: string;
   departureTime?: string;
+  arrivalDate?: string;
+  arrivalTime?: string;
   returnDate?: string;
   returnTime?: string;
   confirmationNumber?: string;
@@ -232,7 +234,8 @@ export class TravelEventAdapter implements EventAdapter<TravelEventData> {
   mapToApiPayload(data: TravelEventData) {
     // Build outbound leg payload using specific fields
     const startDateTime = `${data.departureDate}T${(data.departureTime || '00:00')}:00`;
-    const endDateTime = data.returnDate && data.returnTime ? `${data.returnDate}T${data.returnTime}:00` : undefined as unknown as string;
+    const arrivalDateTime = data.arrivalDate && data.arrivalTime ? `${data.arrivalDate}T${data.arrivalTime}:00` : undefined as unknown as string;
+    const returnLegDateTime = data.returnDate && data.returnTime ? `${data.returnDate}T${data.returnTime}:00` : undefined as unknown as string;
     
     // Parse external travelers from otherTravelers string (should be emails)
     const externalEmails: string[] = [];
@@ -256,7 +259,8 @@ export class TravelEventAdapter implements EventAdapter<TravelEventData> {
       type: data.vehicleType || 'other',  // Changed from travel_type to type
       departure_time: startDateTime,
       // For one-way we omit arrival_time; API tolerates missing end for calendar
-      arrival_time: endDateTime,
+      arrival_time: arrivalDateTime,
+      arrival_date: data.arrivalDate,
       airline: data.airline,
       flight_number: data.flightNumber,
       departure_airport: data.departureAirport,
@@ -305,12 +309,15 @@ export class TravelEventAdapter implements EventAdapter<TravelEventData> {
       
       // Optional return leg
       if (data.returnDate && data.returnTime) {
+        const returnLegStart = `${data.returnDate}T${data.returnTime}:00`;
         const inbound = {
           ...payload,
           departure_airport: payload.arrival_airport,
           arrival_airport: payload.departure_airport,
-          departure_time: `${data.returnDate}T${data.returnTime}:00`,
+          departure_time: returnLegStart,
         } as any;
+        inbound.arrival_time = undefined;
+        inbound.arrival_date = undefined;
         inbound.departure_timezone = getTimezoneForAirport(inbound.departure_airport || '');
         inbound.arrival_timezone = getTimezoneForAirport(inbound.arrival_airport || '');
         await fetch('/api/travel-details', {

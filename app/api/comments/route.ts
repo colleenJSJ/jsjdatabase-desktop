@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         comment,
         created_at,
         is_deleted,
-        users!inner (
+        users:task_comments_user_id_fkey!inner (
           id,
           name,
           email

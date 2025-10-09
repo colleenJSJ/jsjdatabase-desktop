@@ -1,16 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   console.log('[Announcements API] GET request received');
   
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
-    const { user, supabase } = authResult;
+    const { supabase } = authResult;
     console.log('[Announcements API] Using service client to bypass RLS');
     
     // Get announcements that haven't expired or are pinned
@@ -33,30 +35,35 @@ export async function GET() {
       // If table doesn't exist, return empty array
       if (error.code === '42P01') {
         console.log('[Announcements API] Table does not exist, returning empty array');
-        return NextResponse.json({ announcements: [] });
+        return jsonSuccess({ announcements: [] }, {
+          legacy: { announcements: [] },
+        });
       }
-      return NextResponse.json(
-        { error: error.message || 'Failed to fetch announcements' },
-        { status: 500 }
-      );
+      return jsonError(error.message || 'Failed to fetch announcements', { status: 500 });
     }
 
     console.log('[Announcements API] Found announcements:', announcements?.length || 0);
-    return NextResponse.json({ announcements: announcements || [] });
+    const payload = { announcements: announcements || [] };
+    return jsonSuccess(payload, { legacy: payload });
   } catch (error) {
     console.error('[Announcements API] Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await requireAdmin();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -84,18 +91,20 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating announcement:', error);
-      return NextResponse.json(
-        { error: error.message || 'Failed to create announcement' },
-        { status: 500 }
-      );
+      return jsonError(error.message || 'Failed to create announcement', { status: 500 });
     }
 
-    return NextResponse.json({ announcement });
+    return jsonSuccess({ announcement }, {
+      status: 201,
+      legacy: { announcement },
+    });
   } catch (error) {
     console.error('Unexpected error in POST announcement:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }

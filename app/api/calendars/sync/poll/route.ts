@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { googleAuth } from '@/lib/google/auth';
 import { google } from 'googleapis';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 // This endpoint should be called by a cron job every 5-10 minutes
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     // Verify this is an internal request (you might want to add a secret key check)
     const authHeader = request.headers.get('Authorization');

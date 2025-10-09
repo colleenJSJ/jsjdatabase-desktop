@@ -1,304 +1,213 @@
-import B2 from 'backblaze-b2';
+import crypto from 'crypto';
+import BackblazeB2 from 'backblaze-b2';
 
-interface B2FileUploadResponse {
+type BackblazeClient = InstanceType<typeof BackblazeB2>;
+
+type UploadResult = {
   fileId: string;
   fileName: string;
   fileUrl: string;
   contentType: string;
   contentLength: number;
-}
-
-export class BackblazeService {
-  private b2?: any;
-  private bucketId?: string;
-  private bucketName?: string;
-  private authToken: string | null = null;
-  private downloadUrl: string | null = null;
-  private uploadUrl: string | null = null;
-  private uploadAuthToken: string | null = null;
-
-  constructor() {
-    const isProd = process.env.NODE_ENV === 'production';
-    const isBuild = process.env.NEXT_PHASE === 'phase-production-build';
-
-    if (!isProd) {
-      console.log('[B2] Initializing Backblaze service...');
-      console.log('[B2] Environment check:', {
-        hasKeyId: !!process.env.BACKBLAZE_KEY_ID,
-        hasAppKey: !!process.env.BACKBLAZE_APPLICATION_KEY,
-        hasBucketId: !!process.env.BACKBLAZE_BUCKET_ID,
-        hasBucketName: !!process.env.BACKBLAZE_BUCKET_NAME,
-        isBuild
-      });
-    }
-
-    // Skip validation during build phase (Next.js pre-rendering)
-    if (isBuild) {
-      console.log('[B2] Skipping Backblaze init during build phase');
-      return;
-    }
-
-    if (!process.env.BACKBLAZE_KEY_ID || !process.env.BACKBLAZE_APPLICATION_KEY) {
-      throw new Error('[B2] Missing BACKBLAZE_KEY_ID or BACKBLAZE_APPLICATION_KEY environment variables');
-    }
-
-    if (!process.env.BACKBLAZE_BUCKET_ID || !process.env.BACKBLAZE_BUCKET_NAME) {
-      throw new Error('[B2] Missing BACKBLAZE_BUCKET_ID or BACKBLAZE_BUCKET_NAME environment variables');
-    }
-
-    this.b2 = new B2({
-      applicationKeyId: process.env.BACKBLAZE_KEY_ID,
-      applicationKey: process.env.BACKBLAZE_APPLICATION_KEY,
-    });
-    this.bucketId = process.env.BACKBLAZE_BUCKET_ID!;
-    this.bucketName = process.env.BACKBLAZE_BUCKET_NAME!;
-  }
-
-  private async authorize() {
-    if (!this.b2) {
-      throw new Error('[B2] Service not initialized - missing credentials');
-    }
-    const isProd = process.env.NODE_ENV === 'production';
-    if (!isProd) console.log('[B2] Step 1: Authorizing with Backblaze...');
-    try {
-      const response = await this.b2.authorize();
-      if (!isProd) {
-        console.log('[B2] Authorization successful');
-        console.log('[B2] Auth response (redacted):', {
-          accountId: !!response.data.accountId,
-          apiUrl: !!response.data.apiUrl,
-          downloadUrl: !!response.data.downloadUrl,
-          hasAuthToken: !!response.data.authorizationToken
-        });
-      }
-      
-      this.authToken = response.data.authorizationToken;
-      this.downloadUrl = response.data.downloadUrl;
-      return response.data;
-    } catch (error: any) {
-      console.error('[B2] Authorization failed:', error.message);
-      if (error.response && !isProd) {
-        console.error('[B2] Auth error response:', {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          // data redacted in production
-        });
-      }
-      throw new Error(`B2 Authorization failed: ${error.message}`);
-    }
-  }
-
-  private async getUploadUrl() {
-    const isProd2 = process.env.NODE_ENV === 'production';
-    if (!isProd2) console.log('[B2] Step 2: Getting upload URL...');
-    
-    if (!this.authToken) {
-      if (!isProd2) console.log('[B2] No auth token, authorizing first...');
-      await this.authorize();
-    }
-
-    try {
-      if (!isProd2) console.log('[B2] Requesting upload URL for bucket');
-      const response = await this.b2.getUploadUrl({
-        bucketId: this.bucketId,
-      });
-      if (!isProd2) {
-        console.log('[B2] Got upload URL successfully');
-        console.log('[B2] Upload URL response (redacted):', {
-          hasUploadUrl: !!response.data.uploadUrl,
-          hasAuthToken: !!response.data.authorizationToken
-        });
-      }
-      
-      this.uploadUrl = response.data.uploadUrl;
-      this.uploadAuthToken = response.data.authorizationToken;
-      return response.data;
-    } catch (error: any) {
-      console.error('[B2] Failed to get upload URL:', error.message);
-      if (error.response && !isProd2) {
-        console.error('[B2] URL error response:', {
-          status: error.response.status,
-          statusText: error.response.statusText
-        });
-      }
-      throw new Error(`Failed to get upload URL: ${error.message}`);
-    }
-  }
-
-  async uploadFile(
-    fileName: string,
-    fileBuffer: Buffer,
-    contentType: string
-  ): Promise<B2FileUploadResponse> {
-    console.log('[B2] Starting upload process...');
-    console.log('[B2] File details:', {
-      fileName,
-      fileSize: fileBuffer.length,
-      contentType: contentType || 'application/octet-stream'
-    });
-
-    try {
-      // Get upload URL if we don't have one
-      if (!this.uploadUrl || !this.uploadAuthToken) {
-        console.log('[B2] No upload URL cached, getting new one...');
-        await this.getUploadUrl();
-      }
-
-      // Upload the file
-      console.log('[B2] Step 3: Uploading file...');
-      const uploadFileName = `documents/${Date.now()}-${fileName}`;
-      console.log('[B2] Full upload path:', uploadFileName);
-      
-      const response = await this.b2.uploadFile({
-        uploadUrl: this.uploadUrl,
-        uploadAuthToken: this.uploadAuthToken,
-        fileName: uploadFileName,
-        data: fileBuffer,
-        contentType: contentType || 'application/octet-stream',
-      });
-
-      console.log('[B2] File uploaded successfully:', {
-        fileId: response.data.fileId,
-        fileName: response.data.fileName,
-        contentType: response.data.contentType,
-        contentLength: response.data.contentLength
-      });
-
-      // Construct the public URL
-      const fileUrl = `${this.downloadUrl}/file/${this.bucketName}/${response.data.fileName}`;
-      console.log('[B2] Public file URL:', fileUrl);
-
-      return {
-        fileId: response.data.fileId,
-        fileName: response.data.fileName,
-        fileUrl: fileUrl,
-        contentType: response.data.contentType,
-        contentLength: response.data.contentLength,
-      };
-    } catch (error: any) {
-      console.error('[B2] Upload error:', error.message);
-      if (error.response) {
-        console.error('[B2] Upload error response:', {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data
-        });
-      }
-
-      // If upload failed, try getting a new upload URL and retry once
-      if (error.response?.status === 401 || error.response?.status === 503) {
-        console.log('[B2] Got 401/503 error, refreshing upload URL and retrying...');
-        this.uploadUrl = null;
-        this.uploadAuthToken = null;
-        await this.getUploadUrl();
-        
-        // Retry the upload
-        console.log('[B2] Retrying upload with fresh credentials...');
-        const uploadFileName = `documents/${Date.now()}-${fileName}`;
-        const response = await this.b2.uploadFile({
-          uploadUrl: this.uploadUrl,
-          uploadAuthToken: this.uploadAuthToken,
-          fileName: uploadFileName,
-          data: fileBuffer,
-          contentType: contentType || 'application/octet-stream',
-        });
-
-        console.log('[B2] Retry successful');
-        const fileUrl = `${this.downloadUrl}/file/${this.bucketName}/${response.data.fileName}`;
-
-        return {
-          fileId: response.data.fileId,
-          fileName: response.data.fileName,
-          fileUrl: fileUrl,
-          contentType: response.data.contentType,
-          contentLength: response.data.contentLength,
-        };
-      }
-      
-      console.error('[B2] Upload failed completely');
-      throw new Error(`Failed to upload file to Backblaze B2: ${error.message}`);
-    }
-  }
-
-  async deleteFile(fileName: string): Promise<void> {
-    if (process.env.NODE_ENV !== 'production') console.log('[B2] Deleting file:', fileName);
-    
-    if (!this.authToken) {
-      await this.authorize();
-    }
-
-    try {
-      // First, we need to list the file versions to get the fileId
-      const listResponse = await this.b2.listFileVersions({
-        bucketId: this.bucketId,
-        prefix: fileName,
-        maxFileCount: 1
-      });
-
-      if (listResponse.data.files.length === 0) {
-      if (process.env.NODE_ENV !== 'production') console.log('[B2] File not found:', fileName);
-      return;
-      }
-
-      const fileId = listResponse.data.files[0].fileId;
-      if (process.env.NODE_ENV !== 'production') console.log('[B2] Found file ID:', fileId);
-
-      await this.b2.deleteFileVersion({
-        fileId: fileId,
-        fileName: fileName,
-      });
-      
-      if (process.env.NODE_ENV !== 'production') console.log('[B2] File deleted successfully');
-    } catch (error: any) {
-      console.error('[B2] Delete error:', error.message);
-      if (error.response) {
-        if (process.env.NODE_ENV !== 'production') console.error('[B2] Delete error response');
-        
-        // If file doesn't exist, consider it successfully deleted
-        if (error.response.data?.code === 'file_not_present') {
-          if (process.env.NODE_ENV !== 'production') console.log('[B2] File not present in B2, treating as successful deletion');
-          return; // Exit successfully
-        }
-      }
-      throw new Error(`Failed to delete file from Backblaze B2: ${error.message}`);
-    }
-  }
-
-  async listFiles(prefix?: string): Promise<any[]> {
-    console.log('[B2] Listing files with prefix:', prefix || 'documents/');
-    
-    if (!this.authToken) {
-      await this.authorize();
-    }
-
-    try {
-      const response = await this.b2.listFileNames({
-        bucketId: this.bucketId,
-        prefix: prefix || 'documents/',
-        maxFileCount: 1000,
-      });
-      console.log('[B2] Found', response.data.files.length, 'files');
-      return response.data.files;
-    } catch (error: any) {
-      console.error('[B2] List error:', error.message);
-      if (error.response) {
-        console.error('[B2] List error response:', error.response.data);
-      }
-      throw new Error(`Failed to list files from Backblaze B2: ${error.message}`);
-    }
-  }
-}
-
-// Create a singleton instance with lazy initialization
-let _backblazeService: BackblazeService | null = null;
-
-export const getBackblazeService = () => {
-  if (!_backblazeService) {
-    _backblazeService = new BackblazeService();
-  }
-  return _backblazeService;
 };
 
+type DownloadDetails = {
+  action: 'download';
+  fileUrl: string;
+  downloadAuthorizationToken: string;
+  accountAuthorizationToken: string;
+};
 
-// Export a singleton instance for convenience
+type DeleteResult = {
+  action: 'delete';
+  ok: boolean;
+  message?: string;
+};
+
+const DEFAULT_PREFIX = 'documents/';
+const DOWNLOAD_AUTH_VALID_SECONDS = 60 * 60; // 1 hour
+const AUTH_REFRESH_BUFFER_MS = 5 * 60 * 1000; // refresh 5 minutes before expiry
+
+export class BackblazeService {
+  private readonly keyId: string;
+  private readonly applicationKey: string;
+  private readonly bucketId: string;
+  private readonly bucketName: string;
+
+  private readonly b2: BackblazeClient;
+  private authData: { authorizationToken: string; downloadUrl: string } | null = null;
+  private authFetchedAt = 0;
+
+  constructor() {
+    this.keyId = process.env.BACKBLAZE_KEY_ID || process.env.EDGE_BACKBLAZE_KEY_ID || '';
+    this.applicationKey = process.env.BACKBLAZE_APPLICATION_KEY || process.env.EDGE_BACKBLAZE_APPLICATION_KEY || '';
+    this.bucketId = process.env.BACKBLAZE_BUCKET_ID || process.env.EDGE_BACKBLAZE_BUCKET_ID || '';
+    this.bucketName = process.env.BACKBLAZE_BUCKET_NAME || process.env.EDGE_BACKBLAZE_BUCKET_NAME || '';
+
+    if (!this.keyId || !this.applicationKey || !this.bucketId || !this.bucketName) {
+      console.warn('[BackblazeService] Missing Backblaze configuration; operations will fail');
+    }
+
+    this.b2 = new BackblazeB2({
+      applicationKeyId: this.keyId,
+      applicationKey: this.applicationKey,
+    });
+  }
+
+  private async ensureAuthorized(): Promise<{ authorizationToken: string; downloadUrl: string }> {
+    const now = Date.now();
+    const tokenLifetimeMs = 24 * 60 * 60 * 1000;
+    const shouldRefresh =
+      !this.authData ||
+      now - this.authFetchedAt > tokenLifetimeMs - AUTH_REFRESH_BUFFER_MS;
+
+    if (shouldRefresh) {
+      const rawAuth = await this.b2.authorize();
+      const container =
+        rawAuth && typeof rawAuth === 'object' && rawAuth !== null && 'data' in rawAuth
+          ? (rawAuth as { data?: unknown }).data
+          : rawAuth;
+
+      if (!container || typeof container !== 'object') {
+        throw new Error('Failed to authorize with Backblaze');
+      }
+
+      const record = container as Record<string, unknown>;
+      const authorizationToken = typeof record.authorizationToken === 'string' ? record.authorizationToken : undefined;
+      const downloadUrl = typeof record.downloadUrl === 'string' ? record.downloadUrl : undefined;
+
+      if (!authorizationToken || !downloadUrl) {
+        throw new Error('Incomplete Backblaze authorization response');
+      }
+
+      this.authData = { authorizationToken, downloadUrl };
+      this.authFetchedAt = now;
+    }
+
+    return this.authData!;
+  }
+
+  private ensurePrefixedName(fileName: string) {
+    return fileName.startsWith(DEFAULT_PREFIX)
+      ? fileName
+      : `${DEFAULT_PREFIX}${Date.now()}-${fileName}`;
+  }
+
+  private static encodePath(path: string) {
+    return path
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+  }
+
+  async uploadFile(fileName: string, fileBuffer: Buffer, contentType: string): Promise<UploadResult> {
+    if (!this.keyId || !this.applicationKey || !this.bucketId || !this.bucketName) {
+      throw new Error('Backblaze configuration is incomplete');
+    }
+
+    const finalName = this.ensurePrefixedName(fileName);
+    const auth = await this.ensureAuthorized();
+
+    const { data: uploadData } = await this.b2.getUploadUrl({ bucketId: this.bucketId });
+
+    const sha1 = crypto.createHash('sha1').update(fileBuffer).digest('hex');
+    const encodedName = BackblazeService.encodePath(finalName);
+
+    const response = await fetch(uploadData.uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: uploadData.authorizationToken,
+        'X-Bz-File-Name': encodedName,
+        'Content-Type': contentType || 'application/octet-stream',
+        'X-Bz-Content-Sha1': sha1,
+      },
+      body: fileBuffer as any,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Backblaze upload failed (${response.status}): ${text}`);
+    }
+
+    const uploadResult = await response.json();
+
+    const fileUrl = `${auth.downloadUrl}/file/${this.bucketName}/${encodedName}`;
+
+    return {
+      fileId: uploadResult.fileId as string,
+      fileName: uploadResult.fileName || finalName,
+      fileUrl,
+      contentType: (uploadResult.contentType as string) || contentType,
+      contentLength: Number(uploadResult.contentLength ?? fileBuffer.length),
+    };
+  }
+
+  async getDownloadDetails(fileName: string): Promise<DownloadDetails> {
+    if (!this.bucketId || !this.bucketName) {
+      throw new Error('Backblaze configuration is incomplete');
+    }
+
+    const auth = await this.ensureAuthorized();
+    const normalizedName = fileName.startsWith(DEFAULT_PREFIX) ? fileName : `${DEFAULT_PREFIX}${fileName}`;
+    const encodedName = BackblazeService.encodePath(normalizedName);
+
+    const { data } = await this.b2.getDownloadAuthorization({
+      bucketId: this.bucketId,
+      fileNamePrefix: normalizedName,
+      validDurationInSeconds: DOWNLOAD_AUTH_VALID_SECONDS,
+    });
+
+    const fileUrl = `${auth.downloadUrl}/file/${this.bucketName}/${encodedName}`;
+
+    return {
+      action: 'download',
+      fileUrl,
+      downloadAuthorizationToken: data.authorizationToken,
+      accountAuthorizationToken: auth.authorizationToken,
+    };
+  }
+
+  async deleteFile(fileName: string): Promise<boolean> {
+    if (!this.bucketId) {
+      throw new Error('Backblaze configuration is incomplete');
+    }
+
+    await this.ensureAuthorized();
+
+    const normalizedName = fileName.startsWith(DEFAULT_PREFIX) ? fileName : `${DEFAULT_PREFIX}${fileName}`;
+
+    const { data } = await this.b2.listFileNames({
+      bucketId: this.bucketId,
+      startFileName: normalizedName,
+      maxFileCount: 1,
+      prefix: normalizedName,
+    });
+
+    const files = Array.isArray(data?.files)
+      ? (data.files as Array<{ fileName?: string; fileId?: string }>)
+      : [];
+    const file = files.find((entry) => entry.fileName === normalizedName);
+    if (!file || typeof file.fileId !== 'string') {
+      return true; // already gone
+    }
+
+    await this.b2.deleteFileVersion({
+      fileId: file.fileId,
+      fileName: normalizedName,
+    });
+
+    return true;
+  }
+}
+
+let _service: BackblazeService | null = null;
+export const getBackblazeService = () => {
+  if (!_service) {
+    _service = new BackblazeService();
+  }
+  return _service;
+};
+
 export const backblazeService = getBackblazeService();
+export type BackblazeDownloadDetails = DownloadDetails;
+export type BackblazeDeleteResult = DeleteResult;

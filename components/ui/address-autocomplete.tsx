@@ -1,7 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { googleMapsLoader } from '@/lib/utils/google-maps-loader';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Input } from '@/components/ui/input';
+import {
+  createPlacesSessionToken,
+  fetchAutocompleteSuggestions,
+  fetchPlaceDetails,
+  PlaceSuggestion,
+  PlaceDetailsResult,
+} from '@/lib/utils/places-client';
 
 interface AddressAutocompleteProps {
   value: string;
@@ -9,129 +16,233 @@ interface AddressAutocompleteProps {
   placeholder?: string;
   className?: string;
   required?: boolean;
+  includedPrimaryTypes?: string[];
+  formatSelection?: (args: {
+    suggestion: PlaceSuggestion;
+    details?: PlaceDetailsResult | null;
+    fallback: string;
+  }) => string;
 }
+
+const DEBOUNCE_MS = 200;
 
 export function AddressAutocomplete({
   value,
   onChange,
   placeholder = 'Enter address',
   className = '',
-  required = false
+  required = false,
+  includedPrimaryTypes,
+  formatSelection,
 }: AddressAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const [inputValue, setInputValue] = useState(value);
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const sessionTokenRef = useRef<string | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const requestIdRef = useRef(0);
+
+  const ensureSessionToken = () => {
+    if (!sessionTokenRef.current) {
+      sessionTokenRef.current = createPlacesSessionToken();
+    }
+    return sessionTokenRef.current;
+  };
+
+  const resetSessionToken = () => {
+    sessionTokenRef.current = createPlacesSessionToken();
+  };
 
   useEffect(() => {
-    // Check if already loaded
-    if (googleMapsLoader.isLoaded()) {
-      setIsLoaded(true);
-      return;
-    }
+    setInputValue(value);
+  }, [value]);
 
-    // Load Google Maps using singleton loader
-    googleMapsLoader.load()
-      .then(() => {
-        setIsLoaded(true);
-      })
-      .catch(error => {
-        console.error('Error loading Google Maps:', error);
-      });
+  const runAutocomplete = useCallback(
+    async (query: string) => {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        setSuggestions([]);
+        setDropdownOpen(false);
+        return;
+      }
+
+      const token = ensureSessionToken();
+      const currentRequestId = ++requestIdRef.current;
+      setIsLoading(true);
+
+      try {
+        const results = await fetchAutocompleteSuggestions({
+          input: trimmed,
+          sessionToken: token,
+          languageCode: 'en',
+          includedPrimaryTypes,
+        });
+        if (requestIdRef.current === currentRequestId) {
+          setSuggestions(results);
+          setDropdownOpen(results.length > 0);
+        }
+      } catch (error) {
+        console.error('[AddressAutocomplete] autocomplete error:', error);
+        if (requestIdRef.current === currentRequestId) {
+          setSuggestions([]);
+          setDropdownOpen(false);
+        }
+      } finally {
+        if (requestIdRef.current === currentRequestId) {
+          setIsLoading(false);
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => runAutocomplete(inputValue), DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [inputValue, runAutocomplete]);
+
+  const closeDropdown = useCallback(() => {
+    setDropdownOpen(false);
+    setSuggestions([]);
   }, []);
 
-  useEffect(() => {
-    if (!isLoaded || !inputRef.current) return;
+  const applyValue = useCallback((nextValue: string, fallback: string) => {
+    const finalValue = nextValue.trim() || fallback;
+    setInputValue(finalValue);
+    onChange(finalValue);
+  }, [onChange]);
 
-    // Double check that google.maps.places is available
-    if (typeof google === 'undefined' || !google.maps || !google.maps.places) {
-      console.warn('[AddressAutocomplete] Google Maps Places API not fully loaded yet');
-      return;
-    }
+  const handleSelect = useCallback(
+    async (suggestion: PlaceSuggestion) => {
+      const primary = suggestion.primaryText?.trim();
+      const secondary = suggestion.secondaryText?.trim();
+      const raw = suggestion.rawText?.trim();
+      const fallback = primary || raw || secondary || '';
 
-    try {
-      // Create autocomplete instance
-      autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-        types: ['address'],
-        fields: ['formatted_address', 'geometry']
-      });
+      applyValue(fallback, fallback);
 
-      // Add listener for place selection
-      const listener = autocompleteRef.current.addListener('place_changed', () => {
-        const place = autocompleteRef.current?.getPlace();
-        if (place?.formatted_address) {
-          onChange(place.formatted_address);
-        }
-      });
+      try {
+        const token = ensureSessionToken();
+        const details = await fetchPlaceDetails({
+          placeId: suggestion.placeId,
+          sessionToken: token,
+        });
 
-      return () => {
-        if (listener) {
-          google.maps.event.removeListener(listener);
-        }
-      };
-    } catch (err) {
-      console.error('[AddressAutocomplete] Failed to initialize autocomplete:', err);
-    }
-  }, [isLoaded, onChange]);
+        const formatted = formatSelection
+          ? formatSelection({ suggestion, details, fallback })
+          : details.formattedAddress?.trim() || fallback;
 
-  // Helper: accept first visible Google Places suggestion on Tab/Enter
-  const getFirstVisiblePacItem = (): HTMLElement | null => {
-    const items = Array.from(document.querySelectorAll<HTMLElement>('.pac-container .pac-item'));
-    for (const el of items) {
-      const style = getComputedStyle(el);
-      const visible = style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
-      if (visible) return el;
-    }
-    return null;
-  };
-
-  const acceptFirstPrediction = (done: () => void) => {
-    const tryClick = (attempt = 0) => {
-      const firstItem = getFirstVisiblePacItem();
-      if (firstItem) {
-        firstItem.click();
-        setTimeout(() => {
-          const committed = inputRef.current?.value || '';
-          if (committed) onChange(committed);
-          done();
-        }, 0);
-      } else if (attempt < 5) {
-        setTimeout(() => tryClick(attempt + 1), 30);
-      } else {
-        done();
+        applyValue(formatted, fallback);
+      } catch (error) {
+        console.error('[AddressAutocomplete] details error:', error);
+      } finally {
+        closeDropdown();
+        resetSessionToken();
       }
-    };
-    tryClick();
+    },
+    [applyValue, closeDropdown, formatSelection, resetSessionToken, ensureSessionToken]
+  );
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setInputValue(newValue);
+    onChange(newValue);
+    ensureSessionToken();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const isAcceptKey = e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey);
-    if (!isAcceptKey) return;
-    e.preventDefault();
-    acceptFirstPrediction(() => {
-      const node = inputRef.current;
-      node?.blur();
-      setTimeout(() => {
-        if (!node) return;
-        const focusables = Array.from(document.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )).filter(el => !el.hasAttribute('disabled') && el.tabIndex !== -1 && el.offsetParent !== null);
-        const i = focusables.indexOf(node);
-        const next = i >= 0 && i + 1 < focusables.length ? focusables[i + 1] : null;
-        next?.focus();
-      }, 0);
-    });
+  const focusNextElement = (current: HTMLInputElement | null) => {
+    if (!current) return;
+    const root: HTMLElement = current.form ?? document.body;
+    const focusable = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        'input, select, textarea, button, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter(
+      (el) =>
+        !el.hasAttribute('disabled') &&
+        el.getAttribute('tabindex') !== '-1' &&
+        el.getAttribute('aria-hidden') !== 'true'
+    );
+    const index = focusable.indexOf(current);
+    if (index === -1) return;
+    const next = focusable[index + 1];
+    if (next) {
+      next.focus();
+      if (next instanceof HTMLInputElement) {
+        next.select?.();
+      }
+    }
   };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const isForwardTab = event.key === 'Tab' && !event.shiftKey;
+    const isEnter = event.key === 'Enter';
+    if ((isForwardTab || isEnter) && dropdownOpen && suggestions.length > 0) {
+      event.preventDefault();
+      const currentInput = event.currentTarget as HTMLInputElement;
+      const selectionPromise = handleSelect(suggestions[0]);
+      if (isForwardTab) {
+        selectionPromise.finally(() => {
+          window.requestAnimationFrame(() => focusNextElement(currentInput));
+        });
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    window.setTimeout(() => setDropdownOpen(false), 120);
+  };
+
+  const suggestionItems = useMemo(() => {
+    if (!dropdownOpen) return null;
+    if (isLoading) {
+      return <div className="px-3 py-2 text-sm text-gray-400">Searching…</div>;
+    }
+    if (suggestions.length === 0) {
+      return <div className="px-3 py-2 text-sm text-gray-500">No matches</div>;
+    }
+    return suggestions.map((suggestion) => (
+      <button
+        key={suggestion.placeId}
+        type="button"
+        className="w-full px-3 py-2 text-left hover:bg-gray-700/40"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          handleSelect(suggestion);
+        }}
+      >
+        <div className="text-sm text-text-primary">{suggestion.primaryText}</div>
+        {suggestion.secondaryText && (
+          <div className="text-xs text-gray-400">{suggestion.secondaryText}</div>
+        )}
+      </button>
+    ));
+  }, [dropdownOpen, isLoading, suggestions, handleSelect]);
 
   return (
-    <input
-      ref={inputRef}
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={handleKeyDown}
-      placeholder={placeholder}
-      required={required}
-      className={className}
-    />
+    <div className="relative">
+      <Input
+        ref={inputRef}
+        type="text"
+        value={inputValue}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        onFocus={() => suggestions.length > 0 && setDropdownOpen(true)}
+        placeholder={placeholder}
+        required={required}
+        className={className || 'w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary'}
+      />
+      {dropdownOpen && (
+        <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-600/30 bg-background-secondary shadow-lg overflow-hidden">
+          {suggestionItems}
+        </div>
+      )}
+    </div>
   );
 }

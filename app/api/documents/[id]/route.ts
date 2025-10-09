@@ -1,8 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { getBackblazeService } from '@/lib/backblaze/b2-service';
+
+const resolveFilePath = (fileName?: string | null, fileUrl?: string | null): string | null => {
+  if (fileName) return fileName;
+  if (fileUrl && fileUrl.includes('/file/')) {
+    const afterFile = fileUrl.split('/file/')[1];
+    if (afterFile) {
+      const parts = afterFile.split('/');
+      if (parts.length > 1) {
+        return parts.slice(1).join('/');
+      }
+    }
+  }
+  return null;
+};
 import { ActivityLogger } from '@/lib/services/activity-logger';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(
   request: NextRequest,
@@ -10,13 +25,12 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
-    const { user } = authResult;
-    const supabase = await createClient();
+
+    const { user, supabase } = authResult;
 
     // Get document details
     const { data: document, error } = await supabase
@@ -26,27 +40,29 @@ export async function GET(
       .single();
 
     if (error || !document) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      return jsonError('Document not found', { status: 404 });
     }
 
     // Check if user has permission to download (admin or document owner)
     if (user.role !== 'admin' && document.uploaded_by !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return jsonError('Forbidden', { status: 403 });
     }
 
     // Return document info with file URL for download
-    return NextResponse.json({ 
+    return jsonSuccess({
       document: {
         ...document,
-        download_url: document.file_url
-      }
-    });
+        download_url: document.file_url,
+      },
+    }, { legacy: {
+      document: {
+        ...document,
+        download_url: document.file_url,
+      },
+    } });
   } catch (error) {
 
-    return NextResponse.json(
-      { error: 'Failed to fetch document' },
-      { status: 500 }
-    );
+    return jsonError('Failed to fetch document', { status: 500 });
   }
 }
 
@@ -54,16 +70,18 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
-    const { user } = authResult;
+
+    const { user, supabase } = authResult;
     const body = await request.json();
-    const supabase = await createClient();
 
     // Get document to check permissions
     const { data: document, error: fetchError } = await supabase
@@ -73,7 +91,7 @@ export async function PATCH(
       .single();
 
     if (fetchError || !document) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      return jsonError('Document not found', { status: 404 });
     }
 
     // Check permissions - user can update if they're admin or assigned to the document
@@ -82,7 +100,7 @@ export async function PATCH(
       document.assigned_to?.includes('shared');
 
     if (!canUpdate) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return jsonError('Forbidden', { status: 403 });
     }
 
     // Update only allowed fields
@@ -116,7 +134,10 @@ export async function PATCH(
 
     if (updateError) {
       console.error('Update error:', updateError);
-      return NextResponse.json({ error: 'Failed to update document' }, { status: 500 });
+      return jsonError('Failed to update document', {
+        status: 500,
+        meta: { details: updateError.message },
+      });
     }
 
     // Log the activity if there were changes
@@ -129,13 +150,10 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json(updatedDoc);
+    return jsonSuccess(updatedDoc, { legacy: updatedDoc });
   } catch (error) {
     console.error('PATCH error:', error);
-    return NextResponse.json(
-      { error: 'Failed to update document' },
-      { status: 500 }
-    );
+    return jsonError('Failed to update document', { status: 500 });
   }
 }
 
@@ -143,21 +161,22 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
-    }
-    
-    const { user } = authResult;
-    
-    // Only admins can delete documents
-    if (user.role !== 'admin') {
-      return NextResponse.json({ error: 'Only administrators can delete documents' }, { status: 403 });
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
-    const supabase = await createClient();
+    const { user, supabase } = authResult;
+
+    // Only admins can delete documents
+    if (user.role !== 'admin') {
+      return jsonError('Only administrators can delete documents', { status: 403 });
+    }
 
     // Get document details before deleting
     const { data: document, error: fetchError } = await supabase
@@ -167,7 +186,7 @@ export async function DELETE(
       .single();
 
     if (fetchError) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      return jsonError('Document not found', { status: 404 });
     }
 
     // Before deleting, update any tasks that reference this document
@@ -196,21 +215,18 @@ export async function DELETE(
 
     if (deleteError) {
       console.error('Delete error:', deleteError);
-      return NextResponse.json({ 
-        error: 'Failed to delete document', 
-        details: deleteError.message 
-      }, { status: 500 });
+      return jsonError('Failed to delete document', {
+        status: 500,
+        meta: { details: deleteError.message },
+      });
     }
 
     // Delete from Backblaze B2
-    if (document?.file_url) {
+    const filePath = resolveFilePath(document?.file_name, document?.file_url);
+    if (filePath) {
       try {
         const backblazeService = getBackblazeService();
-        // Extract filename from URL
-        const fileName = document.file_url.split('/').pop();
-        if (fileName) {
-          await backblazeService.deleteFile(fileName);
-        }
+        await backblazeService.deleteFile(filePath);
       } catch (error) {
         console.error('Failed to delete file from Backblaze:', error);
         // Continue with database deletion even if B2 deletion fails
@@ -226,12 +242,9 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ deleted: true }, { legacy: { success: true } });
   } catch (error) {
 
-    return NextResponse.json(
-      { error: 'Failed to delete document' },
-      { status: 500 }
-    );
+    return jsonError('Failed to delete document', { status: 500 });
   }
 }

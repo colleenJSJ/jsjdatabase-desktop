@@ -151,7 +151,15 @@ export function RecentContactsAutocomplete({
   // Handle Enter key and comma
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     console.log('[RecentContactsAutocomplete] Key pressed:', e.key, 'Input value:', inputValue);
-    
+
+    if (e.key === 'Tab' && !e.shiftKey) {
+      if (showSuggestions && suggestions.length > 0) {
+        e.preventDefault();
+        handleSuggestionSelect(suggestions[0]);
+      }
+      return;
+    }
+
     if ((e.key === 'Enter' || e.key === ',') && inputValue.trim()) {
       e.preventDefault();
       console.log('[RecentContactsAutocomplete] Processing input:', inputValue);

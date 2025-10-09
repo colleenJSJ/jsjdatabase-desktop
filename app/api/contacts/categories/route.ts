@@ -1,11 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request);
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -25,19 +26,17 @@ export async function GET(request: NextRequest) {
         details: error.details
       });
       // Return default categories if table doesn't exist or error occurs
-      return NextResponse.json({ 
-        categories: ['Health', 'Household', 'Pets', 'Travel', 'J3 Academics', 'Other'] 
-      });
+      const fallback = ['Health', 'Household', 'Pets', 'Travel', 'J3 Academics', 'Other'];
+      return jsonSuccess({ categories: fallback }, { legacy: { categories: fallback } });
     }
 
     // Transform to simple array of category names
     const categoryNames = categories?.map(cat => cat.name) || ['Health', 'Household', 'Pets', 'Travel', 'J3 Academics', 'Other'];
 
-    return NextResponse.json({ categories: categoryNames });
+    return jsonSuccess({ categories: categoryNames }, { legacy: { categories: categoryNames } });
   } catch (error) {
     console.error('Error in GET /api/contacts/categories:', error);
-    return NextResponse.json({ 
-      categories: ['Health', 'Household', 'Pets', 'Travel', 'J3 Academics', 'Other'] 
-    });
+    const fallback = ['Health', 'Household', 'Pets', 'Travel', 'J3 Academics', 'Other'];
+    return jsonSuccess({ categories: fallback }, { legacy: { categories: fallback } });
   }
 }

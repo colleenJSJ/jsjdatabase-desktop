@@ -5,11 +5,12 @@ import { ActivityLogger } from '@/lib/services/activity-logger';
 import { authenticateRequest } from '@/lib/utils/auth-middleware';
 import { validateForm, validators } from '@/lib/utils/validation';
 import { resolvePersonReferences, expandPersonReferences, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function GET(request: NextRequest) {
   try {
     // Use the new auth middleware
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequest(request, false, { skipCSRF: true });
     if (!auth.authenticated) {
       return auth.response!;
     }
@@ -337,9 +338,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     // Use the new auth middleware
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequest(request, false, { skipCSRF: true });
     if (!auth.authenticated) {
       return auth.response!;
     }

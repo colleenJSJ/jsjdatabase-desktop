@@ -1,19 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { syncDoctorToContacts } from '@/app/api/_helpers/contact-sync';
 import { ensurePortalAndPassword } from '@/lib/services/portal-password-sync';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     console.log('[Doctors API] Starting GET request');
     
-    const authResult = await getAuthenticatedUser();
-    console.log('[Doctors API] Auth result:', authResult);
-    
-    if ('error' in authResult) {
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
       console.log('[Doctors API] Authentication failed');
-      return authResult.error;
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -28,48 +28,57 @@ export async function GET() {
 
     if (error) {
       console.error('[Doctors API] Database error:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch doctors', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch doctors', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     // Decrypt passwords for each doctor
     console.log('[Doctors API] Decrypting portal passwords');
-    const decryptedDoctors = doctors?.map(doctor => {
-      try {
-        return {
-          ...doctor,
-          portal_password: doctor.portal_password ? decrypt(doctor.portal_password) : null
-        };
-      } catch (decryptError) {
-        console.error('[Doctors API] Error decrypting password for doctor:', doctor.id, decryptError);
-        return {
-          ...doctor,
-          portal_password: null
-        };
-      }
-    }) || [];
+    const decryptedDoctors = await Promise.all(
+      (doctors || []).map(async (doctor) => {
+        try {
+          return {
+            ...doctor,
+            portal_password: doctor.portal_password ? await decrypt(doctor.portal_password) : null,
+          };
+        } catch (decryptError) {
+          console.error('[Doctors API] Error decrypting password for doctor:', doctor.id, decryptError);
+          return {
+            ...doctor,
+            portal_password: null,
+          };
+        }
+      })
+    );
 
     console.log('[Doctors API] Returning doctors:', decryptedDoctors.length);
-    return NextResponse.json({ doctors: decryptedDoctors });
+    return jsonSuccess({ doctors: decryptedDoctors }, {
+      legacy: { doctors: decryptedDoctors },
+    });
   } catch (error) {
     console.error('[Doctors API] Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     console.log('[Doctors API POST] Starting request');
     
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
       console.log('[Doctors API POST] Authentication failed');
-      return authResult.error;
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -92,7 +101,7 @@ export async function POST(request: NextRequest) {
         website: data.website || null,
         portal_url: data.portal_url || null,
         portal_username: data.portal_username || null,
-        portal_password: data.portal_password ? encrypt(data.portal_password) : null,
+        portal_password: data.portal_password ? await encrypt(data.portal_password) : null,
         patients: data.patients || [],
         notes: data.notes || null,
         created_by: user.id,
@@ -102,10 +111,10 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[Doctors API POST] Database error:', error);
-      return NextResponse.json(
-        { error: 'Failed to create doctor', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to create doctor', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     console.log('[Doctors API POST] Successfully created doctor:', doctor.id);
@@ -185,15 +194,20 @@ export async function POST(request: NextRequest) {
     // Decrypt password before returning
     const decryptedDoctor = {
       ...doctor,
-      portal_password: doctor.portal_password ? decrypt(doctor.portal_password) : null
+      portal_password: doctor.portal_password ? await decrypt(doctor.portal_password) : null,
     };
     
-    return NextResponse.json({ doctor: decryptedDoctor });
+    return jsonSuccess({ doctor: decryptedDoctor }, {
+      status: 201,
+      legacy: { doctor: decryptedDoctor },
+    });
   } catch (error) {
     console.error('[Doctors API POST] Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }

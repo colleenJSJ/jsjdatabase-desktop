@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { CalendarEvent, CalendarEventCategory } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { Plus } from 'lucide-react';
@@ -27,6 +27,8 @@ interface WeekViewProps {
   setShowCreateModal: (show: boolean) => void;
   onEventsChange: () => void;
   onRangeSelect?: (range: { start: Date; end: Date; isAllDay: boolean }) => void;
+  forceOpenEventId?: string;
+  onForceOpenHandled?: () => void;
 }
 
 export function WeekView({
@@ -38,18 +40,47 @@ export function WeekView({
   setSelectedDate,
   setShowCreateModal,
   onEventsChange,
-  onRangeSelect
+  onRangeSelect,
+  forceOpenEventId,
+  onForceOpenHandled
 }: WeekViewProps) {
   const { preferences } = usePreferences();
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ day: Date; hour: number } | null>(null);
   const [showEditModal, setShowEditModal] = useState<CalendarEvent | null>(null);
   const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
-  const tooltipPosRef = useRef({ top: 0, left: 0 });
   const rafRef = useRef<number | null>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  const updateTooltipPosition = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const tooltipEl = tooltipRef.current;
+    if (!tooltipEl) return;
+
+    const gap = 12;
+    const width = tooltipEl.offsetWidth || 256;
+    const height = tooltipEl.offsetHeight || 150;
+
+    let left = event.clientX + gap;
+    let top = event.clientY + gap;
+
+    if (left + width > window.innerWidth - gap) {
+      left = event.clientX - width - gap;
+    }
+
+    if (top + height > window.innerHeight - gap) {
+      top = event.clientY - height - gap;
+    }
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const el = tooltipRef.current;
+      if (!el) return;
+      el.style.left = `${Math.max(gap, left)}px`;
+      el.style.top = `${Math.max(gap, top)}px`;
+    });
+  }, []);
 
   // Memoized calendar map for fast lookups
   const calById = useMemo(() => {
@@ -57,6 +88,14 @@ export function WeekView({
     (googleCalendars || []).forEach((c: any) => m.set(c.google_calendar_id || c.id, c));
     return m;
   }, [googleCalendars]);
+
+  useEffect(() => {
+    if (!forceOpenEventId) return;
+    const event = events.find(ev => ev.id === forceOpenEventId);
+    if (!event) return;
+    setShowEditModal(event);
+    onForceOpenHandled?.();
+  }, [forceOpenEventId, events, onForceOpenHandled]);
 
   // Show only the current week
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 }); // Sunday
@@ -75,18 +114,77 @@ export function WeekView({
 
   // Precompute positions per day in viewer timezone for performance
   const positionsByDay = useMemo(() => {
+    const computeLayout = (items: Array<{ ev: CalendarEvent; startMin: number; endMin: number }>) => {
+      const sorted = [...items]
+        .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
+        .map(item => ({ ...item }));
+
+      type ActiveItem = { startMin: number; endMin: number; column: number; clusterId: number };
+      const active: ActiveItem[] = [];
+      const clusterMaxColumns = new Map<number, number>();
+      let clusterId = 0;
+
+      sorted.forEach(item => {
+        for (let i = active.length - 1; i >= 0; i--) {
+          if (active[i].endMin <= item.startMin) {
+            active.splice(i, 1);
+          }
+        }
+
+        if (active.length === 0) {
+          clusterId += 1;
+        }
+
+        const usedColumns = new Set(active.map(a => a.column));
+        let column = 0;
+        while (usedColumns.has(column)) {
+          column += 1;
+        }
+
+        const layoutItem: ActiveItem = {
+          startMin: item.startMin,
+          endMin: item.endMin,
+          column,
+          clusterId
+        };
+
+        (item as any).column = column;
+        (item as any).clusterId = clusterId;
+
+        active.push(layoutItem);
+
+        const currentMax = clusterMaxColumns.get(clusterId) ?? 0;
+        clusterMaxColumns.set(clusterId, Math.max(currentMax, active.length, column + 1));
+      });
+
+      return sorted.map(item => ({
+        ...item,
+        column: (item as any).column as number,
+        columns: clusterMaxColumns.get((item as any).clusterId) ?? ((item as any).column + 1)
+      }));
+    };
+
     const base = getZonedParts(weekDays[0], preferences.timezone);
     const baseDate = new Date(base.year, base.month - 1, base.day, 0, 0, 0, 0);
+
     return weekDays.map((_, dayIndex) => {
       const targetDate = new Date(baseDate);
       targetDate.setDate(baseDate.getDate() + dayIndex);
-      const items = timedEvents.map(ev => {
+      const raw = timedEvents.map(ev => {
         const evTz = getEventTimeZone(ev, googleCalendars, calById);
+        if (!isEventOnDayInViewerTZ(ev.start_time, ev.end_time, evTz, targetDate, preferences.timezone)) {
+          return null;
+        }
         const { startMin, endMin } = getStartEndMinutesOnDayInViewerTZ(ev.start_time, ev.end_time, evTz, targetDate, preferences.timezone);
         if (endMin <= 0 || startMin >= 1440) return null;
-        return { ev, startMin: Math.max(0, startMin), endMin: Math.min(1440, endMin) };
-      }).filter(Boolean) as { ev: any, startMin: number, endMin: number }[];
-      return items;
+        return {
+          ev,
+          startMin: Math.max(0, startMin),
+          endMin: Math.min(1440, endMin)
+        };
+      }).filter(Boolean) as Array<{ ev: CalendarEvent; startMin: number; endMin: number }>;
+
+      return computeLayout(raw);
     });
   }, [timedEvents, preferences.timezone, googleCalendars, calById, weekDays]);
   
@@ -203,33 +301,6 @@ export function WeekView({
     setDraggedEvent(null);
     setDragOverCell(null);
   };
-
-  // Smart positioning for tooltip
-  const updateTooltipPosition = useCallback((event: React.MouseEvent) => {
-    if (!tooltipRef.current) return;
-
-    const target = event.currentTarget as HTMLElement;
-    const targetRect = target.getBoundingClientRect();
-    const tooltipRect = tooltipRef.current.getBoundingClientRect();
-    
-    // Get container bounds if available
-    const containerRect = containerRef.current?.getBoundingClientRect();
-    
-    // Get current mouse position from the event
-    const currentMousePosition = { x: event.clientX, y: event.clientY };
-    
-    const position = calculateTooltipPosition({
-      targetRect,
-      tooltipRect,
-      mousePosition: currentMousePosition,
-      containerRect,
-      preferredPlacement: 'auto',
-      gap: 8
-    });
-    
-    void position;
-  }, []);
-
   const getEventStyle = (event: CalendarEvent, cellDate: Date, cellHour: number) => {
     const eventStart = parseDateFlexible(event.start_time);
     const eventEnd = parseDateFlexible(event.end_time);
@@ -366,7 +437,7 @@ export function WeekView({
                 <div className="relative p-1" style={{ gridColumn: '2 / span 7' }}>
                   <div
                     className="grid gap-1"
-                    style={{ gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: `repeat(${rows}, 28px)` }}
+                    style={{ gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: `repeat(${rows}, 22px)` }}
                   >
                     {allDaySegments.map((seg, idx) => (
                       <button
@@ -377,6 +448,12 @@ export function WeekView({
                           gridRow: `${seg.row + 1}`,
                           backgroundColor: getEventColor(seg.event, googleCalendars)
                         }}
+                        onMouseEnter={(e) => {
+                          setHoveredEventId(seg.event.id);
+                          updateTooltipPosition(e);
+                        }}
+                        onMouseMove={updateTooltipPosition}
+                        onMouseLeave={() => setHoveredEventId(prev => (prev === seg.event.id ? null : prev))}
                         onClick={() => setShowEditModal(seg.event)}
                         aria-label={seg.event.title}
                       >
@@ -453,32 +530,32 @@ export function WeekView({
                 const eventsForDay = positionsByDay[dayIndex] || [];
                 return (
                   <div key={dayIndex} className="relative" style={{ position: 'relative' }}>
-                    {eventsForDay.map(({ ev, startMin, endMin }) => {
+                    {eventsForDay.map(({ ev, startMin, endMin, column, columns }) => {
                       const startMins = startMin;
                       const endMins = endMin;
                       const topPct = (startMins / 1440) * 100;
                       const heightPct = Math.max(((endMins - startMins) / 1440) * 100, 1.5);
+                      const colCount = Math.max(columns || 1, 1);
+                      const columnWidth = 100 / colCount;
+                      const leftPct = columnWidth * column;
                       return (
                         <div
                           key={ev.id}
-                          className="absolute left-1 right-1 px-1 text-xs text-white truncate cursor-pointer pointer-events-auto"
-                          style={{ top: `${topPct}%`, height: `${heightPct}%`, backgroundColor: getEventColor(ev, googleCalendars, calById), borderRadius: 4 }}
-                          onClick={() => setShowEditModal(ev)}
-                          onMouseEnter={(e) => { setHoveredEventId(ev.id); if (tooltipRef.current) { tooltipRef.current.style.left = `${e.clientX+10}px`; tooltipRef.current.style.top = `${e.clientY+10}px`; } }}
-                          onMouseMove={(e) => {
-                            if (!tooltipRef.current) return;
-                            const gap=10, w=256, h=tooltipRef.current.offsetHeight||150;
-                            let L=e.clientX+gap, T=e.clientY+gap;
-                            if (L+w>innerWidth-gap) L=e.clientX-w-gap;
-                            if (T+h>innerHeight-gap) T=e.clientY-h-gap;
-                            tooltipPosRef.current = { left: T, top: L } as any;
-                            if (rafRef.current) cancelAnimationFrame(rafRef.current);
-                            rafRef.current = requestAnimationFrame(() => {
-                              if (!tooltipRef.current) return;
-                              tooltipRef.current.style.left = `${L}px`;
-                              tooltipRef.current.style.top = `${T}px`;
-                            });
+                          className="absolute px-1 text-xs text-white truncate cursor-pointer pointer-events-auto"
+                          style={{
+                            top: `${topPct}%`,
+                            height: `${heightPct}%`,
+                            left: `calc(${leftPct}% + 2px)`,
+                            width: `calc(${columnWidth}% - 4px)`,
+                            backgroundColor: getEventColor(ev, googleCalendars, calById),
+                            borderRadius: 4
                           }}
+                          onClick={() => setShowEditModal(ev)}
+                          onMouseEnter={(e) => {
+                            setHoveredEventId(ev.id);
+                            updateTooltipPosition(e);
+                          }}
+                          onMouseMove={updateTooltipPosition}
                           onMouseLeave={() => setHoveredEventId(null)}
                         >
                           <div className="truncate font-medium">{ev.title}</div>

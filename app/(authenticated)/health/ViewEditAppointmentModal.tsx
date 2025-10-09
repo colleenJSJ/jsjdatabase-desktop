@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import { X, Edit, Trash2, Calendar, Clock, MapPin, User, FileText, AlertCircle, Phone, Users, Plane } from 'lucide-react';
 import { usePreferences } from '@/contexts/preferences-context';
 import { toInstantFromNaive, formatInstantInTimeZone } from '@/lib/utils/date-utils';
-import { Task } from '@/lib/supabase/types';
+import ApiClient from '@/lib/api/api-client';
+import type { CalendarEvent, Task } from '@/lib/supabase/types';
+import type { HealthAppointment, AppointmentMetadata } from './types';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 
 interface Doctor {
@@ -20,12 +22,26 @@ interface FamilyMember {
   name: string;
 }
 
+interface EditableAppointmentForm {
+  title: string;
+  doctor: string;
+  doctor_id: string;
+  doctor_phone: string;
+  patient_names: string[];
+  appointment_date: string;
+  appointment_time: string;
+  duration: string;
+  location: string;
+  appointment_type: string;
+  notes: string;
+}
+
 interface ViewEditAppointmentModalProps {
-  appointment: Task;
+  appointment: HealthAppointment;
   doctors: Doctor[];
   familyMembers: FamilyMember[];
   onClose: () => void;
-  onAppointmentUpdated: (appointment: Task) => void;
+  onAppointmentUpdated: (appointment: HealthAppointment) => void;
   onAppointmentDeleted: (appointmentId: string) => void;
   startInEditMode?: boolean;
   googleCalendars?: Array<{ google_calendar_id?: string; id?: string; name?: string }>;
@@ -47,47 +63,62 @@ export function ViewEditAppointmentModal({
   const { preferences } = usePreferences();
   
   // Parse appointment details from the task
-  const [appointmentData, setAppointmentData] = useState(() => {
-    // Extract doctor info from description or title
-    const doctorMatch = appointment.description?.match(/Doctor:\s*([^\n]+)/);
+  const [appointmentData, setAppointmentData] = useState<EditableAppointmentForm>(() => {
+    const description = appointment.description ?? '';
+    const doctorMatch = description.match(/Doctor:\s*([^\n]+)/);
     const doctorName = doctorMatch ? doctorMatch[1] : '';
-    const doctor = doctors.find(d => d.name === doctorName || appointment.title?.includes(d.name));
-    
-    // Extract phone from description
-    const phoneMatch = appointment.description?.match(/Phone:\s*([^\n]+)/);
-    const doctorPhone = phoneMatch ? phoneMatch[1] : doctor?.phone || '';
-    
-    // Extract location from description
-    const locationMatch = appointment.description?.match(/Location:\s*([^\n]+)/);
-    const location = locationMatch ? locationMatch[1] : doctor?.address || '';
-    
-    // Extract appointment type from description
-    const typeMatch = appointment.description?.match(/Type:\s*([^\n]+)/);
+    const matchedDoctor = doctors.find(d => d.name === doctorName || appointment.title?.includes(d.name));
+
+    const phoneMatch = description.match(/Phone:\s*([^\n]+)/);
+    const doctorPhone = phoneMatch ? phoneMatch[1] : matchedDoctor?.phone || '';
+
+    const locationMatch = description.match(/Location:\s*([^\n]+)/);
+    const location = locationMatch ? locationMatch[1] : matchedDoctor?.address || '';
+
+    const typeMatch = description.match(/Type:\s*([^\n]+)/);
     const appointmentType = typeMatch ? typeMatch[1] : 'checkup';
-    
-    // Extract duration from description
-    const durationMatch = appointment.description?.match(/Duration:\s*(\d+)\s*minutes/);
+
+    const durationMatch = description.match(/Duration:\s*(\d+)\s*minutes/);
     const duration = durationMatch ? durationMatch[1] : '60';
-    
+
     const appointmentDate = appointment.due_date ? new Date(appointment.due_date) : new Date();
-    
+
+    const assignedUserNames = (appointment.assigned_users ?? [])
+      .map(user => user.name)
+      .filter((name): name is string => Boolean(name));
+
+    const assignedIds = Array.isArray(appointment.assigned_to)
+      ? appointment.assigned_to
+      : appointment.assigned_to
+        ? [appointment.assigned_to]
+        : [];
+
+    const namesFromIds = assignedIds
+      .map(id => familyMembers.find(member => member.id === id)?.name)
+      .filter((name): name is string => Boolean(name));
+
+    const patientNames = Array.from(new Set([...assignedUserNames, ...namesFromIds]));
+
+    const cleanedNotes = description
+      .replace(/Doctor:.*?\n/g, '')
+      .replace(/Phone:.*?\n/g, '')
+      .replace(/Location:.*?\n/g, '')
+      .replace(/Type:.*?\n/g, '')
+      .replace(/Duration:.*?\n/g, '')
+      .trim();
+
     return {
       title: appointment.title || '',
-      doctor: doctorName || doctor?.name || '',
-      doctor_id: doctor?.id || '',
+      doctor: doctorName || matchedDoctor?.name || '',
+      doctor_id: matchedDoctor?.id || '',
       doctor_phone: doctorPhone,
-      patient_names: appointment.assigned_users?.map(u => u.name) || [appointment.assigned_to || ''],
+      patient_names: patientNames.length > 0 ? patientNames : [],
       appointment_date: appointmentDate.toISOString().split('T')[0],
       appointment_time: appointmentDate.toTimeString().slice(0, 5),
-      duration: duration,
-      location: location,
+      duration,
+      location,
       appointment_type: appointmentType,
-      notes: appointment.description?.replace(/Doctor:.*?\n/g, '')
-        .replace(/Phone:.*?\n/g, '')
-        .replace(/Location:.*?\n/g, '')
-        .replace(/Type:.*?\n/g, '')
-        .replace(/Duration:.*?\n/g, '')
-        .trim() || '',
+      notes: cleanedNotes || '',
     };
   });
 
@@ -148,11 +179,9 @@ export function ViewEditAppointmentModal({
       // Get patient IDs from names
       const patientIds = appointmentData.patient_names
         .map(name => familyMembers.find(m => m.name === name)?.id)
-        .filter(id => id);
+        .filter((id): id is string => Boolean(id));
 
-      // Check if appointment has a calendar event
-      if ((appointment as any).calendar_event_id) {
-        // Update via calendar-events API for proper Google sync
+      if (appointment.calendar_event_id) {
         const calendarEventPayload = {
           event: {
             title: appointmentData.title,
@@ -160,42 +189,67 @@ export function ViewEditAppointmentModal({
             start_time: startDateTime,
             end_time: endDateTime,
             location: appointmentData.location,
-            category: 'medical',
+            category: 'medical' as const,
             attendees: patientIds,
             metadata: {
               doctor: appointmentData.doctor,
-              appointment_type: appointmentData.appointment_type
-            }
-          }
+              appointment_type: appointmentData.appointment_type,
+            },
+          },
         };
 
-        const ApiClient = (await import('@/lib/api/api-client')).default;
-        const response = await ApiClient.put(`/api/calendar-events/${(appointment as any).calendar_event_id}`, calendarEventPayload);
-        if (!response.success) {
-          throw new Error('Failed to update calendar event');
+        const calendarResponse = await ApiClient.put<{ event: CalendarEvent }>(
+          `/api/calendar-events/${appointment.calendar_event_id}`,
+          calendarEventPayload
+        );
+
+        if (!calendarResponse.success || !calendarResponse.data?.event) {
+          throw new Error(calendarResponse.error || 'Failed to update calendar event');
         }
       }
 
-      // Also update the task record
-      const updatedTask = {
+      const updatedTaskPayload = {
         title: appointmentData.title,
         description: description.trim(),
         due_date: startDateTime,
         assigned_to: patientIds,
       };
 
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-      const response = await ApiClient.put(`/api/tasks/${appointment.id}`, updatedTask);
+      const taskResponse = await ApiClient.put<{ task: Task }>(
+        `/api/tasks/${appointment.id}`,
+        updatedTaskPayload
+      );
 
-      if (response.success) {
-        const data: any = response.data;
-        onAppointmentUpdated(data?.task || data);
-        setIsEditing(false);
-        onClose();
-      } else {
-        console.error('Error updating appointment:', response.error);
+      if (!taskResponse.success || !taskResponse.data?.task) {
+        console.error('Error updating appointment:', taskResponse.error);
         alert('Failed to update appointment');
+        return;
       }
+
+      const updatedTask = taskResponse.data.task;
+      const updatedMetadata: AppointmentMetadata = {
+        ...(appointment.metadata ?? {}),
+        doctor: appointmentData.doctor || undefined,
+        doctor_phone: appointmentData.doctor_phone || undefined,
+        appointment_type: appointmentData.appointment_type || undefined,
+      };
+
+      const updatedAppointment: HealthAppointment = {
+        ...appointment,
+        ...updatedTask,
+        doctor: appointmentData.doctor,
+        doctor_phone: appointmentData.doctor_phone,
+        location: appointmentData.location,
+        appointment_type: appointmentData.appointment_type,
+        notes: appointmentData.notes,
+        patient_names: [...appointmentData.patient_names],
+        metadata: updatedMetadata,
+        calendar_event_id: appointment.calendar_event_id,
+      };
+
+      onAppointmentUpdated(updatedAppointment);
+      setIsEditing(false);
+      onClose();
     } catch (error) {
       console.error('Error updating appointment:', error);
       alert('Failed to update appointment');
@@ -210,15 +264,16 @@ export function ViewEditAppointmentModal({
     setDeleting(true);
     try {
       // If appointment has a calendar event, delete via calendar-events API
-      const ApiClient = (await import('@/lib/api/api-client')).default;
-      if ((appointment as any).calendar_event_id) {
-        const calendarResponse = await ApiClient.delete(`/api/calendar-events/${(appointment as any).calendar_event_id}`);
+      if (appointment.calendar_event_id) {
+        const calendarResponse = await ApiClient.delete<{ success: boolean }>(
+          `/api/calendar-events/${appointment.calendar_event_id}`
+        );
         if (!calendarResponse.success) {
-          console.error('Failed to delete calendar event');
+          console.error('Failed to delete calendar event', calendarResponse.error);
         }
       } else {
         // Fallback to direct task deletion
-        const response = await ApiClient.delete(`/api/tasks/${appointment.id}`);
+        const response = await ApiClient.delete<{ success: boolean }>(`/api/tasks/${appointment.id}`);
         if (!response.success) {
           console.error('Error deleting appointment:', response.error);
           alert('Failed to delete appointment');
@@ -469,7 +524,8 @@ export function ViewEditAppointmentModal({
           ) : (
             <div className="space-y-3">
               {(() => {
-                const metadata = (appointment as any)?.metadata || {};
+                const metadataRecord = (appointment.metadata ?? {}) as AppointmentMetadata & Record<string, unknown>;
+                const additionalRaw = metadataRecord.additional_attendees;
                 const fallbackTravelerNames = (() => {
                   const raw = Array.isArray(appointment.assigned_to)
                     ? appointment.assigned_to
@@ -484,13 +540,19 @@ export function ViewEditAppointmentModal({
                   fallbackTravelerNames.filter(name => !(appointment.assigned_users || []).some(user => user.name === name))
                 );
                 const travelers = Array.from(new Set(travelerList));
-                const additionalTravelers: string[] = Array.isArray(metadata.additional_attendees)
-                  ? (metadata.additional_attendees as string[])
-                  : typeof metadata.additional_attendees === 'string'
-                    ? metadata.additional_attendees.split(',').map((x: string) => x.trim()).filter(Boolean)
+                const additionalTravelers: string[] = Array.isArray(additionalRaw)
+                  ? additionalRaw.filter((value): value is string => typeof value === 'string').map(value => value.trim()).filter(Boolean)
+                  : typeof additionalRaw === 'string'
+                    ? additionalRaw.split(',').map(x => x.trim()).filter(Boolean)
                     : [];
-                const departureAirport = metadata.departure_airport || metadata.departureAirport || metadata.origin_airport;
-                const arrivalAirport = metadata.arrival_airport || metadata.arrivalAirport || metadata.destination_airport;
+                const departureAirport =
+                  typeof metadataRecord.departure_airport === 'string' ? metadataRecord.departure_airport :
+                  typeof metadataRecord.departureAirport === 'string' ? metadataRecord.departureAirport :
+                  typeof metadataRecord.origin_airport === 'string' ? metadataRecord.origin_airport : undefined;
+                const arrivalAirport =
+                  typeof metadataRecord.arrival_airport === 'string' ? metadataRecord.arrival_airport :
+                  typeof metadataRecord.arrivalAirport === 'string' ? metadataRecord.arrivalAirport :
+                  typeof metadataRecord.destination_airport === 'string' ? metadataRecord.destination_airport : undefined;
                 const normalizeAirportLink = (code: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${code} airport`)}`;
 
                 return (
@@ -521,13 +583,13 @@ export function ViewEditAppointmentModal({
                           <p className="text-sm text-text-primary">{appointmentData.duration || '60'} minutes</p>
                         </div>
                       </div>
-                      {(appointment as any).google_calendar_id || metadata.google_calendar_id ? (
+                      {appointment.google_calendar_id || typeof metadataRecord.google_calendar_id === 'string' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="bg-[#2A2A28] border border-[#3A3A38] rounded-lg p-3">
                             <p className="text-xs uppercase tracking-wide text-text-muted">Calendar Sync</p>
                             <p className="text-sm text-text-primary mt-1">
                               {(() => {
-                                const calendarId = (appointment as any).google_calendar_id || metadata.google_calendar_id;
+                                const calendarId = appointment.google_calendar_id ?? (typeof metadataRecord.google_calendar_id === 'string' ? metadataRecord.google_calendar_id : null);
                                 if (!calendarId) return 'Not synced to Google Calendar';
                                 const match = googleCalendars.find(cal => (cal.google_calendar_id || cal.id) === calendarId);
                                 return match?.name || 'Google Calendar';
@@ -535,7 +597,7 @@ export function ViewEditAppointmentModal({
                             </p>
                           </div>
                           {(() => {
-                            const calendarId = (appointment as any).google_calendar_id || metadata.google_calendar_id;
+                            const calendarId = appointment.google_calendar_id ?? (typeof metadataRecord.google_calendar_id === 'string' ? metadataRecord.google_calendar_id : null);
                             return calendarId ? (
                               <div className="bg-[#2A2A28] border border-[#3A3A38] rounded-lg p-3">
                                 <p className="text-xs uppercase tracking-wide text-text-muted">Calendar ID</p>

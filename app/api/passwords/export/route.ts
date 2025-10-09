@@ -21,11 +21,11 @@ export async function GET(request: NextRequest) {
       await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/activity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           action: 'password_export_attempted',
           metadata: { format }
-        })
-      });
+        }),
+      }).catch(() => undefined);
     } catch (error) {
       console.error('Failed to log export activity:', error);
     }

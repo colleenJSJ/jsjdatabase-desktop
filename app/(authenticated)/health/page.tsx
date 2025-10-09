@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/contexts/user-context';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  Calendar, Pill, FileText, Plus, 
-  Clock, Phone, Globe, MapPin, X,
-  Eye, EyeOff, Copy, Mail, Lock, KeyRound, Edit2, Trash2, Upload, Stethoscope, Users
+import {
+  Calendar, Pill, FileText, Plus,
+  Clock, X,
+  Eye, EyeOff, Edit2, Trash2, Upload, Stethoscope, Users
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { Task } from '@/lib/supabase/types';
+import type { CalendarEvent, User, Password as SupabasePassword } from '@/lib/supabase/types';
 import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import { DocumentList } from '@/components/documents/document-list';
 import { AppointmentModal } from './AppointmentModal';
@@ -22,8 +22,8 @@ import { toInstantFromNaive, formatInstantInTimeZone, getEventTimeZone } from '@
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import ApiClient from '@/lib/api/api-client';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
+import { PasswordDetailModal } from '@/components/passwords/PasswordDetailModal';
 import { Category } from '@/lib/categories/categories-client';
-import { Password } from '@/lib/services/password-service-interface';
 import { getPasswordStrength } from '@/lib/passwords/utils';
 import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
 import { CredentialFormField } from '@/components/credentials/CredentialFormField';
@@ -31,6 +31,11 @@ import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { smartUrlComplete } from '@/lib/utils/url-helper';
 import type { PortalRecord } from '@/types/portals';
+import { usePasswordSecurityOptional } from '@/contexts/password-security-context';
+import type { HealthAppointment, AppointmentSavePayload, AppointmentMetadata } from './types';
+import { ContactCard } from '@/components/contacts/ContactCard';
+import { ContactDetailModal } from '@/components/contacts/ContactDetailModal';
+import type { ContactRecord, ContactCardBadge } from '@/components/contacts/contact-types';
 
 const TravelSearchFilter = dynamic(() => import('@/components/travel/TravelSearchFilter').then(m => m.TravelSearchFilter), { ssr: false });
 
@@ -88,6 +93,8 @@ interface MedicalPortal extends PortalRecord {
     name: string;
     specialty: string;
   };
+  tags?: string[] | null;
+  is_favorite?: boolean | null;
 }
 
 // Helper function to get first name from full name
@@ -99,14 +106,14 @@ const getPortalDisplayName = (portal: MedicalPortal) =>
   (portal.portal_name ?? portal.provider_name ?? portal.doctor?.name ?? '').trim();
 
 // Helper function to generate appointment title (similar to travel cards)
-const generateAppointmentTitle = (appointment: any) => {
+const generateAppointmentTitle = (appointment: HealthAppointment) => {
   const appointmentType = appointment.appointment_type || 'Appointment';
   const doctor = appointment.doctor || 'Doctor';
   return `${appointmentType.charAt(0).toUpperCase() + appointmentType.slice(1)} with Dr. ${doctor}`;
 };
 
 // Helper function to generate appointment summary sentence
-const generateAppointmentSummary = (appointment: any, displayTz: string, eventTz?: string) => {
+const generateAppointmentSummary = (appointment: HealthAppointment, displayTz: string, eventTz?: string) => {
   const patientName = appointment.assigned_users?.[0]?.name || 'Patient';
   const doctor = appointment.doctor || 'the doctor';
   const location = appointment.location;
@@ -164,7 +171,7 @@ const generateAppointmentSummary = (appointment: any, displayTz: string, eventTz
   return sentence;
 };
 
-const getHealthAppointmentCountdownDate = (appointment: any): string | null => {
+const getHealthAppointmentCountdownDate = (appointment: HealthAppointment): string | null => {
   if (appointment.start_time) return String(appointment.start_time);
   if (appointment.appointment_date) {
     const time = (appointment.appointment_time as string | undefined)?.slice(0, 8) || '00:00:00';
@@ -192,7 +199,7 @@ export default function HealthPage() {
   const { selectedPersonId, setSelectedPersonId } = usePersonFilter();
   const [activeTab, setActiveTab] = useState<'appointments' | 'medications' | 'doctors' | 'portals' | 'records'>('appointments');
   const [refreshDocuments, setRefreshDocuments] = useState(0);
-  const [appointments, setAppointments] = useState<Task[]>([]);
+  const [appointments, setAppointments] = useState<HealthAppointment[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
@@ -210,11 +217,15 @@ export default function HealthPage() {
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
-  const [selectedAppointment, setSelectedAppointment] = useState<{ appointment: Task; startInEdit: boolean } | null>(null);
+  const [viewingDoctor, setViewingDoctor] = useState<Doctor | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<{ appointment: HealthAppointment; startInEdit: boolean } | null>(null);
   const [portals, setPortals] = useState<MedicalPortal[]>([]);
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [editingPortal, setEditingPortal] = useState<MedicalPortal | null>(null);
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
+  const [viewingPassword, setViewingPassword] = useState<SupabasePassword | null>(null);
+  const [viewingPortal, setViewingPortal] = useState<MedicalPortal | null>(null);
+  const { updateActivity } = usePasswordSecurityOptional();
 
   const portalUsers = useMemo(() => {
     const base = familyMembers.map(member => ({
@@ -224,6 +235,17 @@ export default function HealthPage() {
     }));
     return [...base, { id: 'shared', email: '', name: 'Shared' }];
   }, [familyMembers]);
+
+  const openPortalDetail = (
+    password: SupabasePassword,
+    portal: MedicalPortal,
+    onBeforeOpen?: () => void
+  ) => {
+    onBeforeOpen?.();
+    updateActivity();
+    setViewingPortal(portal);
+    setViewingPassword(password);
+  };
 
   // Define the order for family members
   const familyMemberOrder = ['John', 'Susan', 'Claire', 'Auggie', 'Blossom'];
@@ -292,28 +314,32 @@ export default function HealthPage() {
     try {
       // Use passed members or fall back to state
       const membersList = members || familyMembers;
-      
-      // Fetch medical appointments from calendar events
-      const calendarResponse = await fetch('/api/calendar-events?category=medical');
-      if (calendarResponse.ok) {
-        const calendarData = await calendarResponse.json();
-        // Convert calendar events to task-like format for display
-        const medicalAppointments = calendarData.events
-          .filter((event: any) => {
-            // Only show future events
+
+      const [calendarData, medsData, docsData, portalsData] = await Promise.all([
+        fetch('/api/calendar-events?category=medical').then(res => (res.ok ? res.json() : null)).catch(() => null),
+        fetch('/api/medications').then(res => (res.ok ? res.json() : null)).catch(() => null),
+        fetch('/api/doctors').then(res => (res.ok ? res.json() : null)).catch(() => null),
+        fetch('/api/medical-portals').then(res => (res.ok ? res.json() : null)).catch(() => null),
+      ]);
+
+      if (calendarData?.events) {
+        const now = new Date();
+        const medicalAppointments: HealthAppointment[] = (calendarData.events as CalendarEvent[])
+          .filter((event) => {
             const eventDate = new Date(event.start_time);
-            return eventDate >= new Date();
+            return eventDate >= now;
           })
-          .map((event: any) => {
-            const evTz = getEventTimeZone(event, calendars as any);
-            // Parse doctor info from description
+          .map((event) => {
+            const metadata = (event.metadata ?? {}) as AppointmentMetadata;
+            const evTz = getEventTimeZone(event, calendars);
+
             let doctor = '';
             let doctorPhone = '';
             let appointmentNotes = '';
-            
+
             if (event.description) {
               const lines = event.description.split('\n');
-              lines.forEach((line: string) => {
+              lines.forEach((line) => {
                 if (line.startsWith('Doctor:')) {
                   doctor = line.replace('Doctor:', '').trim();
                 } else if (line.startsWith('Phone:')) {
@@ -323,61 +349,89 @@ export default function HealthPage() {
                 }
               });
             }
-            
+
+            const attendees = Array.isArray(event.attendees)
+              ? event.attendees.filter((value): value is string => typeof value === 'string')
+              : [];
+
+            const assignedUsers = attendees
+              .map((attendeeId) => {
+                const member = membersList.find(m => m.id === attendeeId);
+                if (!member) return null;
+                const user: User = {
+                  id: member.id,
+                  name: member.name,
+                  email: member.email ?? '',
+                  role: 'user',
+                  user_status: 'active',
+                  theme_preference: 'dark',
+                  created_at: member.created_at,
+                  updated_at: member.created_at,
+                };
+                return user;
+              })
+              .filter((value): value is User => Boolean(value));
+
+            const fallbackDoctor = event.title?.replace(
+              /^(Checkup|Physical|Follow-up|Consultation|Procedure|Emergency|Appointment)( with Dr\. | with | - )?/i,
+              ''
+            ).trim();
+
+            const appointmentType = event.title?.toLowerCase() ?? '';
+
             return {
               id: event.id,
               title: event.title,
-              description: event.description || '',
-              category: 'medical' as const,
-              status: 'active' as const,
-              priority: 'medium' as const,
+              description: event.description ?? '',
+              category: 'medical',
+              status: 'active',
+              priority: 'medium',
               due_date: event.start_time,
-              timezone: evTz,
-              assigned_to: event.attendees || [],
-              location: event.location || '',
-              doctor: doctor || event.title.replace(/^(Checkup|Physical|Follow-up|Consultation|Procedure|Emergency|Appointment)( with Dr\. | with | - )?/i, '').trim(),
+              start_time: event.start_time,
+              end_time: event.end_time,
+              assigned_to: attendees,
+              assigned_users: assignedUsers,
+              created_by: event.created_by ?? 'system',
+              created_at: event.created_at ?? new Date().toISOString(),
+              updated_at: event.updated_at ?? new Date().toISOString(),
+              location: event.location ?? '',
+              doctor: doctor || fallbackDoctor,
               doctor_phone: doctorPhone,
-              appointment_type: event.title.toLowerCase().includes('checkup') ? 'checkup' :
-                               event.title.toLowerCase().includes('physical') ? 'physical' :
-                               event.title.toLowerCase().includes('follow-up') ? 'follow-up' :
-                               event.title.toLowerCase().includes('consultation') ? 'consultation' :
-                               event.title.toLowerCase().includes('procedure') ? 'procedure' :
-                               event.title.toLowerCase().includes('emergency') ? 'emergency' : 'appointment',
+              appointment_type:
+                appointmentType.includes('checkup') ? 'checkup' :
+                appointmentType.includes('physical') ? 'physical' :
+                appointmentType.includes('follow-up') ? 'follow-up' :
+                appointmentType.includes('consultation') ? 'consultation' :
+                appointmentType.includes('procedure') ? 'procedure' :
+                appointmentType.includes('emergency') ? 'emergency' : 'appointment',
               notes: appointmentNotes,
-              // Map attendee IDs to user objects for display
-              assigned_users: event.attendees?.map((attendeeId: string) => {
-                const member = membersList.find(m => m.id === attendeeId);
-                return member ? { id: member.id, name: member.name } : null;
-              }).filter(Boolean) || [],
               calendar_event_id: event.id,
-              google_calendar_id: event.google_calendar_id || event.metadata?.google_calendar_id || null,
-              metadata: event.metadata || {}
-            };
+              google_calendar_id: event.google_calendar_id ?? (typeof metadata.google_calendar_id === 'string' ? metadata.google_calendar_id : null),
+              metadata,
+              timezone: event.timezone ?? (typeof metadata.timezone === 'string' ? metadata.timezone : undefined),
+              patient_names: assignedUsers.map(user => user.name).filter(Boolean),
+              patient_ids: attendees,
+              google_sync_enabled: event.google_sync_enabled,
+            } satisfies HealthAppointment;
           })
-          .sort((a: any, b: any) => 
-            new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
-          );
+          .sort((a, b) => {
+            const aTime = a.due_date ? new Date(a.due_date).getTime() : 0;
+            const bTime = b.due_date ? new Date(b.due_date).getTime() : 0;
+            return aTime - bTime;
+          });
+
         setAppointments(medicalAppointments);
       }
 
-      // Fetch medications
-      const medsResponse = await fetch('/api/medications');
-      if (medsResponse.ok) {
-        const medsData = await medsResponse.json();
+      if (medsData?.medications) {
         setMedications(medsData.medications || []);
       }
 
-      // Fetch doctors
-      const docsResponse = await fetch('/api/doctors');
-      if (docsResponse.ok) {
-        const docsData = await docsResponse.json();
+      if (docsData?.doctors) {
         setDoctors(docsData.doctors || []);
       }
 
-      // Fetch medical portals
-      const portalsResponse = await fetch('/api/medical-portals');
-      if (portalsResponse.ok) {
-        const portalsData = await portalsResponse.json();
+      if (portalsData?.portals) {
         setPortals(portalsData.portals || []);
       }
     } catch (error) {
@@ -389,7 +443,6 @@ export default function HealthPage() {
     if (!confirm('Are you sure you want to delete this medication?')) return;
 
     try {
-      const ApiClient = (await import('@/lib/api/api-client')).default;
       const response = await ApiClient.delete(`/api/medications/${id}`);
       if (response.success) {
         setMedications(medications.filter(m => m.id !== id));
@@ -400,19 +453,24 @@ export default function HealthPage() {
   };
 
   const handleDeleteDoctor = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this doctor?')) return;
+    if (!confirm('Are you sure you want to delete this doctor?')) return false;
 
     try {
       const response = await ApiClient.delete(`/api/doctors/${id}`);
       if (response.success) {
         setDoctors(doctors.filter(d => d.id !== id));
+        return true;
       }
+      alert(response.error || 'Failed to delete doctor');
+      return false;
     } catch (error) {
-
+      console.error('[Health] Failed to delete doctor', error);
+      alert('Failed to delete doctor');
+      return false;
     }
   };
 
-  const handleSaveAppointment = async (appointmentData: any) => {
+  const handleSaveAppointment = async (appointmentData: AppointmentSavePayload) => {
     try {
       // Validate user is authenticated (would return 401)
       if (!user?.id) {
@@ -486,15 +544,17 @@ export default function HealthPage() {
 
       console.log('Creating calendar event with data:', calendarEventData);
 
-      const calendarResponse = await ApiClient.post('/api/calendar-events', calendarEventData);
+      const calendarResponse = await ApiClient.post<{ event: CalendarEvent }>(
+        '/api/calendar-events',
+        calendarEventData
+      );
 
-      if (!calendarResponse.success) {
+      if (!calendarResponse.success || !calendarResponse.data?.event) {
         console.error('Failed to create calendar event:', calendarResponse.error);
         throw new Error(calendarResponse.error || 'Failed to create appointment');
       }
 
-      const calendarPayload = calendarResponse.data as any;
-      const calendarEvent = (calendarPayload?.event) ? calendarPayload.event : calendarPayload;
+      const calendarEvent = calendarResponse.data.event;
 
       // Now create the medical appointment record
       const medicalAppointmentData = {
@@ -529,7 +589,7 @@ export default function HealthPage() {
   };
 
   // Filter functions
-  const filterAppointments = (appointments: Task[]) => {
+  const filterAppointments = (appointments: HealthAppointment[]) => {
     if (selectedPerson === 'all') return appointments;
     
     const selectedMember = familyMembers.find(m => m.id === selectedPerson);
@@ -546,8 +606,11 @@ export default function HealthPage() {
         return task.assigned_users.some(user => user.id === selectedPerson);
       }
       // Fallback to checking if it's a single value
-      return task.assigned_to === selectedPerson ||
-        task.title?.toLowerCase().includes(selectedMember.name.toLowerCase()) ||
+      const assignedToValue = task.assigned_to as unknown;
+      if (typeof assignedToValue === 'string' && assignedToValue === selectedPerson) {
+        return true;
+      }
+      return task.title?.toLowerCase().includes(selectedMember.name.toLowerCase()) ||
         task.description?.toLowerCase().includes(selectedMember.name.toLowerCase());
     });
   };
@@ -616,21 +679,20 @@ export default function HealthPage() {
       const deleteOperations = [];
       
       // 1. Delete from medical_appointments table if there's a calendar event
-      if ((appointment as any).calendar_event_id) {
+      if (appointment.calendar_event_id) {
         deleteOperations.push(
           supabase
             .from('medical_appointments')
             .delete()
-            .eq('calendar_event_id', (appointment as any).calendar_event_id)
+            .eq('calendar_event_id', appointment.calendar_event_id)
         );
       }
 
       // 2. Delete calendar event (this will sync with Google)
-      if ((appointment as any).calendar_event_id) {
+      if (appointment.calendar_event_id) {
         deleteOperations.push(
           (async () => {
-            const ApiClient = (await import('@/lib/api/api-client')).default;
-            const res = await ApiClient.delete(`/api/calendar-events/${(appointment as any).calendar_event_id}`);
+            const res = await ApiClient.delete(`/api/calendar-events/${appointment.calendar_event_id}`);
             if (!res.success) {
               console.error('Failed to delete calendar event');
               throw new Error('Failed to delete calendar event');
@@ -643,7 +705,6 @@ export default function HealthPage() {
       // 3. Delete the task itself
       deleteOperations.push(
         (async () => {
-          const ApiClient = (await import('@/lib/api/api-client')).default;
           const res = await ApiClient.delete(`/api/tasks/${appointmentId}`);
           if (!res.success) {
             console.error('Failed to delete task');
@@ -674,8 +735,8 @@ export default function HealthPage() {
     return (
       (a.title||'').toLowerCase().includes(term) ||
       (a.description||'').toLowerCase().includes(term) ||
-      ((a as any).doctor||'').toLowerCase().includes(term) ||
-      (((a as any).location)||'').toLowerCase().includes(term)
+      (a.doctor || '').toLowerCase().includes(term) ||
+      (a.location || '').toLowerCase().includes(term)
     );
   });
   const filteredMedications = filterMedications(medications);
@@ -759,7 +820,7 @@ export default function HealthPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-text-primary">
-                {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Medical Appointments
+                {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Health Appointments
               </h2>
               <span className="text-xs text-text-muted">{filteredAppointments.length} items</span>
             </div>
@@ -776,13 +837,13 @@ export default function HealthPage() {
 
           {filteredAppointments.length === 0 ? (
             <div className="py-6 text-center text-text-muted">
-              No upcoming medical appointments
+              No upcoming health appointments
               {selectedPerson !== 'all' && ` for ${familyMembers.find(m => m.id === selectedPerson)?.name}`}
             </div>
           ) : (
             <div className="grid gap-3">
               {filteredAppointments.map((appointment) => {
-                const appointmentDate = appointment.due_date ? toInstantFromNaive(appointment.due_date, (appointment as any).timezone || preferences.timezone) : null;
+                const appointmentDate = appointment.due_date ? toInstantFromNaive(appointment.due_date, appointment.timezone || preferences.timezone) : null;
                 const countdown = daysUntilAppointment(getHealthAppointmentCountdownDate(appointment));
                 
                 return (
@@ -811,7 +872,11 @@ export default function HealthPage() {
                           
                           {/* Natural Language Summary */}
                           <p className="text-sm text-text-muted">
-                          {generateAppointmentSummary(appointment, preferences.timezone, (appointment as any).timezone)}
+                          {generateAppointmentSummary(
+                            appointment,
+                            preferences.timezone,
+                            appointment.timezone ?? undefined,
+                          )}
                         </p>
                         
                         {/* Additional Notes */}
@@ -921,16 +986,37 @@ export default function HealthPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {filteredDoctors.map((doctor) => (
+              {filteredDoctors.map((doctor) => {
+                const matchingPortal = portals.find(portal =>
+                  (portal?.entity_id && portal.entity_id === doctor.id) ||
+                  (portal?.provider_name && typeof portal.provider_name === 'string' && typeof doctor.name === 'string' && portal.provider_name.trim().toLowerCase() === doctor.name.trim().toLowerCase())
+                );
+
+                if (matchingPortal?.id || doctor.portal_url) {
+                  console.debug('[HealthPage] Doctor portal match', {
+                    doctorId: doctor.id,
+                    doctorName: doctor.name,
+                    portalId: matchingPortal?.id,
+                    portalName: matchingPortal?.portal_name,
+                    portalProvider: matchingPortal?.provider_name,
+                    entityId: matchingPortal?.entity_id,
+                    portalPasswordPreview: matchingPortal?.password?.slice?.(0, 8)
+                  });
+                }
+
+                return (
                 <DoctorCard
                   key={doctor.id}
                   doctor={doctor}
                   familyMembers={familyMembers}
                   onEdit={() => setEditingDoctor(doctor)}
                   onDelete={() => handleDeleteDoctor(doctor.id)}
+                  onView={() => setViewingDoctor(doctor)}
                   isAdmin={user?.role === 'admin'}
+                  portal={matchingPortal}
                 />
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -940,7 +1026,7 @@ export default function HealthPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-text-primary">
-              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Medical Portals
+              {selectedPerson !== 'all' ? `${familyMembers.find(m => m.id === selectedPerson)?.name}'s ` : ''}Health Passwords & Portals
             </h2>
             {user?.role === 'admin' && (
               <button
@@ -948,7 +1034,7 @@ export default function HealthPage() {
                 className="flex items-center gap-2 px-5 py-2 text-sm bg-button-create hover:bg-button-create/90 text-white rounded-xl transition-colors"
               >
                 <Plus className="h-4 w-4" />
-                New Portal
+                Add
               </button>
             )}
           </div>
@@ -958,11 +1044,12 @@ export default function HealthPage() {
               <p className="text-text-muted">No medical portals{selectedPerson !== 'all' && ` for ${familyMembers.find(m => m.id === selectedPerson)?.name}`}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {filteredPortals.map((portal) => {
-                const portalId = portal.id;
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredPortals.map((portal, index) => {
+                const portalId = (portal.id as string | undefined) ?? `portal-${index}`;
                 const portalName = (portal.portal_name || portal.provider_name || 'Portal').trim();
-                const patientIds = Array.isArray(portal.patient_ids) ? portal.patient_ids : [];
+                const patientIdsRaw = Array.isArray(portal.patient_ids) ? portal.patient_ids : [];
+                const patientIds = patientIdsRaw.filter(Boolean).map(id => String(id));
                 const patientNames = patientIds
                   .map(patientId => {
                     const matchById = familyMembers.find(m => m.id === patientId);
@@ -973,23 +1060,29 @@ export default function HealthPage() {
                   .filter((name): name is string => Boolean(name));
                 const assignedLabel = patientNames.length > 0 ? patientNames.join(', ') : 'Shared';
 
-                const passwordRecord: Password = {
-                  id: portalId,
-                  service_name: portalName,
+                const nowIso = new Date().toISOString();
+                const createdAt = portal.created_at || nowIso;
+                const updatedAt = portal.updated_at || createdAt;
+                const passwordId = portal.password_id || portalId;
+                const passwordRecord: SupabasePassword = {
+                  id: passwordId,
+                  title: portalName,
                   username: portal.username || '',
                   password: portal.password || '',
                   url: portal.portal_url || undefined,
                   category: 'medical-portal',
                   notes: portal.notes || undefined,
+                  created_by: portal.created_by || user?.id || 'shared',
+                  created_at: createdAt,
+                  updated_at: updatedAt,
                   owner_id: 'shared',
                   shared_with: patientIds,
-                  is_favorite: false,
+                  is_favorite: Boolean(portal.is_favorite),
                   is_shared: patientIds.length > 1,
-                  last_changed: portal.updated_at ? new Date(portal.updated_at) : new Date(),
-                  strength: undefined,
-                  created_at: portal.created_at ? new Date(portal.created_at) : new Date(),
-                  updated_at: portal.updated_at ? new Date(portal.updated_at) : new Date(),
+                  last_changed: updatedAt,
+                  source: 'health',
                   source_page: 'health',
+                  source_reference: portal.id ?? null,
                 };
 
                 const portalCategory: Category = {
@@ -1046,7 +1139,8 @@ export default function HealthPage() {
                     canManage={user?.role === 'admin'}
                     onEdit={() => setEditingPortal(portal)}
                     onDelete={() => handleDeletePortal(portal.id)}
-                    onOpenUrl={() => handlePortalOpen(portal.id)}
+                    onOpen={() => openPortalDetail(passwordRecord, portal, () => { void handlePortalOpen(portal.id); })}
+                    variant="compact"
                   />
                 );
               })}
@@ -1148,6 +1242,26 @@ export default function HealthPage() {
         />
       )}
 
+      {viewingDoctor && (
+        <ContactDetailModal
+          contact={doctorToContactRecord(viewingDoctor)}
+          familyMembers={familyMembers}
+          canManage={user?.role === 'admin'}
+          onClose={() => setViewingDoctor(null)}
+          onEdit={user?.role === 'admin' ? () => {
+            setViewingDoctor(null);
+            setEditingDoctor(viewingDoctor);
+            setShowDoctorModal(true);
+          } : undefined}
+          onDelete={user?.role === 'admin' ? async () => {
+            const deleted = await handleDeleteDoctor(viewingDoctor.id);
+            if (deleted) {
+              setViewingDoctor(null);
+            }
+          } : undefined}
+        />
+      )}
+
       {showAppointmentModal && (
         <AppointmentModal
           doctors={doctors}
@@ -1158,6 +1272,44 @@ export default function HealthPage() {
             await handleSaveAppointment(appointmentData);
             setShowAppointmentModal(false);
             await fetchHealthData(); // Refresh appointments
+          }}
+        />
+      )}
+
+      {viewingPassword && viewingPortal && (
+        <PasswordDetailModal
+          password={viewingPassword}
+          categories={[
+            {
+              id: 'medical-portal',
+              name: viewingPortal.doctor?.specialty || 'Medical Portal',
+              color: '#38bdf8',
+              module: 'passwords',
+              created_at: viewingPortal.created_at || new Date().toISOString(),
+              updated_at: viewingPortal.updated_at || new Date().toISOString(),
+              icon: undefined,
+            },
+          ]}
+          users={portalUsers}
+          familyMembers={familyMembers}
+          canManage={user?.role === 'admin'}
+          onClose={() => {
+            setViewingPassword(null);
+            setViewingPortal(null);
+          }}
+          onEdit={() => {
+            setViewingPassword(null);
+            if (viewingPortal) {
+              setEditingPortal(viewingPortal);
+              setShowPortalModal(true);
+            }
+          }}
+          onDelete={async () => {
+            if (viewingPortal?.id) {
+              await handleDeletePortal(viewingPortal.id);
+            }
+            setViewingPassword(null);
+            setViewingPortal(null);
           }}
         />
       )}
@@ -1277,161 +1429,106 @@ function MedicationCard({
   );
 }
 
-function DoctorCard({ 
-  doctor, 
+function DoctorCard({
+  doctor,
   familyMembers,
-  onEdit, 
-  onDelete, 
-  isAdmin 
-}: { 
-  doctor: Doctor; 
+  onEdit,
+  onDelete,
+  onView,
+  isAdmin,
+  portal,
+}: {
+  doctor: Doctor;
   familyMembers: FamilyMember[];
-  onEdit: () => void; 
+  onEdit: () => void;
   onDelete: () => void;
+  onView: () => void;
   isAdmin?: boolean;
+  portal?: any;
 }) {
-  const [showPassword, setShowPassword] = useState(false);
-  
-  const patientNames = doctor.patients.map(patientId => {
-    const member = familyMembers.find(m => m.id === patientId);
-    return member ? member.name : patientId;
-  });
-  
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-  
+  const patientNames = useMemo(() => {
+    return (doctor.patients || []).map(patientId => {
+      const member = familyMembers.find(m => m.id === patientId);
+      return member ? member.name : patientId;
+    }).filter((name): name is string => Boolean(name));
+  }, [doctor.patients, familyMembers]);
+
+  const contactRecord = useMemo(() => {
+    const portalUrl = portal?.portal_url ?? portal?.url ?? doctor.portal_url ?? null;
+    const portalUsername = portal?.username ?? doctor.portal_username ?? null;
+    const portalPassword = portal?.password ?? doctor.portal_password ?? null;
+
+    return doctorToContactRecord({
+      ...doctor,
+      portal_url: portalUrl,
+      portal_username: portalUsername,
+      portal_password: portalPassword,
+    });
+  }, [doctor, portal]);
+
+  const badges = useMemo<ContactCardBadge[]>(() => {
+    const result: ContactCardBadge[] = [];
+    if (doctor.specialty) {
+      result.push({ id: `${doctor.id}-specialty`, label: doctor.specialty, tone: 'neutral' });
+    }
+    if (portal?.portal_url || doctor.portal_url) {
+      result.push({ id: `${doctor.id}-portal`, label: 'Portal', tone: 'primary' });
+    }
+    return result;
+  }, [doctor.id, doctor.specialty, doctor.portal_url, portal?.portal_url]);
+
   return (
-    <div className="bg-background-secondary border border-gray-600/30 rounded-lg p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <h3 className="font-medium text-text-primary">{doctor.name}</h3>
-          <p className="text-sm text-text-muted">{doctor.specialty}</p>
-          
-          <div className="mt-3 space-y-1">
-            {doctor.phone && (
-              <p className="text-sm text-text-muted flex items-center gap-1">
-                <Phone className="h-3 w-3" />
-                {doctor.phone}
-              </p>
-            )}
-            {doctor.email && (
-              <p className="text-sm text-text-muted flex items-center gap-1">
-                <Mail className="h-3 w-3" />
-                {doctor.email}
-              </p>
-            )}
-            {doctor.address && (
-              <a
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(doctor.address)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-text-muted hover:text-primary-400 flex items-center gap-1 transition-colors"
-              >
-                <MapPin className="h-3 w-3" />
-                {doctor.address}
-              </a>
-            )}
-            {doctor.website && (
-              <a
-                href={doctor.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1"
-              >
-                <Globe className="h-3 w-3" />
-                Website
-              </a>
-            )}
-            {doctor.portal_url && (
-              <a
-                href={doctor.portal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1"
-              >
-                <Globe className="h-3 w-3" />
-                Patient Portal
-              </a>
-            )}
-          </div>
-          
-          {/* Portal Credentials */}
-          {(doctor.portal_username || doctor.portal_password) && (
-            <div className="mt-3 p-3 bg-background-primary rounded-md border border-gray-600/30">
-              <p className="text-xs text-text-muted mb-2 flex items-center gap-1">
-                <Lock className="h-3 w-3" />
-                Portal Credentials
-              </p>
-              {doctor.portal_username && (
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm text-text-primary flex items-center gap-1">
-                    <KeyRound className="h-3 w-3" />
-                    <span className="font-mono">{doctor.portal_username}</span>
-                  </p>
-                  <button
-                    onClick={() => copyToClipboard(doctor.portal_username!)}
-                    className="text-text-muted hover:text-text-primary transition-colors"
-                    title="Copy username"
-                  >
-                    <Copy className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-              {doctor.portal_password && (
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-text-primary flex items-center gap-1">
-                    <Lock className="h-3 w-3" />
-                    <span className="font-mono">
-                      {showPassword ? doctor.portal_password : '••••••••'}
-                    </span>
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="text-text-muted hover:text-text-primary transition-colors"
-                      title={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                    </button>
-                    <button
-                      onClick={() => copyToClipboard(doctor.portal_password!)}
-                      className="text-text-muted hover:text-text-primary transition-colors"
-                      title="Copy password"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          
-          <p className="text-sm text-text-muted mt-3">
-            Patients: {patientNames.join(', ')}
-          </p>
-        </div>
-        
-        {isAdmin && (
-          <div className="flex gap-1">
-            <button
-              onClick={onEdit}
-              className="text-text-muted hover:text-text-primary transition-colors"
-            >
-              <FileText className="h-4 w-4" />
-            </button>
-            <button
-              onClick={onDelete}
-              className="text-text-muted hover:text-urgent transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      <ContactCard
+        contact={contactRecord}
+        subtitle={doctor.specialty || undefined}
+        badges={badges}
+        extraContent={patientNames.length > 0 ? renderContactChips(patientNames) : null}
+        showFavoriteToggle={false}
+        canManage={isAdmin}
+        actionConfig={isAdmin ? { onEdit, onDelete } : undefined}
+        onOpen={onView}
+      />
   );
 }
+
+const doctorToContactRecord = (doctor: Doctor): ContactRecord => {
+  const emailList = doctor.email ? [doctor.email] : [];
+  const phoneList = doctor.phone ? [doctor.phone] : [];
+  const addressList = doctor.address ? [doctor.address] : [];
+
+  return {
+    id: doctor.id,
+    name: doctor.name,
+    company: doctor.specialty ?? null,
+    emails: emailList,
+    email: doctor.email ?? null,
+    phones: phoneList,
+    phone: doctor.phone ?? null,
+    addresses: addressList,
+    address: doctor.address ?? null,
+    website: doctor.website ?? null,
+    portal_url: doctor.portal_url ?? null,
+    portal_username: doctor.portal_username ?? null,
+    portal_password: doctor.portal_password ?? null,
+    notes: doctor.notes ?? null,
+    related_to: doctor.patients ?? [],
+    category: 'health',
+    source_page: 'health',
+    source_type: 'health',
+    created_at: doctor.created_at,
+    updated_at: doctor.updated_at,
+  } as ContactRecord;
+};
+
+const renderContactChips = (names: string[]) => (
+  <div className="flex flex-wrap gap-2">
+    {names.map(name => (
+      <span key={name} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80">
+        {name}
+      </span>
+    ))}
+  </div>
+);
 
 function MedicationModal({ 
   medication, 
@@ -2183,17 +2280,27 @@ function PortalModal({
             id="medical-portal-patients"
             label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Patients</span>}
           >
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
-              {eligibleFamilyMembers.map(member => (
-                <label key={member.id} className="flex items-center gap-2 rounded p-1 transition hover:bg-neutral-600">
-                  <Checkbox
-                    id={`medical-patient-${member.id}`}
-                    checked={formData.patientIds.includes(member.id)}
-                    onCheckedChange={(checked) => handlePatientToggle(member.id, Boolean(checked))}
-                  />
-                  <span className="text-sm text-neutral-200">{getFirstName(member.name)}</span>
-                </label>
-              ))}
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                {eligibleFamilyMembers.map(member => {
+                  const name = getFirstName(member.name);
+                  const isSelected = formData.patientIds.includes(member.id);
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => handlePatientToggle(member.id, !isSelected)}
+                      className={`px-3.5 py-1.5 text-sm rounded-full border transition-colors whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-[#3b4e76] border-[#3b4e76] text-white'
+                          : 'bg-[#2a2a2a] border-neutral-600/60 text-neutral-200 hover:border-[#3b4e76]'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
               {!eligibleFamilyMembers.length && (
                 <p className="text-sm text-neutral-400">No eligible patients available.</p>
               )}

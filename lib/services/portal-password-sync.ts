@@ -81,7 +81,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
 
     const portalName = (config.portalName ?? config.providerName ?? 'Portal').trim() || config.providerName;
     const encryptedPortalPassword = config.portal_password
-      ? encryptionService.encrypt(config.portal_password)
+      ? await encryptionService.encrypt(config.portal_password)
       : null;
 
     const ownerUserId = config.ownerId || config.createdBy;
@@ -251,7 +251,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       service_name: portalName,
       title: portalName,
       username: config.portal_username,
-      password: encryptionService.encrypt(config.portal_password),
+      password: config.portal_password ? await encryptionService.encrypt(config.portal_password) : null,
       url: normalizedUrl,
       website_url: normalizedUrl,
       category: getCategoryForProviderType(config.providerType),
@@ -267,7 +267,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       last_changed: new Date().toISOString()
     };
     if (config.notes !== undefined) {
-      passwordDataBase.notes = config.notes ? encryptionService.encrypt(config.notes) : null;
+      passwordDataBase.notes = config.notes ? await encryptionService.encrypt(config.notes) : null;
     }
     
     if (existingPassword) {

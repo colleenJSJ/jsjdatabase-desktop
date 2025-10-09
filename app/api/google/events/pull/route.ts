@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { google } from 'googleapis';
+import { googleAuth } from '@/lib/google/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const supabase = await createClient();
     
@@ -21,67 +26,15 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check Google API credentials
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`;
-
-    if (!clientId || !clientSecret) {
-      return NextResponse.json({ 
-        error: 'Google Calendar API not configured'
-      }, { status: 503 });
+    // Ensure Google credentials exist in the hosted environment
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      return NextResponse.json(
+        { error: 'Google Calendar API not configured' },
+        { status: 503 }
+      );
     }
 
-    // Get user's Google tokens
-    const { data: userTokens, error: tokenError } = await supabase
-      .from('user_google_tokens')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (tokenError || !userTokens) {
-      return NextResponse.json({ 
-        error: 'Google account not connected',
-        details: 'Please connect your Google account in settings'
-      }, { status: 401 });
-    }
-
-    // Create OAuth2 client
-    const oauth2Client = new google.auth.OAuth2(
-      clientId,
-      clientSecret,
-      redirectUri
-    );
-
-    oauth2Client.setCredentials({
-      access_token: userTokens.access_token,
-      refresh_token: userTokens.refresh_token,
-      expiry_date: userTokens.expiry_date
-    });
-
-    // Handle token refresh if needed
-    if (userTokens.expiry_date && new Date(userTokens.expiry_date) < new Date()) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        
-        await supabase
-          .from('user_google_tokens')
-          .update({
-            access_token: credentials.access_token,
-            expiry_date: credentials.expiry_date,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', user.id);
-
-        oauth2Client.setCredentials(credentials);
-      } catch (refreshError) {
-        console.error('Failed to refresh Google token:', refreshError);
-        return NextResponse.json({ 
-          error: 'Failed to refresh Google authentication',
-          details: 'Please reconnect your Google account'
-        }, { status: 401 });
-      }
-    }
+    const oauth2Client = await googleAuth.getAuthenticatedClient(user.id, { supabase });
 
     // Fetch events from Google Calendar
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });

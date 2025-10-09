@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient, createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
+import { requireAdmin, requireUser } from '@/app/api/_helpers/auth';
 
 // Allowed password-related actions
 const ALLOWED_ACTIONS = [
@@ -15,23 +17,9 @@ const ALLOWED_ACTIONS = [
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Get user details to check role
-    const { data: userDetails } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    // Only admins can view activity logs
-    if (!userDetails || userDetails.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const auth = await requireAdmin(request);
+    if ('error' in auth) {
+      return auth.error;
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -49,11 +37,12 @@ export async function GET(request: NextRequest) {
       .limit(limit);
 
     if (error) {
-
-      return NextResponse.json(
-        { error: 'Failed to fetch activities' },
-        { status: 500 }
-      );
+      console.error('[Activity API] Error fetching activity logs:', error);
+      return jsonError('Failed to fetch activities', {
+        status: 500,
+        code: 'ACTIVITY_FETCH_FAILED',
+        meta: { details: error.message },
+      });
     }
 
     // Transform the data to include user names
@@ -62,33 +51,25 @@ export async function GET(request: NextRequest) {
       user_name: activity.user?.name || 'Unknown User',
     })) || [];
 
-    return NextResponse.json({ activities: transformedActivities });
+    return jsonSuccess({ activities: transformedActivities }, { legacy: { activities: transformedActivities } });
   } catch (error) {
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('[Activity API] Unexpected error:', error);
+    return jsonError('Internal server error', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (auth instanceof NextResponse) return auth;
+
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user } = auth;
 
     const { action, metadata = {} } = await request.json();
 
     // Validate action
     if (!action || !ALLOWED_ACTIONS.includes(action)) {
-      return NextResponse.json(
-        { error: 'Invalid action' },
-        { status: 400 }
-      );
+      return jsonError('Invalid action', { status: 400, code: 'INVALID_ACTION' });
     }
 
     const serviceClient = await createServiceClient();
@@ -105,10 +86,11 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[API/activity] Error logging activity:', error);
-      return NextResponse.json(
-        { error: 'Failed to log activity' },
-        { status: 500 }
-      );
+      return jsonError('Failed to log activity', {
+        status: 500,
+        code: 'ACTIVITY_LOG_FAILED',
+        meta: { details: error.message },
+      });
     }
 
     // Check for suspicious activity patterns
@@ -140,12 +122,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ logged: true });
   } catch (error) {
     console.error('[API/activity] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }

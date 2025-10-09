@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { requireAdmin } from '@/app/api/_helpers/auth';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAdmin();
-    
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const supabase = await createServiceClient();
@@ -21,17 +21,12 @@ export async function GET() {
       .order('users(name)', { ascending: true });
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to fetch all preferences' },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch all preferences', { status: 500 });
     }
 
-    return NextResponse.json({ preferences: preferences || [] });
+    const payload = preferences || [];
+    return jsonSuccess({ preferences: payload }, { legacy: { preferences: payload } });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

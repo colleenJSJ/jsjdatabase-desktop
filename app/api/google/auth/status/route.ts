@@ -1,50 +1,43 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { googleAuth } from '@/lib/google/auth';
 
 export async function GET() {
   try {
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ connected: false, reason: 'not_authenticated' }, { status: 401 });
     }
 
-    // Check if user has stored Google tokens
-    const { data: tokens, error } = await supabase
-      .from('user_google_tokens')
-      .select('expires_at, created_at')
-      .eq('user_id', user.id)
-      .single();
+    let connected = false;
+    let expired = false;
 
-    if (error || !tokens) {
-      return NextResponse.json({ 
-        connected: false,
-        message: 'Google account not connected'
-      });
+    try {
+      await googleAuth.getAuthenticatedClient(user.id, { supabase });
+      connected = true;
+    } catch (error) {
+      connected = false;
+      expired = true;
     }
 
-    // Check if token is expired
-    const isExpired = new Date(tokens.expires_at) < new Date();
-
-    // Get connected calendars count
     const { count } = await supabase
       .from('google_calendars')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id);
 
     return NextResponse.json({
-      connected: true,
-      expired: isExpired,
+      connected,
+      expired,
       calendarsCount: count || 0,
-      connectedAt: tokens.created_at,
-      message: isExpired ? 'Token expired - please reconnect' : 'Google account connected'
+      userId: user.id,
     });
   } catch (error) {
     console.error('Error checking Google auth status:', error);
-    return NextResponse.json(
-      { error: 'Failed to check authentication status' },
-      { status: 500 }
-    );
+    return NextResponse.json({ connected: false, reason: 'error' }, { status: 500 });
   }
 }

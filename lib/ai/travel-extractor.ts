@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import Fuse from 'fuse.js';
 import { createClient } from '@/lib/supabase/server';
 import { getTimezoneForAirport } from '@/lib/utils/airport-timezones';
@@ -12,11 +11,10 @@ import {
   ExtractionCache
 } from './schemas';
 import { processDocument } from './document-processors';
+import { getAnthropicService, AnthropicServiceError, type MessagesCreateResponse } from '@/lib/anthropic/anthropic-service';
 
-// Initialize Anthropic client
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+// Lazily fetch Anthropic service so it can reuse the Edge Function helper
+const anthropicService = getAnthropicService();
 
 /**
  * Get cached extraction if exists and not stale
@@ -170,7 +168,7 @@ export async function twoPassTravelerMatching(
 /**
  * Build Claude prompt for extraction
  */
-function buildClaudePrompt(documentInput: ClaudeInput): Anthropic.MessageParam {
+function buildClaudePrompt(documentInput: ClaudeInput) {
   const systemPrompt = `You are a travel document extraction engine. 
 CRITICAL RULES:
 1. Output ONLY valid JSON that matches the provided schema
@@ -214,7 +212,7 @@ Round-trip: {"airline":"United","flight_number":"UA456","departure_airport":"SFO
 One-way no arrival: {"airline":"American","flight_number":"AA789","departure_airport":"LAX","arrival_airport":"JFK","departure_date":"2025-09-10","departure_time":"09:00"}`;
 
   // Build message content based on input type
-  let content: Anthropic.MessageParam['content'];
+  let content: MessagesCreateResponse['content'];
   
   if (documentInput.type === 'text') {
     content = [
@@ -232,7 +230,9 @@ One-way no arrival: {"airline":"American","flight_number":"AA789","departure_air
       ...documentInput.content
     ];
   } else {
-    content = userPromptText;
+    content = [
+      { type: 'text', text: userPromptText }
+    ];
   }
 
   return {
@@ -354,17 +354,26 @@ export async function extractTravelDetails(
     
     // Call Claude API with the specified model
     console.log('Calling Claude API for extraction...');
-    const completion = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', // Using Claude Sonnet 4
-      max_tokens: 1000,
-      temperature: 0.1, // Low temperature for more consistent extraction
-      messages: [message],
-      system: `You are a travel document extraction engine. Output ONLY valid JSON. Never include text outside JSON.`
-    });
+    let completion: MessagesCreateResponse;
+    try {
+      completion = await anthropicService.createMessage({
+        model: 'claude-sonnet-4-20250514', // Using Claude Sonnet 4
+        max_tokens: 1000,
+        temperature: 0.1, // Low temperature for more consistent extraction
+        messages: [message],
+        system: `You are a travel document extraction engine. Output ONLY valid JSON. Never include text outside JSON.`
+      });
+    } catch (error) {
+      if (error instanceof AnthropicServiceError) {
+        console.error('Anthropic service error', error.details);
+      }
+      throw error;
+    }
     
     // Extract JSON from response
-    const responseText = completion.content[0].type === 'text' 
-      ? completion.content[0].text 
+    const firstMessage = completion.content?.[0];
+    const responseText = firstMessage && firstMessage.type === 'text'
+      ? firstMessage.text ?? ''
       : '';
     
     // Parse and validate JSON

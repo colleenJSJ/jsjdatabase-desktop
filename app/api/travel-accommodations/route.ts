@@ -1,12 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { buildTravelVisibilityContext, shouldIncludeTravelRecord } from '@/lib/travel/visibility';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching accommodations:', error);
-      return NextResponse.json({ error: 'Failed to fetch accommodations' }, { status: 500 });
+      return jsonError('Failed to fetch accommodations', { status: 500 });
     }
 
     const filtered = (accommodations || []).filter(accommodation => {
@@ -62,31 +64,32 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    return NextResponse.json({ accommodations: filtered });
+    return jsonSuccess({ accommodations: filtered }, {
+      legacy: { accommodations: filtered },
+    });
   } catch (error) {
     console.error('Error in GET /api/travel-accommodations:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
-
-    if (user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized - Admin only' }, { status: 403 });
-    }
 
     const body = await request.json();
 
     // Validate required fields
     if (!body.name || !body.trip_id) {
-      return NextResponse.json({ error: 'Name and trip_id are required' }, { status: 400 });
+      return jsonError('Name and trip_id are required', { status: 400 });
     }
 
     // Create accommodation data
@@ -119,12 +122,15 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error('Error creating accommodation:', insertError);
-      return NextResponse.json({ error: 'Failed to create accommodation' }, { status: 500 });
+      return jsonError('Failed to create accommodation', { status: 500 });
     }
 
-    return NextResponse.json({ accommodation }, { status: 201 });
+    return jsonSuccess({ accommodation }, {
+      status: 201,
+      legacy: { accommodation },
+    });
   } catch (error) {
     console.error('Error in POST /api/travel-accommodations:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500 });
   }
 }

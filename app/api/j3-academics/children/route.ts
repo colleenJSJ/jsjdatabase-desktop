@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/get-user';
 import { createClient } from '@/lib/supabase/server';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     
@@ -42,6 +43,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const user = await getCurrentUser();
     

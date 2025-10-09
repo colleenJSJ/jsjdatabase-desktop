@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(
   request: NextRequest,
@@ -7,15 +9,13 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
-    // Fetch the accommodation
+    const { supabase } = authResult;
+
     const { data: accommodation, error } = await supabase
       .from('travel_accommodations')
       .select(`
@@ -26,13 +26,13 @@ export async function GET(
       .single();
 
     if (error || !accommodation) {
-      return NextResponse.json({ error: 'Accommodation not found' }, { status: 404 });
+      return jsonError('Accommodation not found', { status: 404 });
     }
 
-    return NextResponse.json({ accommodation });
+    return jsonSuccess({ accommodation }, { legacy: { accommodation } });
   } catch (error) {
     console.error('Error in GET /api/travel-accommodations/[id]:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
@@ -40,26 +40,17 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
-    // Check if user is admin
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (userError || !userData || userData.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized - Admin only' }, { status: 403 });
-    }
+    const { supabase } = authResult;
 
     const body = await request.json();
 
@@ -96,17 +87,17 @@ export async function PUT(
 
     if (updateError) {
       console.error('Error updating accommodation:', updateError);
-      return NextResponse.json({ error: 'Failed to update accommodation' }, { status: 500 });
+      return jsonError('Failed to update accommodation', { status: 500 });
     }
 
     if (!accommodation) {
-      return NextResponse.json({ error: 'Accommodation not found' }, { status: 404 });
+      return jsonError('Accommodation not found', { status: 404 });
     }
 
-    return NextResponse.json({ accommodation });
+    return jsonSuccess({ accommodation }, { legacy: { accommodation } });
   } catch (error) {
     console.error('Error in PUT /api/travel-accommodations/[id]:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
@@ -114,28 +105,18 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
-    // Check if user is admin
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    const { supabase } = authResult;
 
-    if (userError || !userData || userData.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized - Admin only' }, { status: 403 });
-    }
-
-    // Delete the accommodation
     const { error: deleteError } = await supabase
       .from('travel_accommodations')
       .delete()
@@ -143,12 +124,12 @@ export async function DELETE(
 
     if (deleteError) {
       console.error('Error deleting accommodation:', deleteError);
-      return NextResponse.json({ error: 'Failed to delete accommodation' }, { status: 500 });
+      return jsonError('Failed to delete accommodation', { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ deleted: true }, { legacy: { success: true } });
   } catch (error) {
     console.error('Error in DELETE /api/travel-accommodations/[id]:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500 });
   }
 }

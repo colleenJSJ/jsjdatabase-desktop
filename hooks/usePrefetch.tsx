@@ -38,7 +38,7 @@ const componentPrefetchMap: Record<string, () => Promise<any>> = {
   ]),
   
   '/documents': () => Promise.all([
-    import('@/components/documents/document-upload'),
+    import('@/components/documents/document-upload-modal'),
     import('@/components/documents/document-list'),
   ]),
   

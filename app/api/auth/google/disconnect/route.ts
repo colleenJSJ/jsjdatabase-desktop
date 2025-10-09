@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { deleteGoogleTokens, getGoogleTokens } from '@/lib/google/token-service';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function DELETE(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     // Use regular client to check auth
     const supabase = await createClient();
@@ -30,15 +35,11 @@ export async function DELETE(request: NextRequest) {
     };
 
     // 1. Clear user's Google tokens
-    const { error: tokenError, count: tokenCount } = await serviceClient
-      .from('user_google_tokens')
-      .delete()
-      .eq('user_id', user.id);
-    
+    const { error: tokenError } = await deleteGoogleTokens({ userId: user.id });
     if (!tokenError) {
       results.tokens.success = true;
-      results.tokens.count = tokenCount || 0;
-      console.log(`[Google Disconnect] Cleared ${tokenCount} token records`);
+      results.tokens.count = 0;
+      console.log('[Google Disconnect] Cleared token records via Edge Function');
     } else {
       console.error('[Google Disconnect] Error clearing tokens:', tokenError);
     }
@@ -147,10 +148,7 @@ export async function DELETE(request: NextRequest) {
     // VERIFICATION: Check that all data was actually deleted
     console.log('[Google Disconnect] Verifying deletion...');
     
-    const { count: remainingTokens } = await serviceClient
-      .from('user_google_tokens')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id);
+    const { data: remainingTokensData } = await getGoogleTokens({ userId: user.id });
     
     const { count: remainingCalendars } = await serviceClient
       .from('google_calendars')
@@ -166,6 +164,8 @@ export async function DELETE(request: NextRequest) {
       .from('calendar_events')
       .select('*', { count: 'exact', head: true })
       .not('google_event_id', 'is', null);
+
+    const remainingTokens = remainingTokensData?.tokens ? 1 : 0;
 
     console.log('[Google Disconnect] Verification results:', {
       remainingTokens,

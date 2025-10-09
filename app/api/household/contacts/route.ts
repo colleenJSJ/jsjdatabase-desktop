@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     
@@ -26,6 +27,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -38,7 +42,7 @@ export async function POST(request: NextRequest) {
     const portalPassword = sanitized.portal_password
       ? await (async () => {
           const { encrypt } = await import('@/lib/encryption');
-          return encrypt(sanitized.portal_password as string);
+          return await encrypt(sanitized.portal_password as string);
         })()
       : null;
 

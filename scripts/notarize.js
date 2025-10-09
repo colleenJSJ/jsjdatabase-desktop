@@ -6,13 +6,24 @@ exports.default = async function notarizing(context) {
     return;
   }
 
+  if (process.env.SKIP_NOTARIZE === '1') {
+    console.log('[notarize] Skipping notarization because SKIP_NOTARIZE=1');
+    return;
+  }
+
+  const { APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID } = process.env;
+  if (!APPLE_ID || !APPLE_APP_SPECIFIC_PASSWORD || !APPLE_TEAM_ID) {
+    console.warn('[notarize] Missing Apple notarization credentials; skipping');
+    return;
+  }
+
   const appName = packager.appInfo.productFilename;
 
   await notarize({
     appBundleId: 'com.familyoffice.desktop',
     appPath: `${appOutDir}/${appName}.app`,
-    appleId: process.env.APPLE_ID,
-    appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
-    teamId: process.env.APPLE_TEAM_ID,
+    appleId: APPLE_ID,
+    appleIdPassword: APPLE_APP_SPECIFIC_PASSWORD,
+    teamId: APPLE_TEAM_ID,
   });
 };

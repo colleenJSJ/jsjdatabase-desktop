@@ -1,12 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function DELETE(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    // Authenticate user
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -36,29 +40,30 @@ export async function DELETE(request: NextRequest) {
       console.error('Error clearing extraction_cache:', v1Error);
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Extraction cache cleared successfully',
-      cleared: {
-        extraction_cache_v2: v2Count || 0,
-        extraction_cache: v1Count || 0
-      }
+    const cleared = {
+      extraction_cache_v2: v2Count || 0,
+      extraction_cache: v1Count || 0,
+    };
+
+    return jsonSuccess({ cleared }, {
+      legacy: {
+        success: true,
+        message: 'Extraction cache cleared successfully',
+        cleared,
+      },
     });
   } catch (error) {
     console.error('Error clearing extraction cache:', error);
-    return NextResponse.json(
-      { error: 'Failed to clear extraction cache' },
-      { status: 500 }
-    );
+    return jsonError('Failed to clear extraction cache', { status: 500 });
   }
 }
 
 // GET endpoint to check cache status
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -74,16 +79,15 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id);
 
-    return NextResponse.json({
+    const payload = {
       extraction_cache_v2: v2Count || 0,
       extraction_cache: v1Count || 0,
-      total: (v2Count || 0) + (v1Count || 0)
-    });
+      total: (v2Count || 0) + (v1Count || 0),
+    };
+
+    return jsonSuccess(payload, { legacy: payload });
   } catch (error) {
     console.error('Error checking extraction cache:', error);
-    return NextResponse.json(
-      { error: 'Failed to check extraction cache' },
-      { status: 500 }
-    );
+    return jsonError('Failed to check extraction cache', { status: 500 });
   }
 }

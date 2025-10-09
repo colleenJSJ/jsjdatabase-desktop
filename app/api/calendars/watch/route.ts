@@ -3,8 +3,12 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { googleAuth } from '@/lib/google/auth';
 import { v4 as uuidv4 } from 'uuid';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get Google Calendar service
-    const calendar = await googleAuth.getCalendarService(user.id);
+    const calendar = await googleAuth.getCalendarService(user.id, { supabase });
 
     // Check if watch already exists
     const { data: existingWatch } = await supabase
@@ -171,6 +175,9 @@ export async function POST(request: NextRequest) {
 
 // Stop watching a calendar
 export async function DELETE(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(
@@ -217,7 +224,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Get Google Calendar service
-    const calendar = await googleAuth.getCalendarService(user.id);
+    const calendar = await googleAuth.getCalendarService(user.id, { supabase });
 
     try {
       // Stop the watch

@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { csrfMiddleware } from '@/lib/security/csrf';
 import { User } from '@supabase/supabase-js';
 
 export interface AuthUser {
@@ -26,11 +27,27 @@ export interface AuthResult {
  * @param requireAdmin - Whether admin role is required
  * @returns AuthResult with user data or error response
  */
+export interface AuthenticateRequestOptions {
+  skipCSRF?: boolean;
+}
+
 export async function authenticateRequest(
   request: NextRequest,
-  requireAdmin: boolean = false
+  requireAdmin: boolean = false,
+  options: AuthenticateRequestOptions = {}
 ): Promise<AuthResult> {
   try {
+    if (!options.skipCSRF) {
+      const csrfResult = await csrfMiddleware(request);
+      if (!csrfResult.valid) {
+        return {
+          authenticated: false,
+          error: csrfResult.error || 'Invalid CSRF token',
+          response: NextResponse.json({ error: csrfResult.error || 'Invalid CSRF token' }, { status: 403 })
+        };
+      }
+    }
+
     const supabase = await createClient();
     
     // Check authentication

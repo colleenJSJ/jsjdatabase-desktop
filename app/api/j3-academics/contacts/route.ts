@@ -1,63 +1,68 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { syncAcademicContactToUnified } from '@/app/api/_helpers/contact-sync';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { searchParams } = new URL(request.url);
     const childId = searchParams.get('child_id');
-    
+
     const supabase = await createServiceClient();
-    
+
     let query = supabase.from('j3_academics_contacts').select('*');
-    
+
     if (childId && childId !== 'all') {
       query = query.eq('child_id', childId);
     }
-    
+
     const { data, error } = await query.order('contact_name');
-      
+
     if (error) {
-      // If table doesn't exist, return empty array
       if (error.code === '42P01' || error.code === 'PGRST205') {
-        return NextResponse.json([]);
+        return jsonSuccess({ contacts: [] }, { legacy: [] });
       }
-      
+
       console.error('[API/j3-academics/contacts] Error:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch contacts', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch contacts', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
-    
-    return NextResponse.json(data || []);
+
+    const contacts = data || [];
+    return jsonSuccess({ contacts }, { legacy: contacts });
   } catch (error) {
     console.error('[API/j3-academics/contacts] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await requireAdmin();
-    
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const data = await request.json();
     const supabase = await createServiceClient();
-    
+
     const { data: contact, error } = await supabase
       .from('j3_academics_contacts')
       .insert({
@@ -70,21 +75,26 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[API/j3-academics/contacts] Error:', error);
-      return NextResponse.json(
-        { error: 'Failed to create contact', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to create contact', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     // Sync to unified contacts table
     await syncAcademicContactToUnified(contact);
 
-    return NextResponse.json({ contact });
+    return jsonSuccess({ contact }, {
+      status: 201,
+      legacy: { contact },
+    });
   } catch (error) {
     console.error('[API/j3-academics/contacts] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }

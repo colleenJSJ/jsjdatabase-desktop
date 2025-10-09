@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     // Fetch all active family members (humans and pets)
     const { data: familyMembers, error } = await supabase
       .from('family_members')
-      .select('id, name, type, is_child, email')
+      .select('id, name, type, is_child, email, user_id')
       .eq('is_active', true)
       .order('type', { ascending: true })
       .order('name', { ascending: true });
@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
             name: user.name || user.email?.split('@')[0] || 'Unknown',
             type: 'user',
             is_child: false,
-            email: user.email
+            email: user.email,
+            user_id: user.id
           });
         }
       });

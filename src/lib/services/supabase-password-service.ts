@@ -54,7 +54,7 @@ export class SupabasePasswordService implements IPasswordService {
     }
 
     console.log('[SupabasePasswordService] Raw passwords from DB:', data?.length || 0);
-    const passwords = (data || []).map(row => this.mapRowToPassword(row));
+    const passwords = await Promise.all((data || []).map((row) => this.mapRowToPassword(row)));
     console.log('[SupabasePasswordService] Mapped passwords:', passwords.length);
     
     if (filter?.strength) {
@@ -91,8 +91,8 @@ export class SupabasePasswordService implements IPasswordService {
       throw new Error('User not authenticated');
     }
     
-    const encryptedPassword = encryptionService.encrypt(data.password);
-    const encryptedNotes = data.notes ? encryptionService.encrypt(data.notes) : null;
+    const encryptedPassword = await encryptionService.encrypt(data.password);
+    const encryptedNotes = data.notes ? await encryptionService.encrypt(data.notes) : null;
     
     // Log what fields we're trying to insert
     console.log('[SupabasePasswordService] Preparing to insert password:', {
@@ -198,13 +198,13 @@ export class SupabasePasswordService implements IPasswordService {
     }
     if (data.username !== undefined) updates.username = data.username;
     if (data.password !== undefined) {
-      updates.password = encryptionService.encrypt(data.password);
+      updates.password = await encryptionService.encrypt(data.password);
       updates.last_changed = new Date().toISOString();
     }
     if (data.url !== undefined) updates.url = data.url ? normalizeUrl(data.url) : null;
     if (data.category !== undefined) updates.category = data.category;
     if (data.notes !== undefined) {
-      updates.notes = data.notes ? encryptionService.encrypt(data.notes) : null;
+      updates.notes = data.notes ? await encryptionService.encrypt(data.notes) : null;
     }
     if (data.tags !== undefined) updates.tags = data.tags;
     if (data.is_favorite !== undefined) updates.is_favorite = data.is_favorite;
@@ -283,30 +283,37 @@ export class SupabasePasswordService implements IPasswordService {
     return PasswordStrength.EXCELLENT;
   }
 
-  private mapRowToPassword(row: Database['public']['Tables']['passwords']['Row']): Password {
+  private async mapRowToPassword(row: Database['public']['Tables']['passwords']['Row']): Promise<Password> {
     let decryptedPassword = '';
     let decryptedNotes = '';
 
     try {
-      decryptedPassword = row.password ? encryptionService.decrypt(row.password) : '';
+      decryptedPassword = row.password ? await encryptionService.decrypt(row.password) : '';
     } catch (error) {
       console.error('[SupabasePasswordService] Error decrypting password:', error);
       decryptedPassword = '[Decryption Error]';
     }
 
     try {
-      decryptedNotes = row.notes ? encryptionService.decrypt(row.notes) : '';
+      decryptedNotes = row.notes ? await encryptionService.decrypt(row.notes) : '';
     } catch (error) {
       console.error('[SupabasePasswordService] Error decrypting notes:', error);
       decryptedNotes = row.notes || '';
     }
 
+    const extraFields = row as Record<string, unknown>;
+    const fallbackTitle = typeof extraFields.title === 'string' ? extraFields.title : '';
+    const fallbackUrl = typeof extraFields.website_url === 'string' ? extraFields.website_url : '';
+    const sourceValue = typeof extraFields.source === 'string' ? extraFields.source : null;
+    const sourcePage = typeof extraFields.source_page === 'string' ? extraFields.source_page : null;
+    const sourceReference = typeof extraFields.source_reference === 'string' ? extraFields.source_reference : null;
+
     const password: Password = {
       id: row.id,
-      service_name: row.service_name || (row as any).title || '',
+      service_name: row.service_name || fallbackTitle || '',
       username: row.username || '',
       password: decryptedPassword,
-      url: row.url || (row as any).website_url || '',
+      url: row.url || fallbackUrl,
       category: row.category || 'other',
       notes: decryptedNotes,
       tags: row.tags || [],
@@ -315,7 +322,10 @@ export class SupabasePasswordService implements IPasswordService {
       is_shared: row.is_shared || false,
       last_changed: new Date(row.last_changed || row.updated_at),
       created_at: new Date(row.created_at),
-      updated_at: new Date(row.updated_at)
+      updated_at: new Date(row.updated_at),
+      source: sourceValue ?? undefined,
+      source_page: sourcePage ?? sourceValue ?? undefined,
+      source_reference: sourceReference ?? undefined,
     };
 
     password.strength = this.calculatePasswordStrength(decryptedPassword);
@@ -340,7 +350,7 @@ export class SupabasePasswordService implements IPasswordService {
     const testRow = {
       service_name: 'Test Password Entry',
       username: 'testuser',
-      password: encryptionService.encrypt('testpassword'),
+      password: await encryptionService.encrypt('testpassword'),
       category: 'other',
       owner_id: user?.id || userId, // Use auth user ID if available
       created_at: new Date().toISOString(),

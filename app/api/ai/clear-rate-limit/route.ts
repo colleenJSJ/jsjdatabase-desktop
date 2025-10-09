@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 // This is a development-only endpoint to clear rate limits
 // DO NOT deploy to production without proper security
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   // Only allow in development
   if (process.env.NODE_ENV === 'production') {
     return NextResponse.json(

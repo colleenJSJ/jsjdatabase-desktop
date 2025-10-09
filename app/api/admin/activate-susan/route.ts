@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/app/api/_helpers/auth';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireAdmin();
+    const authResult = await requireAdmin(request);
     
     if ('error' in authResult) {
       return authResult.error;
@@ -42,9 +42,9 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAdmin();
+    const authResult = await requireAdmin(request);
     
     if ('error' in authResult) {
       return authResult.error;

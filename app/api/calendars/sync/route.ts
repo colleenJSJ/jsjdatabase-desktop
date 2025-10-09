@@ -3,8 +3,12 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { googleAuth } from '@/lib/google/auth';
 import { google } from 'googleapis';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     // Create Supabase client
     const cookieStore = await cookies();
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get calendar service
-    const calendar = await googleAuth.getCalendarService(user.id);
+    const calendar = await googleAuth.getCalendarService(user.id, { supabase });
     
     // Fetch calendar list
     const { data: calendarList } = await calendar.calendarList.list();

@@ -53,19 +53,20 @@ export default function AdminSettingsPage() {
 
   const fetchUsers = async () => {
     try {
-      console.log('[Admin Settings] Fetching users...');
+      debugLog('[Admin Settings] Fetching users...');
       const response = await fetch('/api/admin/users');
-      console.log('[Admin Settings] Response status:', response.status);
+      debugLog('[Admin Settings] Response status:', response.status);
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[Admin Settings] Received data:', data);
-        console.log('[Admin Settings] Users array:', data.users);
-        setUsers(data.users);
+      const payload = await response.json();
+
+      if (response.ok && payload.success) {
+        const nextUsers = payload.data?.users ?? payload.users ?? [];
+        debugLog('[Admin Settings] Received data:', payload);
+        debugLog('[Admin Settings] Users array:', nextUsers);
+        setUsers(nextUsers);
       } else {
         console.error('[Admin Settings] Failed to fetch users:', response.status, response.statusText);
-        const errorData = await response.json().catch(() => ({}));
-        console.error('[Admin Settings] Error data:', errorData);
+        console.error('[Admin Settings] Error data:', payload);
       }
     } catch (error) {
       console.error('[Admin Settings] Error fetching users:', error);
@@ -213,9 +214,13 @@ export default function AdminSettingsPage() {
         body: JSON.stringify(updateData)
       });
 
-      if (response.ok) {
+      const payload = await response.json();
+
+      if (response.ok && payload.success) {
         await fetchUsers();
         setEditingUserId(null);
+      } else {
+        console.error('[Admin Settings] Failed to update user:', payload);
       }
     } catch (error) {
       console.error('Error updating user:', error);
@@ -234,9 +239,10 @@ export default function AdminSettingsPage() {
       body: JSON.stringify(userData)
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to add user');
+    const payload = await response.json();
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Failed to add user');
     }
 
     await fetchUsers();
@@ -868,3 +874,9 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+const isDev = process.env.NODE_ENV !== 'production';
+const debugLog = (...args: unknown[]) => {
+  if (isDev) {
+    console.log(...args);
+  }
+};

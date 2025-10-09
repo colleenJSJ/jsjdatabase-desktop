@@ -2,7 +2,8 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ensureCSRFFetch, ensureCSRFToken } from '@/lib/security/csrf-client';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -26,6 +27,21 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       },
     },
   }));
+
+  useEffect(() => {
+    let mounted = true;
+
+    void (async () => {
+      await ensureCSRFToken();
+      if (mounted) {
+        ensureCSRFFetch();
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

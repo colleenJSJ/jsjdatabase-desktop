@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
-import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { sanitizeContactPayload, cleanStringArray, cleanNullableString } from '@/app/api/_helpers/contact-normalizer';
+import { enforceCSRF } from '@/lib/security/csrf';
 import {
   syncPortalCredentialsForContact,
   deletePortalCredentialsForContact,
 } from '@/app/api/_helpers/contact-portal-sync';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(
   request: NextRequest,
@@ -12,9 +14,9 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -28,20 +30,24 @@ export async function GET(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+        return jsonError('Contact not found', { status: 404, code: 'CONTACT_NOT_FOUND' });
       }
       console.error('Error fetching contact:', error);
       try {
         const { logRlsDenied } = await import('@/lib/utils/db-telemetry');
         await logRlsDenied({ userId: user.id, error, endpoint: `/api/contacts/${id}`, entityType: 'contact', entityId: id, page: 'household' });
       } catch {}
-      return NextResponse.json({ error: 'Failed to fetch contact' }, { status: 500 });
+      return jsonError('Failed to fetch contact', {
+        status: 500,
+        code: 'CONTACT_FETCH_FAILED',
+        meta: { details: error.message },
+      });
     }
 
-    return NextResponse.json({ contact });
+    return jsonSuccess({ contact }, { legacy: { contact } });
   } catch (error) {
     console.error('Error in GET /api/contacts/[id]:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }
 
@@ -49,11 +55,14 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -66,34 +75,37 @@ export async function PUT(
       plainPortalPassword = sanitized.portal_password ? sanitized.portal_password : null;
     }
 
+    const servicesProvided = cleanStringArray(body.services_provided);
+    const specialties = cleanStringArray(body.specialties);
+    const accountNumber = cleanNullableString(body.account_number);
+    const hoursOfOperation = cleanNullableString(body.hours_of_operation);
+
     const updateData: Record<string, unknown> = {
       name: sanitized.name,
       company: sanitized.company,
       category: sanitized.category ?? 'Other',
       contact_subtype: sanitized.contact_subtype,
-      emails: sanitized.emails,
       email: sanitized.email,
-      phones: sanitized.phones,
       phone: sanitized.phone,
-      addresses: sanitized.addresses,
       address: sanitized.address,
-      tags: sanitized.tags,
-      related_to: sanitized.related_to,
-      assigned_entities: sanitized.assigned_entities,
-      pets: sanitized.pets,
+      related_to: sanitized.related_to.length > 0 ? sanitized.related_to : null,
+      pets: sanitized.pets.length > 0 ? sanitized.pets : null,
       trip_id: sanitized.trip_id,
       source_type: sanitized.source_type ?? 'other',
-      source_page: sanitized.source_page ?? 'contacts',
       source_id: sanitized.source_id,
       notes: sanitized.notes,
       website: sanitized.website,
       portal_url: sanitized.portal_url,
       portal_username: sanitized.portal_username,
       is_emergency: sanitized.is_emergency,
+      is_emergency_contact: sanitized.is_emergency,
       is_preferred: sanitized.is_preferred,
-      is_favorite: sanitized.is_favorite,
       is_archived: sanitized.is_archived,
       updated_at: new Date().toISOString(),
+      services_provided: servicesProvided.length > 0 ? servicesProvided : null,
+      specialties: specialties.length > 0 ? specialties : null,
+      account_number: accountNumber,
+      hours_of_operation: hoursOfOperation,
     };
 
     if (Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'portal_password')) {
@@ -115,14 +127,18 @@ export async function PUT(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+        return jsonError('Contact not found', { status: 404, code: 'CONTACT_NOT_FOUND' });
       }
       console.error('Error updating contact:', error);
       try {
         const { logRlsDenied } = await import('@/lib/utils/db-telemetry');
         await logRlsDenied({ userId: user.id, error, endpoint: `/api/contacts/${id}`, entityType: 'contact', entityId: id, page: 'household' });
       } catch {}
-      return NextResponse.json({ error: 'Failed to update contact' }, { status: 500 });
+      return jsonError('Failed to update contact', {
+        status: 500,
+        code: 'CONTACT_UPDATE_FAILED',
+        meta: { details: error.message },
+      });
     }
 
     try {
@@ -133,10 +149,10 @@ export async function PUT(
       console.error('[Contacts API PUT] Failed to sync portal credentials', syncError);
     }
 
-    return NextResponse.json({ contact });
+    return jsonSuccess({ contact }, { legacy: { contact } });
   } catch (error) {
     console.error('Error in PUT /api/contacts/[id]:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }
 
@@ -144,11 +160,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -162,7 +181,11 @@ export async function DELETE(
 
     if (userError) {
       console.error('Error fetching user role:', userError);
-      return NextResponse.json({ error: 'Failed to verify permissions' }, { status: 500 });
+      return jsonError('Failed to verify permissions', {
+        status: 500,
+        code: 'PERMISSION_CHECK_FAILED',
+        meta: { details: userError.message },
+      });
     }
 
     // Get the contact to check creator from unified table
@@ -176,18 +199,17 @@ export async function DELETE(
           contact_type,
           category,
           source_type,
-          source_page,
           source_id,
-          source_reference,
           portal_url,
           portal_username,
           portal_password,
           related_to,
-          assigned_entities,
-          patients,
           pets,
-          owner_id,
-          shared_with
+          services_provided,
+          specialties,
+          account_number,
+          notes,
+          hours_of_operation
         `
       )
       .eq('id', id)
@@ -195,14 +217,18 @@ export async function DELETE(
 
     if (fetchError) {
       if (fetchError.code === 'PGRST116') {
-        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+        return jsonError('Contact not found', { status: 404, code: 'CONTACT_NOT_FOUND' });
       }
-      return NextResponse.json({ error: 'Failed to fetch contact' }, { status: 500 });
+      return jsonError('Failed to fetch contact', {
+        status: 500,
+        code: 'CONTACT_FETCH_FAILED',
+        meta: { details: fetchError.message },
+      });
     }
 
     // Check permissions
     if (userRecord.role !== 'admin' && contact.created_by !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return jsonError('Forbidden', { status: 403, code: 'FORBIDDEN' });
     }
 
     try {
@@ -223,12 +249,16 @@ export async function DELETE(
         const { logRlsDenied } = await import('@/lib/utils/db-telemetry');
         await logRlsDenied({ userId: user.id, error, endpoint: `/api/contacts/${id}`, entityType: 'contact', entityId: id, page: 'household' });
       } catch {}
-      return NextResponse.json({ error: 'Failed to delete contact' }, { status: 500 });
+      return jsonError('Failed to delete contact', {
+        status: 500,
+        code: 'CONTACT_DELETE_FAILED',
+        meta: { details: error.message },
+      });
     }
 
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ deleted: true });
   } catch (error) {
     console.error('Error in DELETE /api/contacts/[id]:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }

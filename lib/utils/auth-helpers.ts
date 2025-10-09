@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { User } from '@supabase/supabase-js';
-import { resolveCSRFTokenFromRequest } from '@/lib/security/csrf';
+import { csrfMiddleware, resolveCSRFTokenFromRequest } from '@/lib/security/csrf';
 
 export interface AuthUser {
   id: string;
@@ -151,21 +151,11 @@ export async function getUserHousehold(userId: string): Promise<string[]> {
  * Note: This is a placeholder - integrate with your CSRF implementation
  */
 export async function requireCSRF(request: NextRequest): Promise<boolean> {
-  // Skip for safe methods
-  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
-    return true;
+  const result = await csrfMiddleware(request);
+  if (!result.valid) {
+    console.warn('[Auth Helper] CSRF validation failed:', result.error);
   }
-  
-  // Check for CSRF token in header
-  const csrfToken = request.headers.get('x-csrf-token');
-  if (!csrfToken) {
-    console.warn('[Auth Helper] Missing CSRF token');
-    return false;
-  }
-  
-  // Validate token (implement your validation logic)
-  // This would integrate with your CSRF store
-  return true;
+  return result.valid;
 }
 
 /**

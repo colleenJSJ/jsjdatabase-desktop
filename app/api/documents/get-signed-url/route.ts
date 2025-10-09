@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import B2 from 'backblaze-b2';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { logger } from '@/lib/utils/logger';
+import { getBackblazeService } from '@/lib/backblaze/b2-service';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | null): string | null {
+  if (fallbackFileName) {
+    return fallbackFileName;
+  }
   if (fileUrl && fileUrl.includes('/file/')) {
     const afterFile = fileUrl.split('/file/')[1];
     if (afterFile) {
@@ -13,13 +18,13 @@ function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | nul
       }
     }
   }
-  if (fallbackFileName) {
-    return fallbackFileName;
-  }
   return null;
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const requestLabel = '[Documents] Signed URL';
 
   try {
@@ -34,13 +39,13 @@ export async function POST(request: NextRequest) {
 
     if (!documentId && !fileUrl && !fileName) {
       logger.warn(`${requestLabel} denied: missing identifiers`);
-      return NextResponse.json({ error: 'Document identifier is required' }, { status: 400 });
+      return jsonError('Document identifier is required', { status: 400 });
     }
 
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
       logger.warn(`${requestLabel} denied: unauthenticated request`);
-      return authResult.error;
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -68,7 +73,7 @@ export async function POST(request: NextRequest) {
         reason: documentError?.message ?? 'not_found'
       });
       const statusCode = (!document && (!documentError || documentError.code === 'PGRST116')) ? 404 : 403;
-      return NextResponse.json({ error: 'Document not found' }, { status: statusCode });
+      return jsonError('Document not found', { status: statusCode });
     }
 
     if (documentId && document.id !== documentId) {
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
         requestedId: documentId,
         resolvedId: document.id
       });
-      return NextResponse.json({ error: 'Document mismatch' }, { status: 403 });
+      return jsonError('Document mismatch', { status: 403 });
     }
 
     if (fileUrl && document.file_url && document.file_url !== fileUrl) {
@@ -95,39 +100,23 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         documentId: document.id
       });
-      return NextResponse.json({ error: 'Unable to resolve document file path' }, { status: 400 });
+      return jsonError('Unable to resolve document file path', { status: 400 });
     }
 
-    const keyId = process.env.BACKBLAZE_KEY_ID;
-    const applicationKey = process.env.BACKBLAZE_APPLICATION_KEY;
-    const bucketId = process.env.BACKBLAZE_BUCKET_ID;
-    const bucketName = process.env.BACKBLAZE_BUCKET_NAME;
-
-    if (!keyId || !applicationKey || !bucketId || !bucketName) {
-      logger.error(`${requestLabel} failed: missing Backblaze configuration`);
-      return NextResponse.json(
-        { error: 'Storage configuration incomplete' },
-        { status: 500 }
-      );
+    const backblazeService = getBackblazeService();
+    let downloadDetails;
+    try {
+      downloadDetails = await backblazeService.getDownloadDetails(resolvedFilePath);
+    } catch (error) {
+      logger.error(`${requestLabel} failed to get download details`, {
+        userId: user.id,
+        documentId: document.id,
+        error: error instanceof Error ? error.message : error,
+      });
+      return jsonError('Failed to generate signed URL', { status: 500 });
     }
-
-    const b2 = new B2({
-      applicationKeyId: keyId,
-      applicationKey,
-    });
-
-    const authResponse = await b2.authorize();
-
-    const downloadAuth = await b2.getDownloadAuthorization({
-      bucketId,
-      fileNamePrefix: resolvedFilePath,
-      validDurationInSeconds: 3600,
-    });
-
-    const baseUrl = authResponse.data.downloadUrl;
-    const authToken = downloadAuth.data.authorizationToken;
     const searchParams = new URLSearchParams();
-    searchParams.set('Authorization', authToken);
+    searchParams.set('Authorization', downloadDetails.downloadAuthorizationToken);
 
     if (download) {
       const filename = document.file_name || `document-${document.id}`;
@@ -139,27 +128,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const encodedPath = resolvedFilePath
-      .split('/')
-      .map(segment => encodeURIComponent(segment))
-      .join('/');
-
-    const signedUrl = `${baseUrl}/file/${bucketName}/${encodedPath}?${searchParams.toString()}`;
+    const signedUrl = `${downloadDetails.fileUrl}?${searchParams.toString()}`;
 
     logger.info(`${requestLabel} granted`, {
       userId: user.id,
       documentId: document.id,
     });
 
-    return NextResponse.json({ signedUrl });
+    return jsonSuccess({ signedUrl }, { legacy: { signedUrl } });
   } catch (error) {
     logger.error('[Documents] Signed URL error', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to generate signed URL',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return jsonError('Failed to generate signed URL', {
+      status: 500,
+      meta: { details: error instanceof Error ? error.message : 'Unknown error' },
+    });
   }
 }

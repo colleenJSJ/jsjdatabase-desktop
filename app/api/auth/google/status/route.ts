@@ -35,31 +35,15 @@ export async function GET(request: NextRequest) {
     let connected = false;
     let expired = false;
 
-    // First, see if a token row exists (treat as connected regardless of expiry)
-    const { data: tokenRow } = await supabase
-      .from('user_google_tokens')
-      .select('expires_at')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (tokenRow) {
+    try {
+      await googleAuth.getAuthenticatedClient(user.id, { supabase });
       connected = true;
-      // Check expiry and try a refresh path if needed
-      const expiresAt = tokenRow.expires_at ? new Date(tokenRow.expires_at) : null;
-      if (expiresAt && expiresAt.getTime() > Date.now() + 5 * 60 * 1000) {
-        hasValidTokens = true;
-      } else {
-        expired = true;
-        try {
-          // Attempt to refresh; if it succeeds, tokens are valid again
-          await googleAuth.getAuthenticatedClient(user.id);
-          hasValidTokens = true;
-          expired = false;
-        } catch {
-          // Still expired or invalid refresh token
-          hasValidTokens = false;
-        }
-      }
+      hasValidTokens = true;
+      expired = false;
+    } catch (error) {
+      connected = false;
+      hasValidTokens = false;
+      expired = true;
     }
 
     // Get additional connection information if connected

@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = (portal: any) => {
+const serializePortal = async (portal: any) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password);
     } catch (error) {
       console.error('[Pet Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -58,7 +59,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ portals: (portals || []).map(serializePortal) });
+    const serialized = await Promise.all((portals || []).map((portal) => serializePortal(portal)));
+    return NextResponse.json({ portals: serialized });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch pet portals' },
@@ -68,6 +70,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -88,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedUrl = url ? normalizeUrl(url) : null;
-    const encryptedPassword = password ? encrypt(password) : null;
+    const encryptedPassword = password ? await encrypt(password) : null;
 
     const portalData = {
       portal_type: 'pet',
@@ -175,7 +180,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ portal: serializePortal(portal) });
+    return NextResponse.json({ portal: await serializePortal(portal) });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to create pet portal' },

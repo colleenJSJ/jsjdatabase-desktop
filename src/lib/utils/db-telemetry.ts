@@ -2,16 +2,25 @@ import { ActivityLogger } from '@/lib/services/activity-logger';
 
 export async function logRlsDenied(params: {
   userId: string;
-  error: any;
+  error: unknown;
   endpoint: string;
   entityType?: string;
   entityId?: string;
   page?: string;
 }) {
   try {
-    const msg = String(params.error?.message || '').toLowerCase();
-    const hint = String(params.error?.hint || '').toLowerCase();
-    const code = String(params.error?.code || '');
+    const errorRecord =
+      params.error && typeof params.error === 'object'
+        ? (params.error as Record<string, unknown>)
+        : {};
+
+    const rawMessage = errorRecord.message;
+    const rawHint = errorRecord.hint;
+    const message = typeof rawMessage === 'string' ? rawMessage : '';
+    const hintValue = typeof rawHint === 'string' ? rawHint : '';
+
+    const msg = message.toLowerCase();
+    const hint = hintValue.toLowerCase();
     const looksLikeRls =
       msg.includes('row-level security') ||
       msg.includes('rls') ||
@@ -26,10 +35,9 @@ export async function logRlsDenied(params: {
       entityId: params.entityId,
       page: params.page || 'api',
       details: {
-        errorMessage: params.error?.message,
+        errorMessage: message || undefined,
         changes: { endpoint: { from: null, to: params.endpoint } },
       },
     });
   } catch {}
 }
-

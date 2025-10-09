@@ -34,6 +34,7 @@ const sendToRenderer = (channel, payload) => {
 }
 
 const closeStandaloneServer = () => {
+  console.log('[Electron] closeStandaloneServer invoked')
   if (!standaloneServer) {
     return Promise.resolve()
   }
@@ -50,6 +51,7 @@ const closeStandaloneServer = () => {
         } else {
           console.log('[Electron] Standalone Next.js server closed')
         }
+        console.log('[Electron] standalone server close callback fired')
         standaloneServer = null
         serverShutdownPromise = null
         resolve()
@@ -404,6 +406,7 @@ app.whenReady().then(() => {
     }
 
     event.preventDefault()
+    console.log('[Electron] before-quit: waiting for standalone server shutdown')
     closeStandaloneServer()
       .catch((error) => {
         console.error('[Electron] Failed to close server during quit', error)

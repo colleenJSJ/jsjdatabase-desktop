@@ -10,8 +10,10 @@ interface TimeInputProps {
   error?: boolean;
   placeholder?: string;
   label?: string;
+  labelClassName?: string;
   required?: boolean;
   onOpenDatePicker?: () => void;
+  className?: string;
 }
 
 export function TimeInput({
@@ -21,8 +23,10 @@ export function TimeInput({
   error = false,
   placeholder = 'Select or type time',
   label,
+  labelClassName,
   required = false,
-  onOpenDatePicker
+  onOpenDatePicker,
+  className
 }: TimeInputProps) {
   const inputId = useId();
   const [inputValue, setInputValue] = useState('');
@@ -171,9 +175,9 @@ export function TimeInput({
   };
 
   return (
-    <div className="space-y-1">
+    <div className={cn('space-y-1', className)}>
       {label && (
-        <label htmlFor={inputId} className="block text-sm font-medium text-text-primary">
+        <label htmlFor={inputId} className={cn('block text-sm font-medium text-text-primary', labelClassName)}>
           {label}
           {required && <span className="text-red-400 ml-1">*</span>}
         </label>
@@ -210,7 +214,7 @@ export function TimeInput({
           disabled={disabled}
           placeholder={placeholder}
           className={cn(
-            "w-full px-3 py-2 bg-background-primary border rounded-md text-text-primary",
+            "w-full px-3 py-2 text-sm bg-background-primary border rounded-md text-text-primary",
             "focus:outline-none focus:ring-2",
             error ? "border-red-500 focus:ring-red-500" : "border-gray-600/30 focus:ring-gray-700",
             disabled && "opacity-50 cursor-not-allowed"

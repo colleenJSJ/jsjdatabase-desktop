@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { SupabasePasswordService } from '@/lib/services/supabase-password-service';
 import { deletePortalById } from '@/lib/services/portal-password-sync';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 const passwordService = new SupabasePasswordService();
 
@@ -34,6 +35,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();
@@ -77,6 +81,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();

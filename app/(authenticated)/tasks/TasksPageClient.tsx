@@ -336,6 +336,7 @@ export default function TasksPageClient() {
                         task={t as any}
                         onClick={() => setSelectedTask(t)}
                         onComplete={async () => { await markComplete(t.id); }}
+                        onDelete={async () => { await deleteTask(t.id); }}
                       />
                     ))}
                   </div>

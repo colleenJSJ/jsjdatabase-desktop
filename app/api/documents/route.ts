@@ -1,14 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { expandPersonReferences } from '@/app/api/_helpers/person-resolver';
 import { applyPersonFilter } from '@/app/api/_helpers/apply-person-filter';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request);
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { searchParams } = new URL(request.url);
@@ -87,19 +87,16 @@ export async function GET(request: NextRequest) {
       
       // Check if error is due to missing columns
       if (error.message?.includes('column') || error.code === '42703') {
-        return NextResponse.json(
-          { 
-            error: 'Database schema needs update. Please run the migration script.',
-            details: error.message
-          },
-          { status: 500 }
-        );
+        return jsonError('Database schema needs update. Please run the migration script.', {
+          status: 500,
+          meta: { details: error.message },
+        });
       }
       
-      return NextResponse.json(
-        { error: 'Failed to fetch documents', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch documents', {
+        status: 500,
+        meta: { details: error.message },
+      });
     }
 
     // Transform documents to expand person references
@@ -117,12 +114,11 @@ export async function GET(request: NextRequest) {
     );
 
     // Return in expected format with documents key
-    return NextResponse.json({ documents: transformedDocuments });
+    return jsonSuccess({ documents: transformedDocuments }, {
+      legacy: { documents: transformedDocuments },
+    });
   } catch (error) {
     console.error('API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

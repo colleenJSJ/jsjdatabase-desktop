@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/app/api/_helpers/auth';
 import { syncExistingDoctorPortals } from '@/lib/services/portal-password-sync';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const adminResult = await requireAdmin();
+    const adminResult = await requireAdmin(request);
     if ('error' in adminResult) return adminResult.error;
     const { user } = adminResult;
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CategoriesService, CategoryModule } from '@/lib/categories/categories-service';
 import { getCurrentUser } from '@/lib/auth/get-user';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,6 +34,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const user = await getCurrentUser();
     

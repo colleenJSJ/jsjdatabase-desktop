@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { extractTravelDetails } from '@/lib/ai/travel-extractor';
 import { validateFile } from '@/lib/ai/document-processors';
 import { z } from 'zod';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 // Use Node.js runtime for PDF and image processing
 export const runtime = 'nodejs';
@@ -39,6 +40,9 @@ function checkRateLimit(userId: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     // Parse and validate request body
     const body = await request.json();

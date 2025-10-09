@@ -3,13 +3,14 @@ import { createClient } from '@/lib/supabase/server';
 import { resolveFamilyMemberToUser, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { decrypt } from '@/lib/encryption';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = (portal: any) => {
+const serializePortal = async (portal: any) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password);
     } catch (error) {
       console.error('[Medical Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -90,7 +91,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch portals' }, { status: 500 });
     }
 
-    return NextResponse.json({ portals: (portals || []).map(serializePortal) });
+    const serialized = await Promise.all((portals || []).map((portal) => serializePortal(portal)));
+    return NextResponse.json({ portals: serialized });
   } catch (error) {
     console.error('Error in GET /api/medical-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -98,6 +100,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const supabase = await createClient();
     
@@ -146,7 +151,7 @@ export async function POST(request: NextRequest) {
     const encryptedPassword = password
       ? await (async () => {
           const { encrypt } = await import('@/lib/encryption');
-          return encrypt(password);
+          return await encrypt(password);
         })()
       : null;
 

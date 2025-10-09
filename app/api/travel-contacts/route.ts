@@ -1,14 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { applyPersonFilter } from '@/app/api/_helpers/apply-person-filter';
 import { resolvePersonReferences } from '@/app/api/_helpers/person-resolver';
 import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -48,10 +50,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('[Travel Contacts API] Failed to fetch contacts:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch travel contacts' },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch travel contacts', { status: 500 });
     }
 
     let filteredContacts = contacts || [];
@@ -75,21 +74,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ contacts: filteredContacts });
+    return jsonSuccess({ contacts: filteredContacts }, {
+      legacy: { contacts: filteredContacts },
+    });
   } catch (error) {
     console.error('[Travel Contacts API] Error fetching contacts:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -133,18 +134,12 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[Travel Contacts API] Failed to create contact:', error);
-      return NextResponse.json(
-        { error: 'Failed to create travel contact' },
-        { status: 500 }
-      );
+      return jsonError('Failed to create travel contact', { status: 500 });
     }
 
-    return NextResponse.json({ contact });
+    return jsonSuccess({ contact }, { status: 201, legacy: { contact } });
   } catch (error) {
     console.error('[Travel Contacts API] Error creating contact:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

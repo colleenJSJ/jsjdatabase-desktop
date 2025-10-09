@@ -14,6 +14,18 @@ export interface Category {
   updated_at: string;
 }
 
+type CategoryUsage = {
+  tasks: number;
+  calendar_events: number;
+  documents: number;
+  passwords: number;
+  contacts: number;
+  household_contacts: number;
+  service_providers: number;
+  inventory: number;
+  total: number;
+};
+
 export class CategoriesService {
   static async getCategories(module?: CategoryModule): Promise<Category[]> {
     const supabase = await createServiceClient();
@@ -98,17 +110,7 @@ export class CategoriesService {
     return category;
   }
 
-  static async getCategoryUsage(categoryName: string): Promise<{
-    tasks: number;
-    calendar_events: number;
-    documents: number;
-    passwords: number;
-    contacts: number;
-    household_contacts: number;
-    service_providers: number;
-    inventory: number;
-    total: number;
-  }> {
+  static async getCategoryUsage(categoryName: string): Promise<CategoryUsage> {
     const supabase = await createServiceClient();
     
     // Check usage in all tables that have category fields
@@ -132,24 +134,32 @@ export class CategoriesService {
       supabase.from('inventory').select('*', { count: 'exact', head: true }).eq('category', categoryName)
     ]);
 
-    const usage = {
-      tasks: tasksCount || 0,
-      calendar_events: eventsCount || 0,
-      documents: documentsCount || 0,
-      passwords: passwordsCount || 0,
-      contacts: contactsCount || 0,
-      household_contacts: householdContactsCount || 0,
-      service_providers: serviceProvidersCount || 0,
-      inventory: inventoryCount || 0,
-      total: 0
+    const usage: CategoryUsage = {
+      tasks: tasksCount ?? 0,
+      calendar_events: eventsCount ?? 0,
+      documents: documentsCount ?? 0,
+      passwords: passwordsCount ?? 0,
+      contacts: contactsCount ?? 0,
+      household_contacts: householdContactsCount ?? 0,
+      service_providers: serviceProvidersCount ?? 0,
+      inventory: inventoryCount ?? 0,
+      total: 0,
     };
 
-    usage.total = Object.values(usage).reduce((sum, count) => sum + (typeof count === 'number' ? count : 0), 0);
+    usage.total =
+      usage.tasks +
+      usage.calendar_events +
+      usage.documents +
+      usage.passwords +
+      usage.contacts +
+      usage.household_contacts +
+      usage.service_providers +
+      usage.inventory;
 
     return usage;
   }
 
-  static async deleteCategory(id: string, force: boolean = false): Promise<{ success: boolean; usage?: any; message?: string }> {
+  static async deleteCategory(id: string, force: boolean = false): Promise<{ success: boolean; usage?: CategoryUsage; message?: string }> {
     const supabase = await createServiceClient();
     
     // First check if the category exists and get its details

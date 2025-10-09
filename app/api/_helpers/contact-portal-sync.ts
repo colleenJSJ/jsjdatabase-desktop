@@ -123,7 +123,7 @@ async function getPortalPassword(contact: UnifiedContact, plainOverride?: string
 
   if (contact.portal_password) {
     try {
-      return decrypt(contact.portal_password);
+      return await decrypt(contact.portal_password);
     } catch (error) {
       console.warn('[ContactPortalSync] Failed to decrypt stored portal password', { contactId: contact.id, error });
       return null;

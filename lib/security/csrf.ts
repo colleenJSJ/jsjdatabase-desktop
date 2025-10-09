@@ -5,8 +5,7 @@
 
 import 'server-only';
 import { randomBytes } from 'crypto';
-import { cookies } from 'next/headers';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { csrfStore } from './csrf-store';
 export { csrfStore };
 
@@ -14,13 +13,25 @@ const CSRF_TOKEN_LENGTH = 32;
 const CSRF_COOKIE_NAME = 'csrf-token';
 const CSRF_HEADER_NAME = 'x-csrf-token';
 const CSRF_FIELD_NAME = '_csrf';
+const CSRF_SESSION_COOKIE = 'csrf-session';
 
 // Token expiry (24 hours)
 const TOKEN_EXPIRY = 24 * 60 * 60 * 1000;
 
 // Fallback in-memory store for development/testing
 const tokenStore = new Map<string, { token: string; expires: number }>();
-const USE_SUPABASE_STORE = process.env.NODE_ENV === 'production';
+const HAS_SERVICE_ROLE_KEY = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+const USE_SUPABASE_STORE = process.env.NODE_ENV === 'production' && HAS_SERVICE_ROLE_KEY;
+
+if (process.env.NODE_ENV === 'production' && !HAS_SERVICE_ROLE_KEY) {
+  console.warn('[CSRF] SUPABASE_SERVICE_ROLE_KEY missing in production; falling back to in-memory token store');
+}
+
+function maskToken(token?: string | null): string {
+  if (!token) return 'null';
+  if (token.length <= 8) return token;
+  return `${token.slice(0, 4)}…${token.slice(-4)}`;
+}
 
 /**
  * Generate a CSRF token
@@ -41,9 +52,17 @@ export async function createCSRFToken(sessionId: string): Promise<string> {
     await csrfStore.set(sessionId, { token, expires });
     // Cleanup in background (don't await)
     csrfStore.cleanup().catch(console.error);
+    console.log('[CSRF] Token stored in Supabase', {
+      sessionId,
+      expires,
+    });
   } else {
     tokenStore.set(sessionId, { token, expires });
     cleanupExpiredTokens();
+    console.log('[CSRF] Token stored in memory', {
+      sessionId,
+      expires,
+    });
   }
   
   return token;
@@ -68,8 +87,7 @@ export async function getCSRFTokenFromRequest(request: NextRequest): Promise<str
   }
   
   // Check cookie as fallback
-  const cookieStore = await cookies();
-  const cookieToken = cookieStore.get(CSRF_COOKIE_NAME)?.value;
+  const cookieToken = request.cookies.get(CSRF_COOKIE_NAME)?.value;
   
   return cookieToken || null;
 }
@@ -105,12 +123,25 @@ export async function validateCSRFToken(
       return false;
     }
   }
-  
+  const cookieToken = request.cookies.get(CSRF_COOKIE_NAME)?.value;
+  console.log('[CSRF] Validating token', {
+    sessionId,
+    provided: maskToken(providedToken),
+    cookie: maskToken(cookieToken),
+    storeHit: !!storedData,
+    storeType: USE_SUPABASE_STORE ? 'supabase' : 'memory',
+  });
+
   if (!storedData) {
+    if (cookieToken && cookieToken === providedToken) {
+      console.warn('[CSRF] Falling back to cookie token validation');
+      return true;
+    }
+
     console.warn('[CSRF] No token found for session');
     return false;
   }
-  
+
   // Validate token
   const isValid = providedToken === storedData.token;
   if (!isValid) {
@@ -135,17 +166,39 @@ function cleanupExpiredTokens(): void {
 /**
  * Middleware to validate CSRF token
  */
+export interface CSRFMiddlewareOptions {
+  sessionId?: string;
+  skip?: boolean;
+}
+
+function isTrustedServiceRequest(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization');
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (authHeader && serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function csrfMiddleware(
   request: NextRequest,
-  sessionId?: string
+  options: CSRFMiddlewareOptions = {}
 ): Promise<{ valid: boolean; error?: string }> {
+  if (options.skip) {
+    return { valid: true };
+  }
   // Skip validation for safe methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
     return { valid: true };
   }
+
+  if (isTrustedServiceRequest(request)) {
+    return { valid: true };
+  }
   
   // Get session ID (from auth or cookies)
-  const sid = sessionId || request.cookies.get('session')?.value;
+  const sid = options.sessionId || request.cookies.get(CSRF_SESSION_COOKIE)?.value;
   if (!sid) {
     return { valid: false, error: 'No session found' };
   }
@@ -161,6 +214,24 @@ export async function csrfMiddleware(
   }
   
   return { valid: true };
+}
+
+export async function enforceCSRF(
+  request: NextRequest,
+  options: CSRFMiddlewareOptions = {}
+): Promise<NextResponse | null> {
+  const result = await csrfMiddleware(request, options);
+  if (result.valid) {
+    return null;
+  }
+
+  console.warn('[CSRF] Request blocked', {
+    path: request.nextUrl.pathname,
+    method: request.method,
+    error: result.error,
+  });
+
+  return NextResponse.json({ error: result.error || 'Invalid CSRF token' }, { status: 403 });
 }
 
 /**
@@ -179,7 +250,7 @@ export async function resolveCSRFTokenFromRequest(request: NextRequest): Promise
     return cookieToken;
   }
 
-  const sessionId = request.cookies.get('csrf-session')?.value;
+  const sessionId = request.cookies.get(CSRF_SESSION_COOKIE)?.value;
   if (!sessionId) {
     return null;
   }

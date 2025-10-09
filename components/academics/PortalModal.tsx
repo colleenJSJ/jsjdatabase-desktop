@@ -276,17 +276,29 @@ export function PortalModal({
             id="portal-children"
             label={<span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Associated Children</span>}
           >
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
-              {children.map(child => (
-                <label key={child.id} className="flex items-center gap-2 rounded p-1 transition hover:bg-neutral-600">
-                  <Checkbox
-                    id={`portal-child-${child.id}`}
-                    checked={formData.children.includes(child.id)}
-                    onCheckedChange={checked => handleChildToggle(child.id, Boolean(checked))}
-                  />
-                  <span className="text-sm text-neutral-200">{child.name}</span>
-                </label>
-              ))}
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                {children.map(child => {
+                  const isSelected = formData.children.includes(child.id);
+                  return (
+                    <button
+                      key={child.id}
+                      type="button"
+                      onClick={() => handleChildToggle(child.id, !isSelected)}
+                      className={`px-3.5 py-1.5 text-sm rounded-full border transition-colors whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-[#3b4e76] border-[#3b4e76] text-white'
+                          : 'bg-[#2a2a2a] border-neutral-600/60 text-neutral-200 hover:border-[#3b4e76]'
+                      }`}
+                    >
+                      {child.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {children.length === 0 && (
+                <p className="text-sm text-neutral-400">No students available.</p>
+              )}
             </div>
           </CredentialFormField>
 

@@ -1,52 +1,57 @@
-// Simple client-side encryption for passwords
-// In production, use proper encryption libraries and consider Bitwarden API
+const ENCRYPTION_ENDPOINT = '/api/encryption';
 
-const ENCRYPTION_KEY = 'johnson-family-office-temp-key'; // In production, use proper key management
+async function invokeEncryptionEndpoint(payload: Record<string, unknown>) {
+  const response = await fetch(ENCRYPTION_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Encryption API error (${response.status}): ${text}`);
+  }
+
+  return response.json() as Promise<Record<string, unknown>>;
+}
 
 export const passwordCrypto = {
-  // Simple base64 encoding for demo purposes
-  // In production, use proper encryption like AES-256
-  encrypt: (text: string): string => {
+  encrypt: async (text: string): Promise<string> => {
     try {
-      // For demo: just base64 encode
-      return btoa(text);
+      if (!text) {
+        return '';
+      }
+      const result = await invokeEncryptionEndpoint({ action: 'encrypt', text });
+      const ciphertext = result.ciphertext;
+      if (typeof ciphertext !== 'string') {
+        throw new Error('Encryption API returned invalid ciphertext');
+      }
+      return ciphertext;
     } catch (error) {
-
+      console.error('[passwordCrypto] Failed to encrypt text', error);
       return text;
     }
   },
 
-  decrypt: (encryptedText: string): string => {
+  decrypt: async (encryptedText: string): Promise<string> => {
     try {
-      // Check if it's already plain text or needs decryption
-      if (!encryptedText || encryptedText === '') return '';
-      
-      // Validate base64 before decoding
-      // Base64 regex pattern
-      const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-      
-      if (!base64Regex.test(encryptedText)) {
-        // Not base64 encoded, return as-is
-        console.warn('Password appears to be plain text, returning as-is');
-        return encryptedText;
+      if (!encryptedText) {
+        return '';
       }
-      
-      // Additional check: base64 strings must have length divisible by 4
-      if (encryptedText.length % 4 !== 0) {
-        console.warn('Invalid base64 string length, returning as-is');
-        return encryptedText;
+      const result = await invokeEncryptionEndpoint({ action: 'decrypt', payload: encryptedText });
+      const plaintext = result.plaintext;
+      if (typeof plaintext !== 'string') {
+        throw new Error('Encryption API returned invalid plaintext');
       }
-      
-      // Try to decode
-      return atob(encryptedText);
+      return plaintext;
     } catch (error) {
-
-      // Return original text if decryption fails
+      console.error('[passwordCrypto] Failed to decrypt text', error);
       return encryptedText;
     }
   },
 
-  // Generate a random password
   generatePassword: (length: number = 16): string => {
     const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
     let password = '';

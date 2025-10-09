@@ -21,6 +21,7 @@ import {
   Building,
 } from 'lucide-react';
 import { ContactCard } from '@/components/contacts/ContactCard';
+import { ContactDetailModal } from '@/components/contacts/ContactDetailModal';
 import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
 import type {
   ContactCardBadge,
@@ -252,6 +253,7 @@ export default function HouseholdPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingContact, setEditingContact] = useState<ContactRecord | null>(null);
   const [savingContact, setSavingContact] = useState(false);
+  const [viewingContact, setViewingContact] = useState<ContactRecord | null>(null);
   
   // Inventory state
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -555,6 +557,7 @@ export default function HouseholdPage() {
         badges={badges}
         showFavoriteToggle={false}
         canManage={user?.role === 'admin'}
+        onOpen={() => setViewingContact(contact)}
         actionConfig={user?.role === 'admin'
           ? {
               onEdit: () => {
@@ -1104,6 +1107,24 @@ export default function HouseholdPage() {
             setShowCreateModal(false);
             setEditingContact(null);
           }}
+        />
+      )}
+
+      {viewingContact && (
+        <ContactDetailModal
+          contact={viewingContact}
+          familyMembers={[]}
+          canManage={user?.role === 'admin'}
+          onClose={() => setViewingContact(null)}
+          onEdit={user?.role === 'admin' ? () => {
+            setEditingContact(viewingContact);
+            setShowCreateModal(true);
+            setViewingContact(null);
+          } : undefined}
+          onDelete={user?.role === 'admin' ? () => {
+            handleDeleteContact(viewingContact.id);
+            setViewingContact(null);
+          } : undefined}
         />
       )}
 

@@ -5,6 +5,8 @@ import { resolvePersonReferences, expandPersonReferences } from '@/app/api/_help
 import { applyPersonFilter } from '@/app/api/_helpers/apply-person-filter';
 import { logActivity } from '@/app/api/_helpers/log-activity';
 import { resolveCSRFTokenFromRequest } from '@/lib/security/csrf';
+import { toInstantFromNaive } from '@/lib/utils/date-utils';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function GET(request: NextRequest) {
   try {
@@ -94,6 +96,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   console.log('[Calendar API POST] === Starting request processing ===');
   
   try {
@@ -152,6 +157,32 @@ export async function POST(request: NextRequest) {
     };
     event.start_time = normalizeDateTime(event.start_time);
     event.end_time = normalizeDateTime(event.end_time);
+
+    const attachOffsetIfNeeded = (value: string | null | undefined, tz: string | undefined, isAllDay: boolean): string | null | undefined => {
+      if (!value || isAllDay) return value;
+      const trimmed = value.trim();
+      if (/(Z|[+-]\d{2}:\d{2})$/i.test(trimmed)) {
+        return trimmed;
+      }
+      if (!tz) return value;
+      try {
+        return toInstantFromNaive(trimmed, tz).toISOString();
+      } catch (err) {
+        console.warn('[Calendar API POST] Failed to attach timezone offset', { value, tz, err });
+        return value;
+      }
+    };
+
+    const eventTimezone = (event as any)?.timezone
+      || event?.metadata?.timezone
+      || event?.metadata?.preferred_timezone
+      || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    event.start_time = attachOffsetIfNeeded(event.start_time, eventTimezone, !!event.all_day);
+    event.end_time = attachOffsetIfNeeded(event.end_time, eventTimezone, !!event.all_day);
+    if (!event.timezone) {
+      event.timezone = eventTimezone;
+    }
 
     // Normalize end_time based on event type and category
     let finalEndTime = event.end_time;

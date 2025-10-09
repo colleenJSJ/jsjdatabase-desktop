@@ -1,16 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { sanitizeContactPayload } from '@/app/api/_helpers/contact-normalizer';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -54,19 +59,13 @@ export async function PUT(
 
     if (error) {
       console.error('[Travel Contacts API] Failed to update contact:', error);
-      return NextResponse.json(
-        { error: 'Failed to update travel contact' },
-        { status: 500 }
-      );
+      return jsonError('Failed to update travel contact', { status: 500 });
     }
 
-    return NextResponse.json({ contact });
+    return jsonSuccess({ contact }, { legacy: { contact } });
   } catch (error) {
     console.error('[Travel Contacts API] Error updating contact:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
@@ -74,11 +73,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -91,18 +93,12 @@ export async function DELETE(
 
     if (error) {
       console.error('[Travel Contacts API] Failed to delete contact:', error);
-      return NextResponse.json(
-        { error: 'Failed to delete travel contact' },
-        { status: 500 }
-      );
+      return jsonError('Failed to delete travel contact', { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ deleted: true }, { legacy: { success: true } });
   } catch (error) {
     console.error('[Travel Contacts API] Error deleting contact:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

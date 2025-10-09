@@ -93,7 +93,8 @@ export function SmartUploadButton({
       }
 
       const uploadResult = await uploadResponse.json();
-      const documentId = uploadResult.document?.id;
+      const uploadedDocument = uploadResult?.data?.document ?? uploadResult?.document;
+      const documentId = uploadedDocument?.id;
       
       if (!documentId) {
         throw new Error('Failed to get document ID after upload');

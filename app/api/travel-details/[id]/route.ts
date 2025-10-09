@@ -1,7 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { buildInternalApiHeaders } from '@/lib/utils/auth-helpers';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
+
+const parseTimeToMinutes = (time?: string | null) => {
+  if (!time) return null;
+  const [hours, minutes] = time.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+};
 
 export async function GET(
   request: NextRequest,
@@ -9,9 +17,9 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
     const { supabase } = authResult;
     const { data: detail, error } = await supabase
@@ -20,11 +28,11 @@ export async function GET(
       .eq('id', id)
       .single();
     if (error) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      return jsonError('Not found', { status: 404 });
     }
-    return NextResponse.json({ detail });
+    return jsonSuccess({ detail }, { legacy: { detail } });
   } catch (e) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
@@ -32,11 +40,14 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -64,6 +75,8 @@ export async function PUT(
       arrival_airport: data.arrival_airport,
       vehicle_info: data.vehicle_info,
       notes: data.notes,
+      departure_datetime: data.departure_time,
+      arrival_datetime: data.arrival_time,
       // Include any additional fields that might be passed
       ...Object.keys(data).reduce((acc, key) => {
         if (!['type', 'travelers', 'traveler_names', 'trip_id', 'created_by', 
@@ -73,32 +86,56 @@ export async function PUT(
         return acc;
       }, {} as any)
     };
-    
+
     // Extract time parts from datetime strings if provided
-    let departure_time_only = null;
-    let arrival_time_only = null;
-    
+    let departure_time_only: string | null = null;
+    let arrival_time_only: string | null = null;
+
     if (data.departure_time) {
-      const timePart = data.departure_time.split('T')[1];
-      departure_time_only = timePart ? timePart.split('.')[0] : null;
+      if (data.departure_time.includes('T')) {
+        const [datePart, timePartRaw] = data.departure_time.split('T');
+        const timePart = timePartRaw || '';
+        departure_time_only = timePart ? timePart.split('.')[0].split('Z')[0] : null;
+        if (!travel_date && datePart) {
+          travel_date = datePart;
+        }
+      } else if (data.departure_time.includes(':')) {
+        departure_time_only = data.departure_time.split('.')[0].split('Z')[0];
+      }
     }
-    
+
     if (data.arrival_time) {
-      const timePart = data.arrival_time.split('T')[1];
-      arrival_time_only = timePart ? timePart.split('.')[0] : null;
+      if (data.arrival_time.includes('T')) {
+        const [arrivalDatePart, timePartRaw] = data.arrival_time.split('T');
+        const timePart = timePartRaw || '';
+        arrival_time_only = timePart ? timePart.split('.')[0].split('Z')[0] : null;
+      } else if (data.arrival_time.includes(':')) {
+        arrival_time_only = data.arrival_time.split('.')[0].split('Z')[0];
+      }
     }
-    
+
+    const isDifferentDays = data.departure_time && data.arrival_time &&
+      data.departure_time.includes('T') && data.arrival_time.includes('T') &&
+      data.departure_time.split('T')[0] !== data.arrival_time.split('T')[0];
+
+    const fallbackArrivalDate =
+      data.arrival_date ||
+      (data.arrival_time && data.arrival_time.includes('T')
+        ? data.arrival_time.split('T')[0]
+        : null) ||
+      travel_date ||
+      null;
+
+    const shouldStoreTimes = Boolean(departure_time_only && arrival_time_only && !isDifferentDays);
     const updateData: any = {
       type: data.type,
       details: details, // Required field
-      travelers: data.travelers || [],
-      traveler_names: data.traveler_names || [],
+      travelers: Array.isArray(data.travelers) ? data.travelers : [],
+      traveler_names: Array.isArray(data.traveler_names) ? data.traveler_names : [],
       provider: data.provider || null,
       confirmation_number: data.confirmation_number || null,
       departure_location: data.departure_location || null,
       arrival_location: data.arrival_location || null,
-      departure_time: departure_time_only,
-      arrival_time: arrival_time_only,
       airline: data.airline || null,
       flight_number: data.flight_number || null,
       departure_airport: data.departure_airport || null,
@@ -107,11 +144,29 @@ export async function PUT(
       trip_id: data.trip_id || null,
       updated_at: new Date().toISOString(),
     };
-    
-    // Only update travel_date if provided
+
     if (travel_date) {
       updateData.travel_date = travel_date;
     }
+
+    let finalArrivalDate = fallbackArrivalDate || null;
+    let finalDepartureTime = shouldStoreTimes ? departure_time_only : null;
+    let finalArrivalTime = shouldStoreTimes ? arrival_time_only : null;
+
+    if (
+      finalArrivalTime &&
+      finalDepartureTime &&
+      (!travel_date || !finalArrivalDate || finalArrivalDate === travel_date)
+    ) {
+      const dep = parseTimeToMinutes(finalDepartureTime);
+      const arr = parseTimeToMinutes(finalArrivalTime);
+      if (dep !== null && arr !== null && arr <= dep) {
+        finalArrivalTime = null;
+      }
+    }
+
+    updateData.departure_time = finalDepartureTime;
+    updateData.arrival_time = finalArrivalTime;
     
     const { data: detail, error } = await supabase
       .from('travel_details')
@@ -122,10 +177,10 @@ export async function PUT(
 
     if (error) {
       console.error('[Travel Details API] Failed to update travel detail:', error);
-      return NextResponse.json(
-        { error: 'Failed to update travel detail', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to update travel detail', {
+        status: 500,
+        meta: { details: error.message },
+      });
     }
 
     // Handle calendar event updates for flights
@@ -241,13 +296,10 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({ detail });
+    return jsonSuccess({ detail }, { legacy: { detail } });
   } catch (error) {
     console.error('[Travel Details API] Error updating travel detail:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
@@ -255,11 +307,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -271,10 +326,7 @@ export async function DELETE(
 
     if (error) {
       console.error('[Travel Details API] Failed to delete travel detail:', error);
-      return NextResponse.json(
-        { error: 'Failed to delete travel detail' },
-        { status: 500 }
-      );
+      return jsonError('Failed to delete travel detail', { status: 500 });
     }
 
     // Delete associated calendar event using the proper API (handles Google sync)
@@ -308,12 +360,11 @@ export async function DELETE(
       // Don't fail the travel detail deletion if calendar event deletion fails
     }
 
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ deleted: true }, {
+      legacy: { success: true },
+    });
   } catch (error) {
     console.error('[Travel Details API] Error deleting travel detail:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

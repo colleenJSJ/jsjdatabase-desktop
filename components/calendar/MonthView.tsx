@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { CalendarEvent, CalendarEventCategory } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { Plus } from 'lucide-react';
@@ -25,6 +25,8 @@ interface MonthViewProps {
   setShowCreateModal: (show: boolean) => void;
   onEventsChange: () => void;
   onRangeSelect?: (range: { start: Date; end: Date; isAllDay: boolean }) => void;
+  forceOpenEventId?: string;
+  onForceOpenHandled?: () => void;
 }
 
 interface EventSegment {
@@ -45,7 +47,9 @@ export function MonthView({
   setSelectedDate,
   setShowCreateModal,
   onEventsChange,
-  onRangeSelect
+  onRangeSelect,
+  forceOpenEventId,
+  onForceOpenHandled
 }: MonthViewProps) {
   const { preferences } = usePreferences();
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
@@ -63,6 +67,15 @@ export function MonthView({
     (googleCalendars || []).forEach((c: any) => m.set(c.google_calendar_id || c.id, c));
     return m;
   }, [googleCalendars]);
+
+  useEffect(() => {
+    if (!forceOpenEventId) return;
+    const event = events.find(ev => ev.id === forceOpenEventId);
+    if (!event) return;
+    setSelectedEvent(event);
+    setShowEventModal(true);
+    onForceOpenHandled?.();
+  }, [forceOpenEventId, events, onForceOpenHandled]);
 
   // Initialize range selection hook
   const {

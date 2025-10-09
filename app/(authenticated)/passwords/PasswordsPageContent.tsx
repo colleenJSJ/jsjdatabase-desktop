@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useUser } from '@/contexts/user-context';
 import { Password, PasswordCategory } from '@/lib/supabase/types';
 import { CategoriesClient, Category } from '@/lib/categories/categories-client';
@@ -20,6 +21,7 @@ import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitl
 import { CredentialFormField } from '@/components/credentials/CredentialFormField';
 import { PasswordField } from '@/components/passwords/PasswordField';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
+import { PasswordDetailModal } from '@/components/passwords/PasswordDetailModal';
 import { usePasswordSecurity } from '@/contexts/password-security-context';
 import { smartUrlComplete, getFriendlyDomain } from '@/lib/utils/url-helper';
 import { getPasswordStrength } from '@/lib/passwords/utils';
@@ -32,14 +34,29 @@ interface UserInfo {
   name?: string;
 }
 
+interface FamilyMemberInfo {
+  id: string;
+  name?: string;
+  type?: string;
+  is_child?: boolean;
+  email?: string | null;
+  user_id?: string | null;
+}
+
 const formatPasswordSource = (source?: string | null): string | null => {
   if (!source) return null;
   const normalized = source.toLowerCase();
   switch (normalized) {
+    case 'medical':
+    case 'medical_portal':
     case 'health':
       return 'Health';
+    case 'pet':
+    case 'pet_portal':
     case 'pets':
       return 'Pets';
+    case 'academic':
+    case 'academic_portal':
     case 'travel':
       return 'Travel';
     case 'j3-academics':
@@ -51,11 +68,20 @@ const formatPasswordSource = (source?: string | null): string | null => {
       return 'Calendar';
     case 'passwords':
       return 'Passwords';
+    case 'manual_password':
+      return 'Manual Password';
     default:
       return source
         .split(/[-_]/)
         .map(part => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
+  }
+};
+
+const isDev = process.env.NODE_ENV !== 'production';
+const debugLog = (...args: unknown[]) => {
+  if (isDev) {
+    console.log(...args);
   }
 };
 
@@ -104,9 +130,13 @@ const getAssignedLabel = (
 
 export default function PasswordsPage() {
   const { user } = useUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const { isLocked, updateActivity } = usePasswordSecurity();
   const [passwords, setPasswords] = useState<Password[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
-  const [familyMembers, setFamilyMembers] = useState<any[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -120,11 +150,13 @@ export default function PasswordsPage() {
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [categories, setCategories] = useState<Category[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [viewingPassword, setViewingPassword] = useState<Password | null>(null);
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('[Passwords Page] useEffect triggered, user:', user);
+    debugLog('[Passwords Page] useEffect triggered, user:', user);
     if (user) {
-      console.log('[Passwords Page] User found, fetching data...');
+      debugLog('[Passwords Page] User found, fetching data...');
       // Seed selected owner from URL or localStorage (persist pet selection)
       try {
         const url = new URL(window.location.href);
@@ -140,7 +172,7 @@ export default function PasswordsPage() {
       fetchUsers();
       fetchFamilyMembers();
     } else {
-      console.log('[Passwords Page] No user, setting loading to false');
+      debugLog('[Passwords Page] No user, setting loading to false');
       setLoading(false);
     }
   }, [user]);
@@ -178,13 +210,29 @@ export default function PasswordsPage() {
     }
   };
 
+  const handlePasswordOpen = (password: Password) => {
+    if (isLocked) return;
+    updateActivity();
+    setViewingPassword(password);
+  };
+
   const fetchPasswords = async () => {
-    console.log('[Passwords Page] Fetching passwords...');
+    debugLog('[Passwords Page] Fetching passwords...');
     try {
       // First test authentication
-      const authTest = await fetch('/api/test-auth');
-      const authData = await authTest.json();
-      console.log('[Passwords Page] Auth test:', authData);
+      if (process.env.NODE_ENV !== 'production') {
+        try {
+          const authTest = await fetch('/api/test-auth');
+          if (authTest.ok) {
+            const authData = await authTest.json().catch(() => ({}));
+            debugLog('[Passwords Page] Auth test:', authData);
+          } else {
+            debugLog('[Passwords Page] Auth test skipped - endpoint unavailable', authTest.status);
+          }
+        } catch (error) {
+          debugLog('[Passwords Page] Auth test request failed', error);
+        }
+      }
       
       // Respect persisted person filter if present
       let url = '/api/passwords';
@@ -196,8 +244,8 @@ export default function PasswordsPage() {
         }
       } catch {}
       const response = await fetch(url);
-      console.log('[Passwords Page] Response status:', response.status);
-      console.log('[Passwords Page] Response headers:', Object.fromEntries(response.headers.entries()));
+      debugLog('[Passwords Page] Response status:', response.status);
+      debugLog('[Passwords Page] Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -213,12 +261,12 @@ export default function PasswordsPage() {
         }
       } else {
         const data = await response.json();
-        console.log('[Passwords Page] Fetched passwords:', data);
-        console.log('[Passwords Page] Number of passwords:', data.passwords?.length || 0);
+        debugLog('[Passwords Page] Fetched passwords:', data);
+        debugLog('[Passwords Page] Number of passwords:', data.passwords?.length || 0);
         
         
         if (data.note) {
-          console.log('[Passwords Page] Note from API:', data.note);
+          debugLog('[Passwords Page] Note from API:', data.note);
           // If there's a note about missing table, show it as a warning instead of error
           if (data.note.includes('not yet created')) {
             setError(null);
@@ -239,6 +287,39 @@ export default function PasswordsPage() {
     }
   };
 
+  useEffect(() => {
+    const openParam = searchParams.get('open');
+    if (!openParam) return;
+
+    const [type, id] = openParam.split(':');
+    if (type !== 'password' || !id) return;
+
+    setPendingOpenId(id);
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete('open');
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [searchParams, router, pathname]);
+
+  useEffect(() => {
+    if (!pendingOpenId || isLocked) return;
+    if (passwords.length === 0) return;
+
+    const match = passwords.find(password => password.id === pendingOpenId);
+    if (match) {
+      updateActivity();
+      setViewingPassword(match);
+      setPendingOpenId(null);
+    }
+  }, [pendingOpenId, passwords, isLocked, updateActivity]);
+
+  useEffect(() => {
+    if (isLocked && viewingPassword) {
+      setViewingPassword(null);
+    }
+  }, [isLocked, viewingPassword]);
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this password?')) return;
 
@@ -254,9 +335,9 @@ export default function PasswordsPage() {
   };
 
   // Debug logging
-  console.log('[Passwords Page] Total passwords before filtering:', passwords.length);
-  console.log('[Passwords Page] Passwords:', passwords);
-  console.log('[Passwords Page] Current filters:', {
+  debugLog('[Passwords Page] Total passwords before filtering:', passwords.length);
+  debugLog('[Passwords Page] Passwords:', passwords);
+  debugLog('[Passwords Page] Current filters:', {
     searchTerm,
     selectedCategory,
     selectedOwner,
@@ -265,6 +346,37 @@ export default function PasswordsPage() {
     showWeak
   });
 
+  const resolveOwnerIds = (ownerIdentifier: string): string[] => {
+    if (!ownerIdentifier || ownerIdentifier === 'all' || ownerIdentifier === 'shared') {
+      return [];
+    }
+
+    const identifiers = new Set<string>();
+    identifiers.add(ownerIdentifier);
+
+    const member = familyMembers.find(fm => fm.id === ownerIdentifier);
+    if (member?.user_id) {
+      identifiers.add(member.user_id);
+    }
+    if (member?.email) {
+      const emailLower = member.email.toLowerCase();
+      const matchingUser = users.find(u => u.email?.toLowerCase() === emailLower);
+      if (matchingUser?.id) {
+        identifiers.add(matchingUser.id);
+      }
+    }
+    if (member?.name) {
+      const matchingByName = users.find(u => u.name?.toLowerCase() === member.name?.toLowerCase());
+      if (matchingByName?.id) {
+        identifiers.add(matchingByName.id);
+      }
+    }
+
+    return Array.from(identifiers);
+  };
+
+  const ownerIdentifiersForFilter = resolveOwnerIds(selectedOwner);
+
   const filteredPasswords = passwords.filter(password => {
     // Handle both title and service_name fields for backward compatibility
     const title = (password as any).title || (password as any).service_name || '';
@@ -272,7 +384,10 @@ export default function PasswordsPage() {
                          (title.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
                          (password.username?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
                          (password.notes?.toLowerCase().includes(searchTerm.toLowerCase()) || false);
-    const matchesCategory = selectedCategory === 'all' || password.category === selectedCategory;
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      password.category === selectedCategory ||
+      password.category?.toLowerCase?.() === selectedCategory.toLowerCase();
     const familyTagIds = Array.isArray((password as any).tags)
       ? ((password as any).tags as string[])
           .filter(tag => tag.startsWith('family:'))
@@ -280,10 +395,11 @@ export default function PasswordsPage() {
       : [];
     const matchesOwner = selectedOwner === 'all' || 
                         (selectedOwner === 'shared' && (password.is_shared || (password.shared_with && password.shared_with.length > 1))) ||
-                        (selectedOwner !== 'all' && selectedOwner !== 'shared' && 
-                         (password.owner_id === selectedOwner || 
-                          (password.shared_with && password.shared_with.includes(selectedOwner)) ||
-                          familyTagIds.includes(selectedOwner)));
+                        (selectedOwner !== 'all' && selectedOwner !== 'shared' && (
+                          ownerIdentifiersForFilter.some(id => id && password.owner_id === id) ||
+                          ownerIdentifiersForFilter.some(id => password.shared_with && password.shared_with.includes(id)) ||
+                          familyTagIds.includes(selectedOwner)
+                        ));
     const matchesFavorites = !showFavorites || password.is_favorite;
     const matchesExpiring = !showExpiring || 
                            (password.last_changed && 
@@ -405,10 +521,14 @@ export default function PasswordsPage() {
             <div className="mt-4 pt-4 border-t border-gray-600/30">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
+                  <label
+                    htmlFor="password-filter-category"
+                    className="sr-only"
+                  >
                     Category
                   </label>
                   <select
+                    id="password-filter-category"
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
                     onFocus={async () => {
@@ -424,16 +544,20 @@ export default function PasswordsPage() {
                   >
                     <option value="all">All Categories</option>
                     {categories.map(cat => (
-                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
+                  <label
+                    htmlFor="password-filter-owner"
+                    className="sr-only"
+                  >
                     Owner
                   </label>
                   <select
+                    id="password-filter-owner"
                     value={selectedOwner}
                     onChange={(e) => setSelectedOwner(e.target.value)}
                     className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
@@ -453,9 +577,7 @@ export default function PasswordsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Quick Filters
-                  </label>
+                  <p className="sr-only">Quick Filters</p>
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => setShowFavorites(!showFavorites)}
@@ -527,7 +649,9 @@ export default function PasswordsPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredPasswords.map(password => {
             const assignedLabel = getAssignedLabel(password, users, familyMembers);
-            const sourceLabel = formatPasswordSource((password as any).source_page);
+            const sourceValue = password.source_page ?? password.source ?? null;
+            const sourceLabelRaw = formatPasswordSource(sourceValue);
+            const sourceLabel = sourceLabelRaw ? `From ${sourceLabelRaw}` : null;
             const notesContent = password.notes
               ? <p className="text-xs text-text-muted/80 italic">{password.notes}</p>
               : undefined;
@@ -544,6 +668,8 @@ export default function PasswordsPage() {
                 extraContent={notesContent}
                 onEdit={() => setEditingPassword(password)}
                 onDelete={() => handleDelete(password.id)}
+                onOpen={() => handlePasswordOpen(password)}
+                variant="compact"
               />
             );
           })}
@@ -570,6 +696,7 @@ export default function PasswordsPage() {
                   categories={categories}
                   users={users}
                   familyMembers={familyMembers}
+                  onView={() => handlePasswordOpen(password)}
                   onEdit={() => setEditingPassword(password)}
                   onDelete={() => handleDelete(password.id)}
                 />
@@ -581,7 +708,7 @@ export default function PasswordsPage() {
 
       {/* Create/Edit Modal */}
       {(showCreateModal || editingPassword) && (
-        <PasswordModal
+            <PasswordModal
           password={editingPassword}
           categories={categories}
           users={users}
@@ -598,6 +725,25 @@ export default function PasswordsPage() {
           }}
         />
       )}
+
+      {viewingPassword && (
+          <PasswordDetailModal
+          password={viewingPassword}
+          categories={categories}
+          users={users}
+          familyMembers={familyMembers}
+          canManage={user?.role === 'admin'}
+          onClose={() => setViewingPassword(null)}
+          onEdit={(password) => {
+            setViewingPassword(null);
+            setEditingPassword(password);
+          }}
+          onDelete={async (password) => {
+            await handleDelete(password.id);
+            setViewingPassword(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -605,6 +751,7 @@ export default function PasswordsPage() {
 // List view component
 function PasswordListItem({ 
   password, 
+  onView,
   onEdit, 
   onDelete,
   categories,
@@ -612,11 +759,12 @@ function PasswordListItem({
   familyMembers
 }: { 
   password: Password; 
+  onView: () => void;
   onEdit: () => void; 
   onDelete: () => void;
   categories: Category[];
   users: UserInfo[];
-  familyMembers: any[];
+  familyMembers: FamilyMemberInfo[];
 }) {
   const { user } = useUser();
   const { updateActivity } = usePasswordSecurity();
@@ -697,7 +845,7 @@ function PasswordListItem({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <button
-                onClick={onEdit}
+                onClick={onView}
                 className="text-left text-sm font-semibold text-text-primary truncate hover:text-blue-400 transition-colors"
                 title={serviceName}
               >
@@ -817,6 +965,13 @@ function PasswordListItem({
           >
             {copiedDetails ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </button>
+          <button
+            onClick={onView}
+            className="rounded border border-white/10 px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-white/20 hover:text-text-primary"
+            title="View details"
+          >
+            View
+          </button>
           {canManage && (
             <>
               <button
@@ -854,7 +1009,7 @@ function PasswordModal({
   onSave: (password: Password) => void;
   categories: Category[];
   users: UserInfo[];
-  familyMembers: any[];
+  familyMembers: FamilyMemberInfo[];
 }) {
   // Initialize shared_with from existing password or empty array
   const getInitialSharedWith = () => {
@@ -892,7 +1047,7 @@ function PasswordModal({
     setLoading(true);
 
     try {
-      console.log('Saving password with data:', formData);
+      debugLog('Saving password with data:', formData);
       
       // Don't encrypt here - let the API handle encryption
       const data = {
@@ -907,7 +1062,7 @@ function PasswordModal({
         shared_with: formData.shared_with
       };
 
-      console.log('Sending to API:', data);
+      debugLog('Sending to API:', data);
 
       const response = await fetch(
         password ? `/api/passwords/${password.id}` : '/api/passwords',
@@ -919,7 +1074,7 @@ function PasswordModal({
       );
 
       const responseData = await response.json();
-      console.log('Response:', response.status, responseData);
+      debugLog('Response:', response.status, responseData);
 
       if (!response.ok) {
         throw new Error(responseData.error || 'Failed to save password');
@@ -1116,39 +1271,45 @@ function PasswordModal({
           </CredentialFormField>
 
           <CredentialFormField label="Owners (who can access this password)">
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-600 bg-neutral-700 p-3">
-              {familyMembers.map(member => {
-                const memberId = member.id;
-                const memberName = member.name || member.email?.split('@')[0] || 'Unknown';
-                const memberType = member.type === 'pet' ? '🐾' : member.is_child ? '👶' : '👤';
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                {familyMembers.map(member => {
+                  const memberId = member.id;
+                  const memberName = member.name || member.email?.split('@')[0] || 'Unknown';
+                  const isSelected = formData.shared_with.includes(memberId);
 
-                return (
-                  <label key={memberId} className="flex items-center gap-2 rounded p-1 transition hover:bg-neutral-600">
-                    <Checkbox
-                      checked={formData.shared_with.includes(memberId)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setFormData({
-                            ...formData,
-                            shared_with: [...formData.shared_with, memberId]
-                          });
-                        } else {
-                          setFormData({
-                            ...formData,
-                            shared_with: formData.shared_with.filter((id: string) => id !== memberId)
-                          });
-                        }
+                  return (
+                    <button
+                      key={memberId}
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => {
+                          const alreadySelected = prev.shared_with.includes(memberId);
+                          if (alreadySelected) {
+                            return {
+                              ...prev,
+                              shared_with: prev.shared_with.filter(id => id !== memberId)
+                            };
+                          }
+                          return {
+                            ...prev,
+                            shared_with: [...prev.shared_with, memberId]
+                          };
+                        });
                       }}
-                    />
-                    <span className="text-sm text-neutral-200">
-                      {memberType} {memberName}
-                      {member.email && <span className="ml-1 text-neutral-400">({member.email})</span>}
-                    </span>
-                  </label>
-                );
-              })}
+                      className={`px-3.5 py-1.5 text-sm rounded-full border transition-colors whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-[#3b4e76] border-[#3b4e76] text-white'
+                          : 'bg-[#2a2a2a] border-neutral-600/60 text-neutral-200 hover:border-[#3b4e76]'
+                      }`}
+                    >
+                      {memberName}
+                    </button>
+                  );
+                })}
+              </div>
 
-              <div className="border-t border-neutral-500 pt-2">
+              <div className="border-t border-neutral-600/60 pt-2">
                 <button
                   type="button"
                   onClick={() => {

@@ -122,7 +122,7 @@ export interface ContactCardProps {
   footerContent?: ReactNode;
   actionConfig?: ContactCardActionConfig;
   showFavoriteToggle?: boolean;
-  layout?: 'auto' | 'compact';
+  onOpen?: () => void;
 }
 
 export interface ContactModalFieldVisibility {

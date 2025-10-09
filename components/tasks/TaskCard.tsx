@@ -173,7 +173,7 @@ export default function TaskCard({ task, urgent = false, isDraft = false, isComp
                     <Clock className="h-3 w-3" />
                     {isPending ? 'Pending' : 'Mark Pending'}
                   </button>
-                  {showDelete && onDelete && (
+                  {(showDelete || !!onDelete) && onDelete && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

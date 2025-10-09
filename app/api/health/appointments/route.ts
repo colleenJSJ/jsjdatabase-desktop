@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { SyncService, CompositeOperation, getRequestId } from '@/lib/services/sync-service';
 import { buildInternalApiHeaders } from '@/lib/utils/auth-helpers';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const requestId = getRequestId(request.headers);
   
   try {

@@ -29,7 +29,13 @@ export function ViewEditEventModal({
   onEventsChange,
 }: ViewEditEventModalProps) {
   const { preferences } = usePreferences();
-  const eventTimezone = event?.timezone || event?.metadata?.timezone || preferences.timezone;
+  const metadataTimezone = typeof event?.metadata?.timezone === 'string'
+    ? event.metadata.timezone
+    : typeof (event?.metadata as any)?.departure_timezone === 'string'
+      ? (event.metadata as any).departure_timezone
+      : undefined;
+
+  const eventTimezone = event?.timezone || metadataTimezone || preferences.timezone || 'UTC';
   // Initialize all hooks first (React rules of hooks - must be called in same order every render)
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(event?.title || '');

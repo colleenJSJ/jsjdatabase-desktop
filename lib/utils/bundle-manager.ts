@@ -134,7 +134,7 @@ function getBundlesForRoute(route: string): Array<{ name: string; loader: () => 
       bundles.push(
         {
           name: 'document-upload',
-          loader: () => import('@/components/documents/document-upload')
+          loader: () => import('@/components/documents/document-upload-modal')
         }
       );
       break;

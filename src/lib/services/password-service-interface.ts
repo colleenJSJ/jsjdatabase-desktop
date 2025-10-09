@@ -23,6 +23,8 @@ export interface Password {
   created_at: Date
   updated_at: Date
   source_page?: string | null
+  source?: string | null
+  source_reference?: string | null
 }
 
 export interface PasswordInput {

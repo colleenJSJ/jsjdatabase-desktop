@@ -316,7 +316,7 @@ export function parseDateOnlyLocal(ymd: string): Date {
 /**
  * Extract zoned Y-M-D H:M parts for a given instant in a specific IANA timezone.
  */
-export function getZonedParts(dateString: string | Date, timeZone: string): { year: number; month: number; day: number; hour: number; minute: number } {
+export function getZonedParts(dateString: string | Date, timeZone: string): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
   const d = typeof dateString === 'string' ? parseDateFlexible(dateString) : dateString;
   const cacheKey = `${d.getTime()}|${timeZone}`;
   const cached = _zonedPartsCache.get(cacheKey);
@@ -327,7 +327,8 @@ export function getZonedParts(dateString: string | Date, timeZone: string): { ye
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    second: '2-digit'
   }).formatToParts(d);
   const get = (type: string) => parts.find(p => p.type === type)?.value || '00';
   const year = parseInt(get('year'), 10) || d.getUTCFullYear();
@@ -335,13 +336,14 @@ export function getZonedParts(dateString: string | Date, timeZone: string): { ye
   const day = parseInt(get('day'), 10) || d.getUTCDate();
   const hour = parseInt(get('hour'), 10) || 0;
   const minute = parseInt(get('minute'), 10) || 0;
-  const res = { year, month, day, hour, minute };
+  const second = parseInt(get('second'), 10) || 0;
+  const res = { year, month, day, hour, minute, second };
   _zonedPartsCache.set(cacheKey, res);
   return res;
 }
 
 // Cache for getZonedParts results
-const _zonedPartsCache = new Map<string, { year: number; month: number; day: number; hour: number; minute: number }>();
+const _zonedPartsCache = new Map<string, { year: number; month: number; day: number; hour: number; minute: number; second: number }>();
 
 function compareYmd(a: { year: number; month: number; day: number }, b: { year: number; month: number; day: number }): number {
   if (a.year !== b.year) return a.year - b.year;

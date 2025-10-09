@@ -1,15 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 // This endpoint uses AI to parse travel documents and extract relevant information
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const supabase = await createClient();
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authResult = await requireUser(request);
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const formData = await request.formData();
@@ -17,7 +19,7 @@ export async function POST(request: NextRequest) {
     const documentType = formData.get('documentType') as string;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return jsonError('No file provided', { status: 400 });
     }
 
     // Convert file to base64 for AI processing
@@ -143,21 +145,25 @@ export async function POST(request: NextRequest) {
     if (file.type === 'application/pdf') {
       // Basic PDF text extraction could be implemented here
       // For now, return mock data
-      return NextResponse.json({ 
-        success: true, 
-        data: mockParsedData,
-        message: 'Smart parsing requires Claude API integration. Please configure ANTHROPIC_API_KEY in environment variables.'
-      });
+      return jsonSuccess(
+        {
+          data: mockParsedData,
+          message: 'Smart parsing requires Claude API integration. Please configure ANTHROPIC_API_KEY in environment variables.',
+        },
+        { legacy: { success: true, data: mockParsedData } }
+      );
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      data: mockParsedData,
-      message: 'Document uploaded. Smart parsing requires AI integration.'
-    });
+    return jsonSuccess(
+      {
+        data: mockParsedData,
+        message: 'Document uploaded. Smart parsing requires AI integration.',
+      },
+      { legacy: { success: true, data: mockParsedData } }
+    );
 
   } catch (error) {
     console.error('Error in smart parse:', error);
-    return NextResponse.json({ error: 'Failed to parse document' }, { status: 500 });
+    return jsonError('Failed to parse document', { status: 500 });
   }
 }

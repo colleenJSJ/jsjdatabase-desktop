@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 // GET all permissions (admin only)
 export async function GET(request: NextRequest) {
@@ -110,6 +111,9 @@ export async function GET(request: NextRequest) {
 
 // POST create or update permissions
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(
@@ -208,6 +212,9 @@ export async function POST(request: NextRequest) {
 
 // DELETE remove permission
 export async function DELETE(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(

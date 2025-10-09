@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 // GET user's calendar preferences
 export async function GET(request: NextRequest) {
@@ -55,6 +56,9 @@ export async function GET(request: NextRequest) {
 
 // PUT update user's calendar preferences
 export async function PUT(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(

@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { cookies, headers } from 'next/headers'
-import { randomBytes } from 'crypto'
 import { createCSRFToken, csrfStore } from '@/lib/security/csrf'
 import './globals.css'
+import { QueryProvider } from '@/providers/query-provider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -26,16 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     const cs = await cookies();
     const hdrs = await headers();
     const cspNonce = hdrs.get('x-csp-nonce') || '';
-    let sid = cs.get('csrf-session')?.value;
-    if (!sid) {
-      sid = randomBytes(32).toString('hex');
-      cs.set('csrf-session', sid, {
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
-        path: '/',
-      });
-    }
+    const sid = cs.get('csrf-session')?.value;
     let token: string | null = null;
     if (sid) {
       const existing = await csrfStore.get(sid);
@@ -52,7 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {cspNonce && <meta name="csp-nonce" content={cspNonce} />}
         </head>
         <body className={inter.className}>
-          {children}
+          <QueryProvider>{children}</QueryProvider>
         </body>
       </html>
     );
@@ -61,7 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     return (
       <html lang="en" className="dark">
         <body className={inter.className}>
-          {children}
+          <QueryProvider>{children}</QueryProvider>
         </body>
       </html>
     );

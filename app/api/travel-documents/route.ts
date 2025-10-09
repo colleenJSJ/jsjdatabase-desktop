@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -28,26 +29,24 @@ export async function GET(request: NextRequest) {
     const { data: documents, error } = await query;
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to fetch travel documents' },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch travel documents', { status: 500 });
     }
 
-    return NextResponse.json({ documents: documents || [] });
+    const payload = documents || [];
+    return jsonSuccess({ documents: payload }, { legacy: { documents: payload } });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const data = await request.json();
@@ -77,17 +76,11 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to create travel document' },
-        { status: 500 }
-      );
+      return jsonError('Failed to create travel document', { status: 500 });
     }
 
-    return NextResponse.json({ document });
+    return jsonSuccess({ document }, { status: 201, legacy: { document } });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

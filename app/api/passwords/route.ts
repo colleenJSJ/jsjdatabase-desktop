@@ -4,6 +4,7 @@ import { SupabasePasswordService } from '@/lib/services/supabase-password-servic
 import { PasswordFilter } from '@/lib/services/password-service-interface';
 import { authenticateRequest } from '@/lib/utils/auth-middleware';
 import { resolveFamilyMemberToUser, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 const passwordService = new SupabasePasswordService();
 
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
   
   try {
     // Use the new auth middleware
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequest(request, false, { skipCSRF: true });
     console.log('[API/passwords] Auth result:', { authenticated: auth.authenticated, userId: auth.user?.id });
     
     if (!auth.authenticated) {
@@ -80,9 +81,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     // Use the new auth middleware
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequest(request, false, { skipCSRF: true });
     if (!auth.authenticated) {
       return auth.response!;
     }

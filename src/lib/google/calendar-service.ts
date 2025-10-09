@@ -1,4 +1,5 @@
-import { google } from 'googleapis';
+import { google, calendar_v3 } from 'googleapis';
+import type { Credentials } from 'google-auth-library';
 import { CalendarEvent } from '../supabase/types';
 import { filterAttendeesForGoogleSync } from '@/lib/utils/google-sync-helpers';
 
@@ -19,6 +20,7 @@ export interface GoogleCalendarEvent {
   attendees?: Array<{
     email: string;
     displayName?: string;
+    responseStatus?: 'needsAction' | 'accepted' | 'declined' | 'tentative';
   }>;
   reminders?: {
     useDefault: boolean;
@@ -38,9 +40,9 @@ export interface GoogleCalendarEvent {
 }
 
 export class GoogleCalendarService {
-  private calendar: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  private calendar: calendar_v3.Calendar;
 
-  constructor(credentials: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  constructor(credentials: Credentials) {
     const auth = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -66,7 +68,13 @@ export class GoogleCalendarService {
     };
 
     // Resolve timezone (allow metadata override)
-    const tz = (event as any)?.metadata?.timezone || (event as any)?.timezone || 'America/New_York';
+    const metadataTz =
+      event.metadata && typeof event.metadata === 'object' && event.metadata !== null && 'timezone' in event.metadata &&
+      typeof (event.metadata as Record<string, unknown>).timezone === 'string'
+        ? (event.metadata as Record<string, unknown>).timezone as string
+        : undefined;
+
+    const tz = metadataTz || event.timezone || 'America/New_York';
 
     // Handle all-day events
     if (event.all_day) {
@@ -177,8 +185,11 @@ export class GoogleCalendarService {
       conferenceDataVersion: event.is_virtual ? 1 : 0,
       sendNotifications: googleAttendeeEmails.length > 0 // Send email invites if there are attendees
     });
-
-    return { id: response.data.id };
+    const createdId = response.data.id;
+    if (!createdId) {
+      throw new Error('Failed to create Google Calendar event');
+    }
+    return { id: createdId };
   }
 
   /**
@@ -217,8 +228,8 @@ export class GoogleCalendarService {
   /**
    * Get user's Google Calendar list
    */
-  async getCalendarList(): Promise<any[]> { // eslint-disable-line @typescript-eslint/no-explicit-any
+  async getCalendarList(): Promise<calendar_v3.Schema$CalendarListEntry[]> {
     const response = await this.calendar.calendarList.list();
-    return response.data.items || [];
+    return response.data.items ?? [];
   }
 }

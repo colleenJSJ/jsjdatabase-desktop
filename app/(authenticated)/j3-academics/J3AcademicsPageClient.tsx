@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/contexts/user-context';
 import { ContactCard } from '@/components/contacts/ContactCard';
+import { ContactDetailModal } from '@/components/contacts/ContactDetailModal';
 import { EventCard } from '@/components/academics/EventCard';
 import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
 import { PortalModal } from '@/components/academics/PortalModal';
@@ -13,11 +14,14 @@ import { DocumentList } from '@/components/documents/document-list';
 import DocumentUploadModal from '@/components/documents/document-upload-modal';
 import ApiClient from '@/lib/api/api-client';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
-import { Password } from '@/lib/services/password-service-interface';
+import { PasswordDetailModal } from '@/components/passwords/PasswordDetailModal';
+import type { Password as SupabasePassword } from '@/lib/supabase/types';
 import { getPasswordStrength } from '@/lib/passwords/utils';
 import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
 import type { ContactFormValues, ContactModalFieldVisibilityMap, ContactRecord } from '@/components/contacts/contact-types';
 import { resolveEmails, resolvePhones } from '@/components/contacts/contact-utils';
+import { usePasswordSecurityOptional } from '@/contexts/password-security-context';
+import { Category } from '@/lib/categories/categories-client';
 
 const renderContactChips = (names: string[]) => (
   <div className="flex flex-wrap gap-2">
@@ -166,6 +170,10 @@ export default function J3AcademicsPageClient() {
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
   const [documentsRefreshKey, setDocumentsRefreshKey] = useState(0);
   const [savingContact, setSavingContact] = useState(false);
+  const [viewingContact, setViewingContact] = useState<ContactRecord | null>(null);
+  const [viewingPassword, setViewingPassword] = useState<SupabasePassword | null>(null);
+  const [viewingPortal, setViewingPortal] = useState<any | null>(null);
+  const { updateActivity } = usePasswordSecurityOptional();
 
   const childSeeds = useMemo(
     () => [
@@ -189,6 +197,18 @@ export default function J3AcademicsPageClient() {
     }));
     return [...base, { id: 'shared', email: '', name: 'Shared' }];
   }, [children]);
+
+  const familyMembersForModal = useMemo(
+    () => children.map(child => ({ id: child.id, name: child.name })),
+    [children]
+  );
+
+  const openPortalDetail = (password: SupabasePassword, portal: any, beforeOpen?: () => void) => {
+    beforeOpen?.();
+    updateActivity();
+    setViewingPortal(portal);
+    setViewingPassword(password);
+  };
 
   const normalizeChildren = (childrenList: any[] = []) => {
     const byFirstName = new Map<string, any>();
@@ -330,7 +350,7 @@ export default function J3AcademicsPageClient() {
     }
   };
 
-  const renderContactCard = (contact: ContactRecord, layout: 'auto' | 'compact') => {
+  const renderContactCard = (contact: ContactRecord) => {
     const studentNames = (contact.related_to ?? [])
       .map(id => filteredKids.find(student => student.id === id)?.name)
       .filter((name): name is string => Boolean(name));
@@ -347,7 +367,7 @@ export default function J3AcademicsPageClient() {
         extraContent={extraContent}
         showFavoriteToggle={false}
         canManage={canManage}
-        layout={layout}
+        onOpen={() => setViewingContact(contact)}
         actionConfig={{
           onEdit: canManage ? () => {
             setEditingContact(contact);
@@ -453,7 +473,7 @@ export default function J3AcademicsPageClient() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {filtered.contacts.map(contact => renderContactCard(contact, 'auto'))}
+                {filtered.contacts.map(contact => renderContactCard(contact))}
               </div>
             )}
           </section>
@@ -494,27 +514,32 @@ export default function J3AcademicsPageClient() {
                       : portal.child_id
                         ? [portal.child_id]
                         : [];
-                  const assignedNames = childIds
+                  const sharedWith = childIds.map(id => String(id));
+                  const assignedNames = sharedWith
                     .map(childId => filteredKids.find(c => c.id === childId)?.name)
                     .filter((name): name is string => Boolean(name));
 
-                  const passwordRecord: Password = {
-                    id: portalId,
-                    service_name: portalName,
+                  const nowIso = new Date().toISOString();
+                  const passwordId = (portal as any).password_id || portalId;
+                  const passwordRecord: SupabasePassword = {
+                    id: passwordId,
+                    title: portalName,
                     username: portalUsername,
                     password: portalPassword,
                     url: portalUrl || undefined,
-                    category: 'academic-portal',
+                    category: 'academic-portal' as any,
                     notes,
+                    created_by: portal.created_by || user?.id || 'shared',
+                    created_at: portal.created_at || nowIso,
+                    updated_at: portal.updated_at || nowIso,
                     owner_id: 'shared',
-                    shared_with: childIds,
-                    is_favorite: false,
-                    is_shared: childIds.length > 1,
-                    last_changed: portal.updated_at ? new Date(portal.updated_at) : new Date(),
-                    strength: undefined,
-                    created_at: portal.created_at ? new Date(portal.created_at) : new Date(),
-                    updated_at: portal.updated_at ? new Date(portal.updated_at) : new Date(),
+                    shared_with: sharedWith,
+                    is_favorite: Boolean((portal as any).is_favorite),
+                    is_shared: sharedWith.length > 1,
+                    last_changed: portal.updated_at || nowIso,
+                    source: 'j3-academics',
                     source_page: 'j3-academics',
+                    source_reference: portal.id ?? null,
                   };
 
                   const lastAccessDisplay = portal.last_accessed
@@ -566,7 +591,8 @@ export default function J3AcademicsPageClient() {
                         }
                         await reload();
                       }}
-                      onOpenUrl={portal.id ? handlePortalOpen : undefined}
+                      onOpen={() => openPortalDetail(passwordRecord, portal, () => { if (portal.id) void handlePortalOpen(); })}
+                      variant="compact"
                     />
                   );
                 })}
@@ -649,6 +675,50 @@ export default function J3AcademicsPageClient() {
         </div>
 
         {/* Modals */}
+        {viewingPassword && viewingPortal && (
+          <PasswordDetailModal
+            password={viewingPassword}
+            categories={[
+              {
+                id: 'academic-portal',
+                name: 'Academic Portal',
+                color: '#6366f1',
+                module: 'passwords',
+                created_at: viewingPortal.created_at || new Date().toISOString(),
+                updated_at: viewingPortal.updated_at || new Date().toISOString(),
+                icon: undefined,
+              } as Category,
+            ]}
+            users={academicPortalUsers}
+            familyMembers={familyMembersForModal}
+            canManage={user?.role === 'admin'}
+            onClose={() => {
+              setViewingPassword(null);
+              setViewingPortal(null);
+            }}
+            onEdit={() => {
+              setViewingPassword(null);
+              if (viewingPortal) {
+                setEditingPortal(viewingPortal);
+                setShowPortalModal(true);
+              }
+            }}
+            onDelete={async () => {
+              if (viewingPortal?.id) {
+                if (!confirm('Delete this portal?')) return;
+                const response = await ApiClient.delete(`/api/academic-portals/${viewingPortal.id}`);
+                if (!response.success) {
+                  alert(response.error || 'Failed to delete portal');
+                } else {
+                  await reload();
+                }
+              }
+              setViewingPassword(null);
+              setViewingPortal(null);
+            }}
+          />
+        )}
+
         {showContactModal && (
           <UnifiedContactModal
             open={showContactModal}
@@ -665,11 +735,29 @@ export default function J3AcademicsPageClient() {
               setShowContactModal(false);
               setEditingContact(null);
             }}
-          />
-        )}
+        />
+      )}
 
-        <PortalModal
-          isOpen={showPortalModal}
+      {viewingContact && (
+        <ContactDetailModal
+          contact={viewingContact}
+          familyMembers={familyMembersForModal}
+          canManage={user?.role === 'admin'}
+          onClose={() => setViewingContact(null)}
+          onEdit={user?.role === 'admin' ? () => {
+            setEditingContact(viewingContact);
+            setShowContactModal(true);
+            setViewingContact(null);
+          } : undefined}
+          onDelete={user?.role === 'admin' ? async () => {
+            await handleDeleteContact(viewingContact.id);
+            setViewingContact(null);
+          } : undefined}
+        />
+      )}
+
+      <PortalModal
+        isOpen={showPortalModal}
           onClose={() => { setShowPortalModal(false); setEditingPortal(null); }}
           onSubmit={async (form) => {
             const url = editingPortal ? `/api/academic-portals/${editingPortal.id}` : '/api/academic-portals';

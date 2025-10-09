@@ -1,14 +1,33 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getBackblazeService } from '@/lib/backblaze/b2-service';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateRequest } from '@/lib/utils/auth-middleware';
 import { processRelatedToAsync } from '@/lib/constants/family-members';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
+
+const resolveFilePath = (fileName?: string | null, fileUrl?: string | null): string | null => {
+  if (fileName) return fileName;
+  if (fileUrl && fileUrl.includes('/file/')) {
+    const afterFile = fileUrl.split('/file/')[1];
+    if (afterFile) {
+      const parts = afterFile.split('/');
+      if (parts.length > 1) {
+        return parts.slice(1).join('/');
+      }
+    }
+  }
+  return null;
+};
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     // Use the new auth middleware
-    const auth = await authenticateRequest(request);
+    const auth = await authenticateRequest(request, false, { skipCSRF: true });
     if (!auth.authenticated) {
       return auth.response!;
     }
@@ -44,16 +63,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!file || !title || !category || !source_page || !source_id) {
-      return NextResponse.json(
-        { error: 'File, title, category, source_page, and source_id are required' },
-        { status: 400 }
-      );
+      return jsonError('File, title, category, source_page, and source_id are required', { status: 400 });
     }
 
     // Check if document already exists for this source
     const { data: existingDoc } = await supabase
       .from('documents')
-      .select('id, file_url')
+      .select('id, file_url, file_name')
       .eq('source_page', source_page)
       .eq('source_id', source_id)
       .single();
@@ -63,9 +79,9 @@ export async function POST(request: NextRequest) {
     if (existingDoc) {
       // Delete old file from Backblaze
       try {
-        const oldFileName = existingDoc.file_url.split('/').pop();
-        if (oldFileName) {
-          await backblazeService.deleteFile(oldFileName);
+        const oldFilePath = resolveFilePath(existingDoc.file_name, existingDoc.file_url);
+        if (oldFilePath) {
+          await backblazeService.deleteFile(oldFilePath);
         }
       } catch (error) {
         console.error('Failed to delete old file:', error);
@@ -111,7 +127,7 @@ export async function POST(request: NextRequest) {
         throw new Error('Failed to update document');
       }
 
-      return NextResponse.json({ document, updated: true });
+      return jsonSuccess({ document, updated: true }, { legacy: { document, updated: true } });
     } else {
       // Create new document
       const { data: document, error } = await supabase
@@ -141,13 +157,10 @@ export async function POST(request: NextRequest) {
         throw new Error('Failed to create document');
       }
 
-      return NextResponse.json({ document, updated: false });
+      return jsonSuccess({ document, updated: false }, { legacy: { document, updated: false } });
     }
   } catch (error) {
     console.error('Auto-sync error:', error);
-    return NextResponse.json(
-      { error: 'Failed to sync document' },
-      { status: 500 }
-    );
+    return jsonError('Failed to sync document', { status: 500 });
   }
 }

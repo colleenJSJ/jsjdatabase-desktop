@@ -1,25 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useUser } from '@/contexts/user-context';
 import { usePersonFilter } from '@/contexts/person-filter-context';
 import { PersonSelector } from '@/components/ui/person-selector';
 import { Document } from '@/types';
 import DocumentUploadModal from '@/components/documents/document-upload-modal';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Search,
   Star,
-  Clock,
   Upload,
   Download,
   Eye,
   Trash2,
-  ChevronDown,
   Grid3X3,
   List,
   FileText,
-  Calendar,
   Filter,
   X,
   Copy,
@@ -29,17 +26,16 @@ import { formatBytes, formatDate } from '@/lib/utils';
 import { DocumentCard } from '@/components/documents/document-card';
 import {
   DOCUMENT_CATEGORY_OPTIONS,
-  buildAssignedSummary,
   cleanDocumentTitle,
   formatSourcePage,
   getDaysUntilExpiration,
   getDocumentCategoryBadge,
   getDocumentRelatedNames,
-  getFileIcon,
 } from '@/components/documents/document-helpers';
 import { DocumentPreviewModal } from '@/components/documents/document-preview-modal';
 import { useDocumentActions } from '@/hooks/useDocumentActions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 
 const categories = DOCUMENT_CATEGORY_OPTIONS;
 
@@ -57,9 +53,8 @@ export default function DocumentsPage() {
   const { user, loading: userLoading } = useUser();
   const { selectedPersonId } = usePersonFilter();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,6 +68,7 @@ export default function DocumentsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [familyMemberMap, setFamilyMemberMap] = useState<Record<string, string>>({ shared: 'Shared/Family' });
   const [copyingDocId, setCopyingDocId] = useState<string | null>(null);
+  const [pendingDocumentId, setPendingDocumentId] = useState<string | null>(null);
   const { copyLink, viewDocument, downloadDocument, deleteDocument, toggleStar } = useDocumentActions();
   const {
     doc: previewDoc,
@@ -92,25 +88,33 @@ export default function DocumentsPage() {
   });
 
   useEffect(() => {
-    if (!userLoading && user) {
-      fetchDocuments();
-      fetchFamilyMembers();
-    } else if (!userLoading && !user) {
-      setLoading(false);
+    const openParam = searchParams.get('open');
+    if (!openParam) return;
+    const [type, id] = openParam.split(':');
+    if (type === 'document' && id) {
+      setPendingDocumentId(id);
     }
-  }, [user, userLoading, selectedPersonId, filters.showArchived]);
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete('open');
+    const nextQuery = sp.toString();
+    router.replace(nextQuery ? `/documents?${nextQuery}` : '/documents', { scroll: false });
+  }, [searchParams, router]);
 
   useEffect(() => {
-    filterAndSortDocuments();
-  }, [documents, selectedCategory, searchQuery, filters, sortBy]);
+    if (!pendingDocumentId) return;
+    const doc = documents.find(d => d.id === pendingDocumentId);
+    if (!doc) return;
+    void openPreview(doc);
+    setPendingDocumentId(null);
+  }, [pendingDocumentId, documents, openPreview]);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     try {
       let url = '/api/documents';
       const params = new URLSearchParams();
       if (selectedPersonId) params.append('selected_person', selectedPersonId);
       if (filters.showArchived) params.append('show_archived', 'true');
-      
+
       if (params.toString()) {
         url += '?' + params.toString();
       }
@@ -118,35 +122,41 @@ export default function DocumentsPage() {
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setDocuments(data.documents || []);
-        calculateStats(data.documents || []);
-      } else {
-        console.error('Failed to fetch documents');
-        setDocuments([]);
+        return data.documents || [];
       }
+
+      console.error('Failed to fetch documents');
+      return [];
     } catch (error) {
       console.error('Failed to fetch documents:', error);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  };
+  }, [selectedPersonId, filters.showArchived]);
 
-  const fetchFamilyMembers = async () => {
+  interface FamilyMemberSummary {
+    id: string;
+    name?: string | null;
+    display_name?: string | null;
+    email?: string | null;
+  }
+
+  const fetchFamilyMembers = useCallback(async () => {
     try {
       const response = await fetch('/api/family-members');
-      if (!response.ok) return;
-      const data = await response.json();
+      if (!response.ok) return null;
+      const data = (await response.json()) as { members?: FamilyMemberSummary[] };
       const members = data.members || [];
       const map: Record<string, string> = { shared: 'Shared/Family' };
-      members.forEach((member: any) => {
+      members.forEach((member) => {
         const name = member.display_name || member.name || member.email || member.id;
         map[member.id] = name;
       });
-      setFamilyMemberMap(map);
+      return map;
     } catch (error) {
       console.error('Failed to fetch family members for documents:', error);
+      return null;
     }
-  };
+  }, []);
 
   const calculateStats = (docs: Document[]) => {
     const now = new Date();
@@ -165,75 +175,108 @@ export default function DocumentsPage() {
     });
   };
 
-  const filterAndSortDocuments = () => {
-    let filtered = [...documents];
+  const queryClient = useQueryClient();
 
-    // Category filter
+  const {
+    data: documentsData,
+    isLoading: documentsLoading,
+  } = useQuery<Document[]>({
+    queryKey: ['documents', selectedPersonId, filters.showArchived],
+    queryFn: fetchDocuments,
+    placeholderData: keepPreviousData,
+    enabled: !userLoading && !!user,
+    staleTime: 60 * 1000,
+  });
+
+  const {
+    data: familyMapData,
+    isLoading: familyMapLoading,
+  } = useQuery<Record<string, string> | null>({
+    queryKey: ['documents-family-members'],
+    queryFn: fetchFamilyMembers,
+    staleTime: 5 * 60 * 1000,
+    enabled: !userLoading && !!user,
+  });
+
+  useEffect(() => {
+    if (!documentsData) return;
+    setDocuments(documentsData);
+    calculateStats(documentsData);
+  }, [documentsData]);
+
+  useEffect(() => {
+    if (familyMapData) {
+      setFamilyMemberMap(familyMapData);
+    }
+  }, [familyMapData]);
+
+  const loading = userLoading || documentsLoading || familyMapLoading;
+
+  const filteredDocuments = useMemo(() => {
+    let result = [...documents];
+
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter(doc => doc.category === selectedCategory);
+      result = result.filter(doc => doc.category === selectedCategory);
     }
 
-    // Person filtering is now handled by the API via selected_person parameter
-
-    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(doc => 
+      result = result.filter(doc =>
         doc.title.toLowerCase().includes(query) ||
         doc.description?.toLowerCase().includes(query) ||
         doc.tags?.some(tag => tag.toLowerCase().includes(query))
       );
     }
 
-    // Quick filters
     if (filters.starred) {
-      filtered = filtered.filter(doc => doc.is_starred);
+      result = result.filter(doc => doc.is_starred);
     }
     if (filters.expiringSoon) {
       const thirtyDaysFromNow = new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000);
-      filtered = filtered.filter(doc => 
+      result = result.filter(doc =>
         doc.expiration_date && new Date(doc.expiration_date) <= thirtyDaysFromNow
       );
     }
 
-    // Sort
     switch (sortBy) {
       case 'oldest':
-        filtered.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
         break;
       case 'a-z':
-        filtered.sort((a, b) => a.title.localeCompare(b.title));
+        result.sort((a, b) => a.title.localeCompare(b.title));
         break;
       case 'z-a':
-        filtered.sort((a, b) => b.title.localeCompare(a.title));
+        result.sort((a, b) => b.title.localeCompare(a.title));
         break;
       case 'largest':
-        filtered.sort((a, b) => (b.file_size || 0) - (a.file_size || 0));
+        result.sort((a, b) => (b.file_size || 0) - (a.file_size || 0));
         break;
       case 'smallest':
-        filtered.sort((a, b) => (a.file_size || 0) - (b.file_size || 0));
+        result.sort((a, b) => (a.file_size || 0) - (b.file_size || 0));
         break;
       case 'expiring':
-        filtered.sort((a, b) => {
+        result.sort((a, b) => {
           if (!a.expiration_date && !b.expiration_date) return 0;
           if (!a.expiration_date) return 1;
           if (!b.expiration_date) return -1;
           return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
         });
         break;
-      default: // newest
-        filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      default:
+        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
 
-    setFilteredDocuments(filtered);
-  };
+    return result;
+  }, [documents, selectedCategory, searchQuery, filters.starred, filters.expiringSoon, sortBy]);
 
   const handleStarToggle = async (doc: Document) => {
     try {
       await toggleStar(doc);
-      setDocuments(prev => prev.map(d =>
+      const updatedDocs = documents.map(d =>
         d.id === doc.id ? { ...d, is_starred: !d.is_starred } : d
-      ));
+      );
+      setDocuments(updatedDocs);
+      queryClient.setQueryData(['documents', selectedPersonId, filters.showArchived], updatedDocs);
     } catch (error) {
       console.error('Failed to update star status:', error);
     }
@@ -244,11 +287,10 @@ export default function DocumentsPage() {
 
     try {
       await deleteDocument(doc);
-      setDocuments(prev => {
-        const updated = prev.filter(d => d.id !== doc.id);
-        calculateStats(updated);
-        return updated;
-      });
+      const updated = documents.filter(d => d.id !== doc.id);
+      setDocuments(updated);
+      calculateStats(updated);
+      queryClient.setQueryData(['documents', selectedPersonId, filters.showArchived], updated);
     } catch (error) {
       console.error('Failed to delete document:', error);
       alert('Failed to delete document. Please try again.');
@@ -278,24 +320,6 @@ export default function DocumentsPage() {
       setTimeout(() => setCopyingDocId(null), 2000);
     } catch (error) {
       console.error('Failed to copy document link:', error);
-    }
-  };
-
-  const navigateToSource = (doc: Document) => {
-    if (!doc.source_page || !doc.source_id) return;
-    
-    const routes: Record<string, string> = {
-      'tasks': '/tasks',
-      'travel': '/travel',
-      'health': '/health',
-      'calendar': '/calendar',
-      'j3-academics': '/j3-academics',
-      'pets': '/pets',
-      'household': '/household'
-    };
-
-    if (routes[doc.source_page]) {
-      router.push(`${routes[doc.source_page]}?id=${doc.source_id}`);
     }
   };
 
@@ -512,7 +536,7 @@ export default function DocumentsPage() {
           </div>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-x-5 gap-y-7 justify-items-center">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {filteredDocuments.map(doc => (
             <DocumentCard
               key={doc.id}
@@ -551,25 +575,32 @@ export default function DocumentsPage() {
                   : null;
 
                 return (
-                  <tr key={doc.id} className="hover:bg-gray-800/40 transition-colors">
+                  <tr
+                    key={doc.id}
+                    className="hover:bg-gray-800/40 transition-colors cursor-pointer"
+                    onClick={() => openPreview(doc)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openPreview(doc);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-9 w-9 rounded-lg bg-gray-700/40 flex items-center justify-center text-text-primary">
-                          {getFileIcon(doc.file_type, doc.file_name || doc.file_url)}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-text-primary truncate">
+                          <span className="truncate" title={cleanDocumentTitle(doc.title, doc.file_name)}>
+                            {cleanDocumentTitle(doc.title, doc.file_name)}
+                          </span>
+                          {doc.is_starred && <Star className="h-4 w-4 text-yellow-500" fill="currentColor" />}
                         </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-text-primary truncate">
-                            <span className="truncate" title={cleanDocumentTitle(doc.title, doc.file_name)}>
-                              {cleanDocumentTitle(doc.title, doc.file_name)}
-                            </span>
-                            {doc.is_starred && <Star className="h-4 w-4 text-yellow-500" fill="currentColor" />}
-                          </div>
                         {expirationBadge !== null && (
                           <div className={`text-xs ${expirationBadge <= 30 ? 'text-red-400' : 'text-text-muted'}`}>
                             {expirationBadge > 0 ? `Expires in ${expirationBadge} days` : 'Expired'}
                           </div>
                         )}
-                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -604,21 +635,30 @@ export default function DocumentsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => copyDocumentLink(doc)}
+                          onClick={event => {
+                            event.stopPropagation();
+                            copyDocumentLink(doc);
+                          }}
                           className={`p-1.5 rounded text-text-muted hover:text-primary-400 transition-colors ${copyingDocId === doc.id ? 'text-green-400' : ''}`}
                           title="Copy link"
                         >
                           {copyingDocId === doc.id ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                         </button>
                         <button
-                          onClick={() => handleView(doc)}
+                          onClick={event => {
+                            event.stopPropagation();
+                            handleView(doc);
+                          }}
                           className="p-1.5 rounded text-text-muted/70 hover:text-blue-400 transition-colors"
                           title="View"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDownload(doc)}
+                          onClick={event => {
+                            event.stopPropagation();
+                            handleDownload(doc);
+                          }}
                           className="p-1.5 rounded text-text-muted/70 hover:text-green-400 transition-colors"
                           title="Download"
                         >
@@ -626,7 +666,10 @@ export default function DocumentsPage() {
                         </button>
                         {user?.role === 'admin' && (
                           <button
-                            onClick={() => handleDelete(doc)}
+                            onClick={event => {
+                              event.stopPropagation();
+                              handleDelete(doc);
+                            }}
                             className="p-1.5 rounded text-text-muted/70 hover:text-red-400 transition-colors"
                             title="Delete"
                           >
@@ -649,7 +692,7 @@ export default function DocumentsPage() {
           onClose={() => setShowUploadModal(false)}
           onUploadComplete={() => {
             setShowUploadModal(false);
-            fetchDocuments();
+            queryClient.invalidateQueries({ queryKey: ['documents'] });
           }}
         />
       )}

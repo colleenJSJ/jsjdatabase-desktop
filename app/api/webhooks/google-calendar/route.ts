@@ -88,7 +88,7 @@ async function syncCalendarEvents(userId: string, calendarId: string) {
     const supabase = await createClient();
 
     // Get the user's Google Calendar service
-    const calendar = await googleAuth.getCalendarService(userId);
+    const calendar = await googleAuth.getCalendarService(userId, { supabase });
 
     // Get the sync token for incremental sync
     const { data: syncData } = await supabase

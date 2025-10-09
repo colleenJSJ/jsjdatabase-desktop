@@ -45,6 +45,14 @@ export function getEventKey(event: CalendarEvent): string {
   return parts.join('::');
 }
 
+const extractTaskId = (event: CalendarEvent): string | undefined => {
+  const metadata = event.metadata as Record<string, unknown> | undefined;
+  const metadataTaskId = typeof metadata?.task_id === 'string' ? (metadata.task_id as string) : undefined;
+  const externalId = typeof event.external_id === 'string' ? event.external_id : undefined;
+  const titleMatch = event.title?.match(/Task:\s*(.+)/)?.[1];
+  return metadataTaskId || externalId || titleMatch;
+};
+
 // Deduplicate events
 export function deduplicateEvents(events: CalendarEvent[]): CalendarEvent[] {
   const seen = new Map<string, CalendarEvent>();
@@ -54,9 +62,7 @@ export function deduplicateEvents(events: CalendarEvent[]): CalendarEvent[] {
   events.forEach(event => {
     if (isTaskEvent(event)) {
       // Extract task ID if available
-      const taskId = event.metadata?.task_id || 
-                    event.external_id ||
-                    event.title?.match(/Task:\s*(.+)/)?.[1];
+      const taskId = extractTaskId(event);
       if (taskId) {
         taskEventIds.add(taskId);
       }
@@ -69,9 +75,7 @@ export function deduplicateEvents(events: CalendarEvent[]): CalendarEvent[] {
     
     // Skip duplicate task events
     if (isTaskEvent(event)) {
-      const taskId = event.metadata?.task_id || 
-                    event.external_id ||
-                    event.title?.match(/Task:\s*(.+)/)?.[1];
+      const taskId = extractTaskId(event);
       
       // If we've already seen this task, skip it
       if (taskId && seen.has(`task::${taskId}`)) {

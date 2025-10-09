@@ -39,7 +39,7 @@ async function main() {
 
       let plainPassword: string;
       try {
-        plainPassword = encryptionService.decrypt(portal.password);
+        plainPassword = await encryptionService.decrypt(portal.password);
       } catch (decryptError) {
         console.warn(`[Resync] Failed to decrypt password for portal ${portalId}:`, decryptError);
         continue;

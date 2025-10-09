@@ -1,10 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await requireAdmin();
+    const authResult = await requireAdmin(request, { skipCSRF: true });
     
     if ('error' in authResult) {
       return authResult.error;
@@ -13,7 +18,7 @@ export async function POST(request: NextRequest) {
     const { name, email, password, role } = await request.json();
 
     if (!name || !email || !password || !role) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return jsonError('Missing required fields', { status: 400, code: 'VALIDATION_ERROR' });
     }
 
     const adminClient = await createServiceClient();
@@ -29,7 +34,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 });
+      return jsonError('Failed to create auth user', {
+        status: 400,
+        code: 'AUTH_USER_CREATE_FAILED',
+        meta: { details: authError.message },
+      });
     }
 
     // Create the user profile
@@ -48,20 +57,24 @@ export async function POST(request: NextRequest) {
     if (profileError) {
       // If profile creation fails, try to delete the auth user
       await adminClient.auth.admin.deleteUser(authData.user.id);
-      return NextResponse.json({ error: profileError.message }, { status: 400 });
+      return jsonError('Failed to create user profile', {
+        status: 400,
+        code: 'USER_PROFILE_CREATE_FAILED',
+        meta: { details: profileError.message },
+      });
     }
 
-    return NextResponse.json({ 
-      user: {
-        id: authData.user.id,
-        name,
-        email,
-        role,
-        user_status: 'active'
-      }
-    });
+    const user = {
+      id: authData.user.id,
+      name,
+      email,
+      role,
+      user_status: 'active' as const,
+    };
+
+    return jsonSuccess({ user }, { legacy: { user } });
   } catch (error) {
     console.error('Error adding user:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonError('Internal server error', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }

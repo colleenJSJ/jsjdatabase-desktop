@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, forwardRef } from 'react';
+import { cn } from '@/lib/utils';
 import { Calendar } from 'lucide-react';
 
 interface DateDisplayProps {
   label: string;
+  labelClassName?: string;
   date: string; // YYYY-MM-DD format
   onChange: (value: string) => void;
   minDate?: string;
@@ -12,7 +14,7 @@ interface DateDisplayProps {
 }
 
 export const DateDisplay = forwardRef<HTMLInputElement, DateDisplayProps>(function DateDisplay(
-  { label, date, onChange, minDate, disabled = false }: DateDisplayProps,
+  { label, labelClassName, date, onChange, minDate, disabled = false }: DateDisplayProps,
   forwardedRef
 ) {
   const [showPicker, setShowPicker] = useState(false);
@@ -73,7 +75,7 @@ export const DateDisplay = forwardRef<HTMLInputElement, DateDisplayProps>(functi
 
   return (
     <div className="w-full" ref={containerRef}>
-      <label className="block text-sm font-medium text-text-primary mb-1">
+      <label className={cn('block text-sm font-medium text-text-primary mb-1', labelClassName)}>
         {label}
       </label>
       <div className="relative">
@@ -81,7 +83,8 @@ export const DateDisplay = forwardRef<HTMLInputElement, DateDisplayProps>(functi
         <div
           onClick={handleDateClick}
           className={`
-            px-3 py-2 
+            flex items-center h-11
+            px-3
             bg-background-primary 
             border border-gray-600/30 
             rounded-md 
@@ -92,7 +95,7 @@ export const DateDisplay = forwardRef<HTMLInputElement, DateDisplayProps>(functi
             ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
           `}
         >
-          <span className="block text-sm">
+          <span className="block text-sm leading-none">
             {formatDate(date)}
           </span>
         </div>

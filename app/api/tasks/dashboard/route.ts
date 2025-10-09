@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withCache, invalidateRelatedCache } from '@/lib/utils/cache';
 import { logErrorAndReturn, extractUserId } from '@/lib/utils/error-logger';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 /**
  * Consolidated Tasks Dashboard Endpoint
@@ -167,6 +168,9 @@ export async function GET(request: NextRequest) {
  * Call this after any task-related data changes
  */
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const context = {
     endpoint: '/api/tasks/dashboard',
     method: 'POST',

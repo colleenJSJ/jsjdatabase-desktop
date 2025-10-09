@@ -173,10 +173,17 @@ export default function ActivityPage() {
     }
   };
 
+  const isDev = process.env.NODE_ENV !== 'production';
+  const debugLog = (...args: unknown[]) => {
+    if (isDev) {
+      console.log(...args);
+    }
+  };
+
   const fetchActivities = async () => {
     try {
       const supabase = createClient();
-      console.log('Fetching activities with filters:', {
+      debugLog('Fetching activities with filters:', {
         timeFilter,
         userFilter,
         actionFilter,
@@ -199,7 +206,7 @@ export default function ActivityPage() {
       // Apply time filter
       const timeRange = getTimeRange();
       if (timeRange) {
-        console.log('Applying time range:', {
+        debugLog('Applying time range:', {
           start: timeRange.start.toISOString(),
           end: timeRange.end.toISOString()
         });
@@ -224,9 +231,9 @@ export default function ActivityPage() {
       if (error) {
         console.error('Error fetching activities:', error);
       } else {
-        console.log('Fetched activities:', data?.length || 0, 'records');
-        if (data && data.length > 0) {
-          console.log('Sample activity:', data[0]);
+      debugLog('Fetched activities:', data?.length || 0, 'records');
+      if (data && data.length > 0) {
+        debugLog('Sample activity:', data[0]);
         }
         const activitiesWithType: CombinedActivity[] = (data || []).map(a => ({ ...a, type: 'activity' as const }));
         setActivities(activitiesWithType);

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { google } from 'googleapis';
+import { googleAuth } from '@/lib/google/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 /**
  * Admin endpoint to clean up Google Calendar test events without affecting real data.
@@ -15,6 +17,9 @@ import { google } from 'googleapis';
  *   dryRun?: 'true' | 'false'      // if true, return items that would be deleted without deleting
  */
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const supabase = await createClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -37,27 +42,10 @@ export async function POST(request: NextRequest) {
     const dryRun = (url.searchParams.get('dryRun') || 'false').toLowerCase() === 'true';
 
     // Get OAuth tokens for this user
-    const { data: tokenRow, error: tokenError } = await supabase
-      .from('user_google_tokens')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-    if (tokenError || !tokenRow) {
-      return NextResponse.json({ error: 'Google account not connected' }, { status: 400 });
-    }
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
-    oauth2Client.setCredentials({
-      access_token: tokenRow.access_token,
-      refresh_token: tokenRow.refresh_token,
-      expiry_date: tokenRow.expires_at ? new Date(tokenRow.expires_at).getTime() : undefined,
+    const calendar = google.calendar({
+      version: 'v3',
+      auth: await googleAuth.getAuthenticatedClient(user.id, { supabase }),
     });
-
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     // Determine calendars to operate on
     let calendars: { google_calendar_id: string }[] = [];

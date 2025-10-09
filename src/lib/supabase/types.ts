@@ -9,8 +9,8 @@ export type User = {
   avatar_url?: string;
   notification_preferences?: Record<string, boolean | string>;
   theme_preference: 'dark' | 'light';
-  created_at: string;
-  updated_at: string;
+  created_at: string | Date;
+  updated_at: string | Date;
 };
 
 export type Session = {
@@ -74,7 +74,7 @@ export type Task = {
   links?: string[];
   document_ids?: string[];
   // Additional fields
-  notes?: string;
+  notes?: string | string[] | null;
   attachments?: string[];
   comment_count?: number;
   // Computed property
@@ -108,8 +108,9 @@ export type TripParticipant = {
   added_at: string;
 };
 
-export type PasswordCategory = 'financial' | 'household' | 'travel' | 'shopping' | 'social' | 
-  'entertainment' | 'medical' | 'education' | 'work' | 'utilities' | 'apps' | 'other';
+export type PasswordCategory = 'financial' | 'household' | 'travel' | 'shopping' | 'social' |
+  'entertainment' | 'medical' | 'education' | 'work' | 'utilities' | 'apps' | 'other' |
+  'medical-portal';
 
 export type Password = {
   id: string;
@@ -126,7 +127,10 @@ export type Password = {
   shared_with?: string[];
   is_favorite?: boolean;
   is_shared?: boolean;
-  last_changed?: string;
+  last_changed?: string | Date;
+  source?: string | null;
+  source_page?: string | null;
+  source_reference?: string | null;
 };
 
 export type TrustedDevice = {
@@ -199,5 +203,5 @@ export type CalendarEvent = {
   google_event_id?: string;
   external_id?: string;
   timezone?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 };

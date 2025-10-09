@@ -4,13 +4,14 @@ import { ensurePortalAndPassword, deletePortalById } from '@/lib/services/portal
 import { resolveFamilyMemberToUser } from '@/app/api/_helpers/person-resolver';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = (portal: any) => {
+const serializePortal = async (portal: any) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password);
     } catch (error) {
       console.error('[Pet Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -47,7 +48,7 @@ export async function GET(
     if (!portal) {
       return NextResponse.json({ error: 'Portal not found' }, { status: 404 });
     }
-    return NextResponse.json({ portal: serializePortal(portal) });
+    return NextResponse.json({ portal: await serializePortal(portal) });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch pet portal' }, { status: 500 });
   }
@@ -57,6 +58,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();
@@ -95,7 +99,7 @@ export async function PUT(
     let plainPassword: string | null | undefined = undefined;
     if (password !== undefined) {
       plainPassword = password;
-      updates.password = password ? encrypt(password) : null;
+      updates.password = password ? await encrypt(password) : null;
     }
 
     const { data: portal, error } = await supabase
@@ -139,7 +143,7 @@ export async function PUT(
     let portalPassword = plainPassword ?? null;
     if (portalPassword == null && portal.password) {
       try {
-        portalPassword = decrypt(portal.password as string);
+        portalPassword = await decrypt(portal.password as string);
       } catch (error) {
         console.error('[Pet Portals] Failed to decrypt existing password', error);
       }
@@ -165,7 +169,7 @@ export async function PUT(
       });
     }
 
-    return NextResponse.json({ portal: serializePortal(portal) });
+    return NextResponse.json({ portal: await serializePortal(portal) });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update pet portal' }, { status: 500 });
   }
@@ -175,6 +179,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();

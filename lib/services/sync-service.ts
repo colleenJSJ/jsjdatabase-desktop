@@ -1,6 +1,98 @@
 import { createClient } from '@/lib/supabase/server';
 import { CalendarEvent } from '@/lib/supabase/types';
 
+const pad2 = (value: number) => value.toString().padStart(2, '0');
+
+const normalizeOffset = (offset?: string | null): string | null => {
+  if (!offset) return null;
+  if (offset === 'Z' || offset === 'z') return 'Z';
+  const trimmed = offset.trim();
+  const match = trimmed.match(/^([+-])(\d{2}):?(\d{2})$/);
+  if (!match) return null;
+  return `${match[1]}${match[2]}:${match[3]}`;
+};
+
+const formatLocalDateTime = (date: Date): string => {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+};
+
+const formatDateWithOffset = (date: Date, offset: string): string => {
+  const normalized = normalizeOffset(offset) ?? 'Z';
+  if (normalized === 'Z') {
+    return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  }
+  const sign = normalized.startsWith('-') ? -1 : 1;
+  const [hoursStr, minutesStr] = normalized.slice(1).split(':');
+  const offsetMinutes = sign * (parseInt(hoursStr, 10) * 60 + parseInt(minutesStr, 10));
+  const local = new Date(date.getTime() + offsetMinutes * 60000);
+  return `${local.getUTCFullYear()}-${pad2(local.getUTCMonth() + 1)}-${pad2(local.getUTCDate())}T${pad2(local.getUTCHours())}:${pad2(local.getUTCMinutes())}:${pad2(local.getUTCSeconds())}${normalized}`;
+};
+
+const normalizeDateTimeValue = (value: any): string | null => {
+  if (typeof value !== 'string') {
+    return value ? String(value) : null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const offsetMatch = trimmed.match(/([+-]\d{2}:?\d{2}|Z)$/);
+  const offset = normalizeOffset(offsetMatch ? offsetMatch[1] : null);
+  const base = offsetMatch ? trimmed.slice(0, trimmed.length - offsetMatch[1].length) : trimmed;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(base)) {
+    const naive = `${base}T00:00:00`;
+    return offset ? `${naive}${offset}` : naive;
+  }
+
+  const dateTimeMatch = base.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (dateTimeMatch) {
+    const [, datePart, hour, minute, second] = dateTimeMatch;
+    const seconds = second ?? '00';
+    return offset ? `${datePart}T${hour}:${minute}:${seconds}${offset}` : `${datePart}T${hour}:${minute}:${seconds}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  if (offset) {
+    return formatDateWithOffset(parsed, offset);
+  }
+
+  return formatLocalDateTime(parsed);
+};
+
+const addMinutesToDateTimeString = (value: string, minutes: number): string => {
+  const normalized = normalizeDateTimeValue(value);
+  if (!normalized) return value;
+
+  const offsetMatch = normalized.match(/([+-]\d{2}:\d{2}|Z)$/);
+  const offset = offsetMatch ? offsetMatch[1] : null;
+
+  let baseDate: Date;
+  if (offset) {
+    baseDate = new Date(normalized);
+  } else {
+    const [datePart, timePart = '00:00:00'] = normalized.split('T');
+    const [year, month, day] = datePart.split('-').map((n) => parseInt(n, 10));
+    const [hour, minute, second] = timePart.split(':').map((n) => parseInt(n, 10));
+    baseDate = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, second || 0, 0);
+  }
+
+  if (Number.isNaN(baseDate.getTime())) {
+    return normalized;
+  }
+
+  const adjusted = new Date(baseDate.getTime() + minutes * 60000);
+  if (offset) {
+    return formatDateWithOffset(adjusted, offset);
+  }
+
+  return formatLocalDateTime(adjusted);
+};
+
 export interface SyncResult {
   ok: boolean;
   id?: string;
@@ -136,20 +228,61 @@ export class SyncService {
           payload.meeting_link = (input as any).virtual_link;
         }
         delete payload.virtual_link;
-        // Ensure we persist wall-clock strings with timezone offsets intact.
-        const normalizeDateTime = (value: any) => {
-          if (typeof value !== 'string') return value;
-          const trimmed = value.trim();
-          if (/(Z|[+-]\d{2}:\d{2})$/i.test(trimmed)) {
-            // Keep offset; add seconds if missing
-            return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)
-              ? `${trimmed}:00`
-              : trimmed;
+        // Normalize timestamps while keeping their original intent.
+        const normalizedStart = normalizeDateTimeValue(payload.start_time) ?? normalizeDateTimeValue(input.start_time);
+        if (normalizedStart) {
+          payload.start_time = normalizedStart;
+        }
+        const normalizedEnd = normalizeDateTimeValue(payload.end_time);
+        if (normalizedEnd) {
+          payload.end_time = normalizedEnd;
+        }
+
+        // Ensure timed events retain a meaningful duration. Google recurring events
+        // sometimes arrive with end_time === start_time; fall back to metadata or
+        // a reasonable default rather than storing a zero-length span.
+        if (payload.all_day) {
+          if (!payload.end_time) {
+            payload.end_time = payload.start_time;
           }
-          return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed) ? `${trimmed}:00` : trimmed;
-        };
-        payload.start_time = normalizeDateTime(payload.start_time);
-        payload.end_time = normalizeDateTime(payload.end_time);
+        } else if (payload.start_time) {
+          const startMs = Date.parse(payload.start_time);
+          let endMs = payload.end_time ? Date.parse(payload.end_time) : NaN;
+          const hasValidEnd = payload.end_time && !Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs > startMs;
+
+          if (!hasValidEnd) {
+            const candidateEnds: Array<any> = [
+              input.end_time,
+              input.metadata?.end_time,
+              input.metadata?.final_end_time,
+              input.metadata?.original_end_time,
+              input.metadata?.google_end_time,
+              input.metadata?.google_event_end,
+              input.metadata?.google_event?.end?.dateTime,
+              input.metadata?.google_event?.end?.date,
+              input.metadata?.google?.end?.dateTime,
+              input.metadata?.google?.end?.date
+            ];
+
+            for (const candidate of candidateEnds) {
+              const normalized = normalizeDateTimeValue(candidate);
+              if (!normalized) continue;
+              const candidateMs = Date.parse(normalized);
+              if (!Number.isNaN(candidateMs) && !Number.isNaN(startMs) && candidateMs > startMs) {
+                payload.end_time = normalized;
+                endMs = candidateMs;
+                break;
+              }
+            }
+
+            if (!payload.end_time || Number.isNaN(endMs) || endMs <= startMs) {
+              const durationMinutes = typeof input.metadata?.duration_minutes === 'number' && input.metadata.duration_minutes > 0
+                ? input.metadata.duration_minutes
+                : 60;
+              payload.end_time = addMinutesToDateTimeString(payload.start_time, durationMinutes);
+            }
+          }
+        }
         // Ensure created_by is set for RLS/ownership
         if (currentUserId && !payload.created_by) {
           payload.created_by = currentUserId;

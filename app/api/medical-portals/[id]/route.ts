@@ -3,13 +3,14 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { ensurePortalAndPassword, deletePortalById } from '@/lib/services/portal-password-sync';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { decrypt } from '@/lib/encryption';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = (portal: any) => {
+const serializePortal = async (portal: any) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password);
     } catch (error) {
       console.error('[Medical Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -69,7 +70,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json({ portal: serializePortal(portal) });
+    return NextResponse.json({ portal: await serializePortal(portal) });
   } catch (error) {
     console.error('Error in GET /api/medical-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -80,6 +81,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();
@@ -151,7 +155,7 @@ export async function PUT(
       updates.password = password
         ? await (async () => {
             const { encrypt } = await import('@/lib/encryption');
-            return encrypt(password);
+            return await encrypt(password);
           })()
         : null;
     }
@@ -207,7 +211,7 @@ export async function PUT(
       if (portalPassword == null && portal.password) {
         try {
           const { decrypt } = await import('@/lib/encryption');
-          portalPassword = decrypt(portal.password);
+          portalPassword = await decrypt(portal.password);
         } catch (error) {
           console.error('[Medical Portals] Failed to decrypt existing password', error);
         }
@@ -234,7 +238,7 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({ portal: serializePortal(portal) });
+    return NextResponse.json({ portal: await serializePortal(portal) });
   } catch (error) {
     console.error('Error in PUT /api/medical-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -245,6 +249,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();

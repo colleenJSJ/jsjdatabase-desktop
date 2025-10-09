@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useMemo, useState } from 'react';
+import { MouseEvent, ReactNode, useMemo, useState } from 'react';
 import {
   Copy,
   CopyCheck,
@@ -43,7 +43,8 @@ type PasswordCardProps = {
   showFavoriteToggle?: boolean;
   onToggleFavorite?: (next: boolean) => void;
   strengthOverride?: PasswordStrength;
-  onOpenUrl?: () => void;
+  onOpen?: () => void;
+  variant?: 'default' | 'compact';
 };
 
 type CopyTarget = 'url' | 'username' | 'password' | 'all';
@@ -88,7 +89,8 @@ export function PasswordCard({
   showFavoriteToggle = true,
   onToggleFavorite,
   strengthOverride,
-  onOpenUrl,
+  onOpen,
+  variant = 'default',
 }: PasswordCardProps) {
   const { updateActivity } = usePasswordSecurityOptional();
   const [showPassword, setShowPassword] = useState(false);
@@ -96,6 +98,7 @@ export function PasswordCard({
 
   const servicePassword = isServicePassword(password) ? password : null;
   const supabasePassword = servicePassword ? null : (password as SupabasePassword);
+  const isCompact = variant === 'compact';
 
   const initialFavorite = servicePassword
     ? servicePassword.is_favorite
@@ -120,6 +123,53 @@ export function PasswordCard({
     }
     return supabasePassword?.title?.trim() || 'Untitled';
   }, [servicePassword, supabasePassword]);
+
+  const computeSourceLabel = () => {
+    const rawSource =
+      (supabasePassword as any)?.source_page ||
+      (supabasePassword as any)?.source ||
+      (servicePassword as any)?.source_page ||
+      (servicePassword as any)?.source ||
+      (password as any).source_page ||
+      (password as any).source ||
+      null;
+
+    if (!rawSource) return null;
+    const normalized = String(rawSource).toLowerCase();
+    const label = (() => {
+      switch (normalized) {
+        case 'medical':
+        case 'medical_portal':
+        case 'health':
+          return 'Health';
+        case 'pet':
+        case 'pet_portal':
+        case 'pets':
+          return 'Pets';
+        case 'academic':
+        case 'academic_portal':
+        case 'j3-academics':
+        case 'j3_academics':
+          return 'J3 Academics';
+        case 'documents':
+          return 'Documents';
+        case 'calendar':
+          return 'Calendar';
+        case 'manual_password':
+          return 'Manual Password';
+        default:
+          return rawSource
+            .toString()
+            .split(/[-_]/)
+            .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+      }
+    })();
+
+    return label ? `From ${label}` : null;
+  };
+
+  const derivedSourceLabel = sourceLabel ?? computeSourceLabel();
 
   const ownersDisplay = useMemo(() => {
     const ownerIds = new Set<string>();
@@ -189,9 +239,35 @@ export function PasswordCard({
     });
   };
 
+  const handleCopyAllButton = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handleCopy('all');
+  };
+
+  const cardClassName = [
+    'group relative overflow-hidden rounded-2xl border border-white/5 bg-[#30302e] p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/10 hover:bg-[#363633] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]',
+    onOpen ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400/60' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl border border-white/5 bg-[#30302e] p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/10 hover:bg-[#363633] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+      className={cardClassName}
+      onClick={e => {
+        if (e.defaultPrevented) return;
+        onOpen?.();
+      }}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={e => {
+        if (!onOpen) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
@@ -206,28 +282,40 @@ export function PasswordCard({
             <div className="truncate text-sm font-semibold leading-tight text-text-primary">
               {serviceName}
             </div>
-            {assignedLabel && (
+            {!isCompact && password.url && (
+              <div className="text-xs text-text-muted/80">{getFriendlyDomain(password.url)}</div>
+            )}
+            {isCompact && derivedSourceLabel && (
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/80">
+                {derivedSourceLabel}
+              </div>
+            )}
+            {!isCompact && assignedLabel && (
               <div className="text-xs text-text-muted/80">{assignedLabel}</div>
             )}
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/90">
-              {category?.name && (
-                <span
-                  className="rounded-full px-2 py-0.5 text-[10px] font-medium text-text-primary/85"
-                  style={{ backgroundColor: category.color || '#6366f1' }}
-                >
-                  {category.name}
-                </span>
-              )}
-              {sourceLabel && (
-                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-text-muted">{sourceLabel}</span>
-              )}
-              {subtitle && <span className="text-[10px] text-text-muted/80">{subtitle}</span>}
-            </div>
+            {!isCompact && (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted/90">
+                {category?.name && (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-medium text-text-primary/85"
+                    style={{ backgroundColor: category.color || '#6366f1' }}
+                  >
+                    {category.name}
+                  </span>
+                )}
+                {derivedSourceLabel && (
+                  <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-text-muted">{derivedSourceLabel}</span>
+                )}
+                {subtitle && <span className="text-[10px] text-text-muted/80">{subtitle}</span>}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <div className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
-              {strengthMeta.label}
-            </div>
+            {!isCompact && (
+              <div className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                {strengthMeta.label}
+              </div>
+            )}
             {showFavoriteToggle && (
               <button
                 onClick={() => {
@@ -269,9 +357,7 @@ export function PasswordCard({
                   href={smartUrlComplete(password.url)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => {
-                    onOpenUrl?.();
-                  }}
+                  onClick={e => e.stopPropagation()}
                   className="truncate font-mono text-[13px] text-text-primary/90 underline decoration-dotted underline-offset-4 hover:text-text-primary"
                 >
                   {getFriendlyDomain(password.url)}
@@ -302,13 +388,19 @@ export function PasswordCard({
                   <IconButton
                     variant={showPassword ? 'primary' : 'default'}
                     icon={showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    onClick={togglePassword}
+                    onClick={(event?: MouseEvent<HTMLButtonElement>) => {
+                      event?.stopPropagation();
+                      togglePassword();
+                    }}
                     title={showPassword ? 'Hide password' : 'Show password'}
                   />
                   <IconButton
                     active={copiedTarget === 'password'}
                     icon={copiedTarget === 'password' ? <CopyCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    onClick={() => handleCopy('password')}
+                    onClick={(event?: MouseEvent<HTMLButtonElement>) => {
+                      event?.stopPropagation();
+                      handleCopy('password');
+                    }}
                     title="Copy password"
                   />
                 </div>
@@ -321,16 +413,28 @@ export function PasswordCard({
           </div>
         </div>
 
-        {extraContent && (
+        {!isCompact && extraContent && (
           <div className="rounded-xl bg-white/[0.04] px-3 py-2 text-[13px] text-text-muted/80">
             {extraContent}
           </div>
         )}
         <div className="flex flex-col gap-3 pt-2">
-          {footerContent && <div className="text-xs text-text-muted/70">{footerContent}</div>}
-          <div className={`grid gap-2 ${canManage ? 'sm:grid-cols-3' : 'sm:grid-cols-1'}`}>
+          {!isCompact && footerContent && <div className="text-xs text-text-muted/70">{footerContent}</div>}
+          <div className="flex flex-wrap justify-end gap-2">
+            {canManage && (
+              <button
+                onClick={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onEdit();
+                }}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-white/20 hover:bg-white/10 hover:text-text-primary"
+              >
+                Edit
+              </button>
+            )}
             <button
-              onClick={() => handleCopy('all')}
+              onClick={handleCopyAllButton}
               className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 copiedTarget === 'all'
                   ? 'border border-emerald-400/60 bg-emerald-500/10 text-emerald-300'
@@ -340,20 +444,16 @@ export function PasswordCard({
               {copiedTarget === 'all' ? 'Copied!' : 'Copy All'}
             </button>
             {canManage && (
-              <>
-                <button
-                  onClick={onEdit}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-white/20 hover:bg-white/10 hover:text-text-primary"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={onDelete}
-                  className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:border-red-400 hover:bg-red-500/10"
-                >
-                  Delete
-                </button>
-              </>
+              <button
+                onClick={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:border-red-400 hover:bg-red-500/10"
+              >
+                Delete
+              </button>
             )}
           </div>
         </div>
@@ -382,7 +482,7 @@ const FieldRow = ({ label, children, action }: FieldRowProps) => (
 
 type IconButtonProps = {
   icon: ReactNode;
-  onClick: () => void;
+  onClick: (event?: MouseEvent<HTMLButtonElement>) => void;
   title: string;
   active?: boolean;
   variant?: 'default' | 'primary';
@@ -398,7 +498,10 @@ const IconButton = ({ icon, onClick, title, active = false, variant = 'default' 
 
   return (
     <button
-      onClick={onClick}
+      onClick={event => {
+        event.stopPropagation();
+        onClick(event);
+      }}
       className={`${base} ${classes}`}
       title={title}
       type="button"

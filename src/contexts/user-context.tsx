@@ -66,6 +66,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     fetchUser();
   }, []);
 
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/login');
+    }
+  }, [loading, user, router]);
+
   return (
     <UserContext.Provider value={{ user, loading, logout, refreshUser }}>
       {children}

@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useUser } from '@/contexts/user-context';
 import { CalendarEvent } from '@/lib/supabase/types';
 import { CategoriesClient, Category } from '@/lib/categories/categories-client';
-import { MonthView } from '@/components/calendar/MonthView';
-import { WeekView } from '@/components/calendar/WeekView';
-import { DayView } from '@/components/calendar/DayView';
-import { ListView } from '@/components/calendar/ListView';
-import { YearView } from '@/components/calendar/YearView';
-import { GanttView } from '@/components/calendar/GanttView';
-import { GoogleMapsLoader } from '@/components/calendar/GoogleMapsLoader';
-import { UnifiedEventModal } from '@/components/calendar/UnifiedEventModal';
+import dynamic from 'next/dynamic';
+const MonthView = dynamic(() => import('@/components/calendar/MonthView').then(mod => ({ default: mod.MonthView })), { ssr: false });
+const WeekView = dynamic(() => import('@/components/calendar/WeekView').then(mod => ({ default: mod.WeekView })), { ssr: false });
+const DayView = dynamic(() => import('@/components/calendar/DayView').then(mod => ({ default: mod.DayView })), { ssr: false });
+const ListView = dynamic(() => import('@/components/calendar/ListView').then(mod => ({ default: mod.ListView })), { ssr: false });
+const YearView = dynamic(() => import('@/components/calendar/YearView').then(mod => ({ default: mod.YearView })), { ssr: false });
+const GanttView = dynamic(() => import('@/components/calendar/GanttView').then(mod => ({ default: mod.GanttView })), { ssr: false });
+const GoogleMapsLoader = dynamic(() => import('@/components/calendar/GoogleMapsLoader').then(mod => ({ default: mod.GoogleMapsLoader })), { ssr: false });
+const UnifiedEventModal = dynamic(() => import('@/components/calendar/UnifiedEventModal').then(mod => ({ default: mod.UnifiedEventModal })), { ssr: false });
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { Plus, Maximize2, Minimize2 } from 'lucide-react';
 import { UnifiedSearchFilter } from '@/components/calendar/UnifiedSearchFilter';
@@ -21,6 +23,8 @@ type CalendarView = 'month' | 'week' | 'day' | 'list' | 'gantt' | 'year';
 
 export default function CalendarPageClient() {
   const { user } = useUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [view, setView] = useState<CalendarView>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -38,7 +42,20 @@ export default function CalendarPageClient() {
   const [showTasks, setShowTasks] = useState<boolean>(false);
   const [showAllDayOnly, setShowAllDayOnly] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  
+  const [forceOpenEventId, setForceOpenEventId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const openParam = searchParams.get('open');
+    if (!openParam) return;
+    const [type, id] = openParam.split(':');
+    if (type === 'calendar_event' && id) {
+      setForceOpenEventId(id);
+    }
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete('open');
+    const nextQuery = sp.toString();
+    router.replace(nextQuery ? `/calendar?${nextQuery}` : '/calendar', { scroll: false });
+  }, [searchParams, router]);
 
   useEffect(() => {
     const load = async () => {
@@ -58,6 +75,18 @@ export default function CalendarPageClient() {
     };
     load();
   }, []);
+
+  useEffect(() => {
+    if (!forceOpenEventId) return;
+    const event = events.find(ev => ev.id === forceOpenEventId);
+    if (!event) return;
+    const start = new Date(event.start_time);
+    if (!Number.isNaN(start.getTime())) {
+      setCurrentDate(start);
+    }
+  }, [forceOpenEventId, events]);
+
+  const handleForceOpenHandled = () => setForceOpenEventId(null);
 
   const toggleFullscreen = () => {
     const el = document.documentElement;
@@ -226,74 +255,86 @@ export default function CalendarPageClient() {
                 return (
                   <>
                     {view === 'month' && (
-                      <MonthView
-                        currentDate={currentDate}
-                        events={evs}
-                        categories={categories}
-                        googleCalendars={googleCalendars}
-                        user={user ? { role: user.role } : null}
-                        setSelectedDate={setSelectedDate}
-                        setShowCreateModal={setShowCreateModal}
-                        onEventsChange={onEventsChange}
-                        onRangeSelect={(r) => { setRangePrefill({ startDate: r.start, endDate: r.end, isAllDay: r.isAllDay }); setSelectedDate(r.start); setShowCreateModal(true); }}
-                      />
+          <MonthView
+            currentDate={currentDate}
+            events={evs}
+            categories={categories}
+            googleCalendars={googleCalendars}
+            user={user ? { role: user.role } : null}
+            setSelectedDate={setSelectedDate}
+            setShowCreateModal={setShowCreateModal}
+            onEventsChange={onEventsChange}
+            onRangeSelect={(r) => { setRangePrefill({ startDate: r.start, endDate: r.end, isAllDay: r.isAllDay }); setSelectedDate(r.start); setShowCreateModal(true); }}
+            forceOpenEventId={forceOpenEventId ?? undefined}
+            onForceOpenHandled={handleForceOpenHandled}
+          />
                     )}
                     {view === 'week' && (
-                      <WeekView
-                        currentDate={currentDate}
-                        events={evs}
-                        categories={categories}
-                        googleCalendars={googleCalendars}
-                        user={user ? { role: user.role } : null}
-                        setSelectedDate={setSelectedDate}
-                        setShowCreateModal={setShowCreateModal}
-                        onEventsChange={onEventsChange}
-                        onRangeSelect={(r) => { setRangePrefill({ startDate: r.start, endDate: r.end, isAllDay: r.isAllDay }); setSelectedDate(r.start); setShowCreateModal(true); }}
-                      />
+          <WeekView
+            currentDate={currentDate}
+            events={evs}
+            categories={categories}
+            googleCalendars={googleCalendars}
+            user={user ? { role: user.role } : null}
+            setSelectedDate={setSelectedDate}
+            setShowCreateModal={setShowCreateModal}
+            onEventsChange={onEventsChange}
+            onRangeSelect={(r) => { setRangePrefill({ startDate: r.start, endDate: r.end, isAllDay: r.isAllDay }); setSelectedDate(r.start); setShowCreateModal(true); }}
+            forceOpenEventId={forceOpenEventId ?? undefined}
+            onForceOpenHandled={handleForceOpenHandled}
+          />
                     )}
                     {view === 'day' && (
-                      <DayView
-                        currentDate={currentDate}
-                        events={evs}
-                        categories={categories}
-                        googleCalendars={googleCalendars}
-                        user={user ? { role: user.role } : null}
-                        setSelectedDate={setSelectedDate}
-                        setShowCreateModal={setShowCreateModal}
-                        onEventsChange={onEventsChange}
-                        onRangeSelect={(r) => { setRangePrefill({ startDate: r.start, endDate: r.end, isAllDay: r.isAllDay }); setSelectedDate(r.start); setShowCreateModal(true); }}
-                      />
+          <DayView
+            currentDate={currentDate}
+            events={evs}
+            categories={categories}
+            googleCalendars={googleCalendars}
+            user={user ? { role: user.role } : null}
+            setSelectedDate={setSelectedDate}
+            setShowCreateModal={setShowCreateModal}
+            onEventsChange={onEventsChange}
+            onRangeSelect={(r) => { setRangePrefill({ startDate: r.start, endDate: r.end, isAllDay: r.isAllDay }); setSelectedDate(r.start); setShowCreateModal(true); }}
+            forceOpenEventId={forceOpenEventId ?? undefined}
+            onForceOpenHandled={handleForceOpenHandled}
+          />
                     )}
                     {view === 'list' && (
-                      <ListView
-                        events={evs}
-                        categories={categories}
-                        googleCalendars={googleCalendars}
-                        user={user ? { role: user.role } : null}
-                        onEventsChange={onEventsChange}
-                      />
+          <ListView
+            events={evs}
+            categories={categories}
+            googleCalendars={googleCalendars}
+            user={user ? { role: user.role } : null}
+            onEventsChange={onEventsChange}
+            forceOpenEventId={forceOpenEventId ?? undefined}
+            onForceOpenHandled={handleForceOpenHandled}
+          />
                     )}
                     {view === 'year' && (
                       <div className="h-full">
-                        <YearView
-                          currentDate={currentDate}
-                          events={evs}
-                          googleCalendars={googleCalendars}
-                          categories={categories}
-                          onEventsChange={onEventsChange}
-                        />
+            <YearView
+              currentDate={currentDate}
+              events={evs}
+              googleCalendars={googleCalendars}
+              categories={categories}
+              onEventsChange={onEventsChange}
+              forceOpenEventId={forceOpenEventId ?? undefined}
+              onForceOpenHandled={handleForceOpenHandled}
+            />
                       </div>
                     )}
                     {view === 'gantt' && (
                       <div className="h-full">
-                        <GanttView
-                          currentDate={currentDate}
-                          events={evs}
-                          categories={categories}
-                          googleCalendars={googleCalendars}
-                          user={user ? { role: user.role } : null}
-                          onEventsChange={onEventsChange}
-                        />
+            <GanttView
+              currentDate={currentDate}
+              events={evs}
+              categories={categories}
+              googleCalendars={googleCalendars}
+              user={user ? { role: user.role } : null}
+              onEventsChange={onEventsChange}
+              forceOpenEventId={forceOpenEventId ?? undefined}
+              onForceOpenHandled={handleForceOpenHandled}
+            />
                       </div>
                     )}
                   </>

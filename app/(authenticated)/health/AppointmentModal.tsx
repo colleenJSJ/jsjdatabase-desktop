@@ -3,9 +3,11 @@ import { X } from 'lucide-react';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { DateDisplay } from '@/components/ui/date-display';
 import { TimeInput } from '@/components/ui/time-input';
-import { CalendarSelector } from '@/components/calendar/CalendarSelector';
+import { CalendarSelector, type GoogleCalendar as CalendarOption } from '@/components/calendar/CalendarSelector';
 import { RecentContactsAutocomplete } from '@/components/ui/recent-contacts-autocomplete';
 import { createClient } from '@/lib/supabase/client';
+import ApiClient from '@/lib/api/api-client';
+import type { AppointmentFormState, AppointmentSavePayload, ReminderOption } from './types';
 
 interface Doctor {
   id: string;
@@ -29,11 +31,11 @@ export function AppointmentModal({
   doctors: Doctor[];
   familyMembers: FamilyMember[];
   onClose: () => void; 
-  onSave: (appointment: any) => void;
+  onSave: (appointment: AppointmentSavePayload) => void;
 }) {
   const supabase = createClient();
-  const [googleCalendars, setGoogleCalendars] = useState<any[]>([]);
-  const [formData, setFormData] = useState({
+  const [googleCalendars, setGoogleCalendars] = useState<CalendarOption[]>([]);
+  const [formData, setFormData] = useState<AppointmentFormState>({
     title: '',
     doctor: '',
     doctor_id: '',
@@ -47,7 +49,7 @@ export function AppointmentModal({
     appointment_type: 'checkup',
     notes: '',
     reminder: '1-day', // 1-day, 1-week, none
-    google_calendar_id: '' as string,
+    google_calendar_id: '',
     google_sync_enabled: true, // Default to sync with Google Calendar
     additional_attendees: '',
     notify_attendees: true,
@@ -64,7 +66,7 @@ export function AppointmentModal({
     { value: 'other', label: 'Other' },
   ];
 
-  const reminderOptions = [
+  const reminderOptions: Array<{ value: ReminderOption; label: string }> = [
     { value: 'none', label: 'No reminder' },
     { value: '1-hour', label: '1 hour before' },
     { value: '1-day', label: '1 day before' },
@@ -84,16 +86,39 @@ export function AppointmentModal({
             .order('is_primary', { ascending: false });
           
           if (calendars && calendars.length > 0) {
-            setGoogleCalendars(calendars);
-            // Auto-select primary calendar or first available
-            const primaryCalendar = calendars.find((cal: any) => cal.is_primary);
-            const defaultCalendar = primaryCalendar || calendars[0];
-            if (defaultCalendar) {
-              setFormData(prev => ({ 
-                ...prev, 
-                google_calendar_id: defaultCalendar.google_calendar_id,
-                google_sync_enabled: true 
-              }));
+            type CalendarRow = {
+              google_calendar_id: string | null;
+              name: string | null;
+              background_color: string | null;
+              foreground_color: string | null;
+              is_primary: boolean | null;
+              can_write?: boolean | null;
+            };
+
+            const typedCalendars = (calendars as CalendarRow[]).reduce<CalendarOption[]>((acc, calendar) => {
+              if (!calendar.google_calendar_id) return acc;
+              acc.push({
+                google_calendar_id: calendar.google_calendar_id,
+                name: calendar.name ?? 'Google Calendar',
+                background_color: calendar.background_color ?? '#6366f1',
+                foreground_color: calendar.foreground_color ?? '#ffffff',
+                is_primary: Boolean(calendar.is_primary),
+                can_write: calendar.can_write ?? true,
+              });
+              return acc;
+            }, []);
+
+            if (typedCalendars.length > 0) {
+              setGoogleCalendars(typedCalendars);
+              const primaryCalendar = typedCalendars.find(cal => cal.is_primary);
+              const defaultCalendar = primaryCalendar ?? typedCalendars[0];
+              if (defaultCalendar) {
+                setFormData(prev => ({
+                  ...prev,
+                  google_calendar_id: defaultCalendar.google_calendar_id,
+                  google_sync_enabled: true,
+                }));
+              }
             }
           }
         }
@@ -135,7 +160,7 @@ export function AppointmentModal({
       // Calculate end time based on duration
       const endDateTime = new Date(appointmentDateTime.getTime() + parseInt(formData.duration) * 60 * 1000);
 
-      const appointmentData = {
+      const appointmentData: AppointmentSavePayload = {
         ...formData,
         appointment_date: appointmentDateTime.toISOString(),
         appointment_datetime: appointmentDateTime.toISOString(), // Keep for compatibility
@@ -148,7 +173,6 @@ export function AppointmentModal({
       if (formData.additional_attendees) {
         const emails = formData.additional_attendees.split(',').map(email => email.trim()).filter(email => email);
         if (emails.length > 0) {
-          const ApiClient = (await import('@/lib/api/api-client')).default;
           ApiClient.post('/api/recent-contacts/add', { emails }).catch(err => console.error('Failed to save recent contacts:', err));
         }
       }
@@ -165,7 +189,7 @@ export function AppointmentModal({
       <div className="bg-background-secondary rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-text-primary">Add Medical Appointment</h2>
+            <h2 className="text-xl font-semibold text-text-primary">Add Health Appointment</h2>
             <button
               onClick={onClose}
               className="text-text-muted hover:text-text-primary transition-colors"
@@ -218,37 +242,44 @@ export function AppointmentModal({
 
             <div>
               <label className="block text-sm font-medium text-text-primary mb-2">
-                Who is this appointment for? *
+                Attendees
               </label>
-              <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
                 {familyMembers
                   .filter(member => !['Colleen Russell', 'Kate McLaren'].includes(member.name))
-                  .map(member => (
-                  <label key={member.id} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      value={member.id}
-                      checked={formData.patient_ids.includes(member.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setFormData({ 
-                            ...formData, 
-                            patient_ids: [...formData.patient_ids, member.id],
-                            patient_names: [...formData.patient_names, member.name]
+                  .map(member => {
+                    const isSelected = formData.patient_ids.includes(member.id);
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => {
+                            const alreadySelected = prev.patient_ids.includes(member.id);
+                            if (alreadySelected) {
+                              return {
+                                ...prev,
+                                patient_ids: prev.patient_ids.filter(id => id !== member.id),
+                                patient_names: prev.patient_names.filter(name => name !== member.name)
+                              };
+                            }
+                            return {
+                              ...prev,
+                              patient_ids: [...prev.patient_ids, member.id],
+                              patient_names: [...prev.patient_names, member.name]
+                            };
                           });
-                        } else {
-                          setFormData({ 
-                            ...formData, 
-                            patient_ids: formData.patient_ids.filter(id => id !== member.id),
-                            patient_names: formData.patient_names.filter(name => name !== member.name)
-                          });
-                        }
-                      }}
-                      className="rounded border-neutral-600 bg-neutral-700 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="text-sm text-text-primary">{member.name}</span>
-                  </label>
-                ))}
+                        }}
+                        className={`px-3.5 py-1.5 text-sm rounded-full border transition-colors whitespace-nowrap ${
+                          isSelected
+                            ? 'bg-[#3b4e76] border-[#3b4e76] text-white'
+                            : 'bg-[#2a2a2a] border-gray-600/40 text-text-primary hover:border-[#3b4e76]'
+                        }`}
+                      >
+                        {member.name}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
 
@@ -340,18 +371,18 @@ export function AppointmentModal({
                 onChange={(value) => setFormData({ ...formData, additional_attendees: Array.isArray(value) ? value.join(', ') : value })}
                 className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
               />
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="health-no-email"
-                  checked={!formData.notify_attendees}
-                  onChange={(e) => setFormData({ ...formData, notify_attendees: !e.target.checked })}
-                  className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500"
-                />
-                <label htmlFor="health-no-email" className="text-sm font-medium text-text-primary">
-                  Don’t send email invite
-                </label>
-              </div>
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, notify_attendees: !prev.notify_attendees }))}
+                aria-pressed={!formData.notify_attendees}
+                className={`w-full px-4 py-2 rounded-full border transition-colors text-sm ${
+                  !formData.notify_attendees
+                    ? 'border-[#9b3a3a] bg-[#9b3a3a] text-white'
+                    : 'bg-[#2a2a2a] border-gray-600/40 text-text-primary hover:border-[#9b3a3a]'
+                }`}
+              >
+                Don’t send email invite
+              </button>
             </div>
 
             <div>
@@ -360,7 +391,7 @@ export function AppointmentModal({
               </label>
               <select
                 value={formData.reminder}
-                onChange={(e) => setFormData({ ...formData, reminder: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, reminder: e.target.value as ReminderOption })}
                 className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
               >
                 {reminderOptions.map(option => (
@@ -390,7 +421,7 @@ export function AppointmentModal({
                     className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500"
                   />
                   <label htmlFor="save-local-only" className="text-sm font-medium text-text-primary">
-                    Save locally only (don't sync to Google)
+                    Save locally only (don&apos;t sync to Google)
                   </label>
                 </div>
 
@@ -399,18 +430,18 @@ export function AppointmentModal({
 
             <div className="flex gap-3 pt-4">
               <button
-                type="submit"
-                disabled={loading || !formData.title || formData.patient_names.length === 0 || !formData.appointment_date || !formData.appointment_time}
-                className="flex-1 py-2 px-4 bg-button-create hover:bg-button-create/90 disabled:bg-gray-700/50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
-              >
-                {loading ? 'Saving...' : 'Save Appointment'}
-              </button>
-              <button
                 type="button"
                 onClick={onClose}
                 className="flex-1 py-2 px-4 bg-background-primary hover:bg-background-primary/80 text-text-primary font-medium rounded-md border border-gray-600/30 transition-colors"
               >
                 Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !formData.title || formData.patient_names.length === 0 || !formData.appointment_date || !formData.appointment_time}
+                className="flex-1 py-2 px-4 bg-button-create hover:bg-button-create/90 disabled:bg-gray-700/50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
+              >
+                {loading ? 'Saving...' : 'Save Appointment'}
               </button>
             </div>
           </form>

@@ -11,6 +11,8 @@ export function DocumentUploadPanel({
   onSmartUploadClick,
   smartUploading = false,
   smartUploadButton,
+  chooseFileLabel,
+  uploadHint,
 }: {
   pendingFiles: PendingDoc[];
   setPendingFiles: (files: PendingDoc[]) => void;
@@ -18,12 +20,16 @@ export function DocumentUploadPanel({
   onSmartUploadClick?: () => void;
   smartUploading?: boolean;
   smartUploadButton?: React.ReactNode;
+  chooseFileLabel?: string;
+  uploadHint?: string;
 }) {
   const manualRef = (node: HTMLInputElement | null) => {
     if (!node) return;
     (DocumentUploadPanel as any)._fileInput = node;
   };
   const triggerManual = () => (DocumentUploadPanel as any)._fileInput?.click();
+  const buttonLabel = chooseFileLabel ?? 'Choose File';
+  const hintText = uploadHint ?? 'Documents upload after you save the event.';
 
   return (
     <div className="space-y-2">
@@ -33,7 +39,7 @@ export function DocumentUploadPanel({
           onClick={triggerManual}
           className="flex-1 w-full justify-center px-4 py-2 bg-background-primary border border-gray-600/40 rounded-xl text-text-primary hover:bg-gray-700/30"
         >
-          Choose File
+          {buttonLabel}
         </button>
         <input
           ref={manualRef as any}
@@ -89,7 +95,7 @@ export function DocumentUploadPanel({
               </div>
             </div>
           ))}
-          <div className="text-xs text-text-muted">Documents upload after you save the event.</div>
+          <div className="text-xs text-text-muted">{hintText}</div>
         </div>
       )}
     </div>

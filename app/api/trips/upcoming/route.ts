@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const supabase = await createServiceClient();
@@ -26,11 +26,10 @@ export async function GET() {
       .order('start_date', { ascending: true });
 
     if (error) {
-
-      return NextResponse.json(
-        { error: 'Failed to fetch trips' },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch trips', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     // Transform the data to include participants
@@ -39,12 +38,15 @@ export async function GET() {
       participants: trip.trip_participants?.map((participant: any) => participant.users) || [],
     }));
 
-    return NextResponse.json({ trips: tripsWithParticipants });
+    return jsonSuccess({ trips: tripsWithParticipants }, {
+      legacy: { trips: tripsWithParticipants },
+    });
   } catch (error) {
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }

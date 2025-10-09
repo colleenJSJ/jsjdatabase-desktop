@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     if (process.env.NODE_ENV === 'production') {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const authResult = await requireAdmin();
+    const authResult = await requireAdmin(request, { skipCSRF: true });
     if ('error' in authResult) {
       return authResult.error;
     }

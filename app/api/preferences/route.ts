@@ -1,14 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
+
     const { user, supabase } = authResult;
     
     // Get user preferences
@@ -18,44 +20,44 @@ export async function GET() {
       .eq('user_id', user.id)
       .single();
     
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-      return NextResponse.json(
-        { error: 'Failed to fetch preferences' },
-        { status: 500 }
-      );
+    if (error && error.code !== 'PGRST116') {
+      return jsonError('Failed to fetch preferences', { status: 500 });
     }
-    
-    // Return preferences or empty object if none exist
-    return NextResponse.json({ 
-      preferences: preferences ? {
-        timezone: preferences.timezone,
-        dateFormat: preferences.date_format,
-        timeFormat: preferences.time_format,
-        weekStartsOn: preferences.week_starts_on,
-        notificationsEnabled: preferences.notifications_enabled,
-        emailNotifications: preferences.email_notifications,
-        taskReminders: preferences.task_reminders,
-        calendarDefaultView: preferences.calendar_default_view,
-        theme: preferences.theme,
-        language: preferences.language
-      } : null
+
+    const preferencePayload = preferences
+      ? {
+          timezone: preferences.timezone,
+          dateFormat: preferences.date_format,
+          timeFormat: preferences.time_format,
+          weekStartsOn: preferences.week_starts_on,
+          notificationsEnabled: preferences.notifications_enabled,
+          emailNotifications: preferences.email_notifications,
+          taskReminders: preferences.task_reminders,
+          calendarDefaultView: preferences.calendar_default_view,
+          theme: preferences.theme,
+          language: preferences.language,
+        }
+      : null;
+
+    return jsonSuccess({ preferences: preferencePayload }, {
+      legacy: { preferences: preferencePayload },
     });
   } catch (error) {
     console.error('Error fetching preferences:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
+
     const { user, supabase } = authResult;
     const body = await request.json();
     
@@ -79,46 +81,45 @@ export async function POST(request: NextRequest) {
       .single();
     
     if (error) {
-      // If already exists, return the existing preferences
-      if (error.code === '23505') { // Unique constraint violation
-        return GET();
+      if (error.code === '23505') {
+        return GET(request);
       }
-      return NextResponse.json(
-        { error: 'Failed to create preferences' },
-        { status: 500 }
-      );
+      return jsonError('Failed to create preferences', { status: 500 });
     }
-    
-    return NextResponse.json({ 
-      preferences: {
-        timezone: preferences.timezone,
-        dateFormat: preferences.date_format,
-        timeFormat: preferences.time_format,
-        weekStartsOn: preferences.week_starts_on,
-        notificationsEnabled: preferences.notifications_enabled,
-        emailNotifications: preferences.email_notifications,
-        taskReminders: preferences.task_reminders,
-        calendarDefaultView: preferences.calendar_default_view,
-        theme: preferences.theme,
-        language: preferences.language
-      }
+
+    const preferencePayload = {
+      timezone: preferences.timezone,
+      dateFormat: preferences.date_format,
+      timeFormat: preferences.time_format,
+      weekStartsOn: preferences.week_starts_on,
+      notificationsEnabled: preferences.notifications_enabled,
+      emailNotifications: preferences.email_notifications,
+      taskReminders: preferences.task_reminders,
+      calendarDefaultView: preferences.calendar_default_view,
+      theme: preferences.theme,
+      language: preferences.language,
+    };
+
+    return jsonSuccess({ preferences: preferencePayload }, {
+      status: 201,
+      legacy: { preferences: preferencePayload },
     });
   } catch (error) {
     console.error('Error creating preferences:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }
 
 export async function PUT(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
+
     const { user, supabase } = authResult;
     const body = await request.json();
     
@@ -166,9 +167,9 @@ export async function PUT(request: NextRequest) {
         .insert(payload)
         .select()
         .single();
-      if (createErr) {
-        console.error('[Preferences] Create failed:', createErr);
-        return NextResponse.json({ error: 'Failed to update preferences' }, { status: 500 });
+        if (createErr) {
+          console.error('[Preferences] Create failed:', createErr);
+          return jsonError('Failed to update preferences', { status: 500 });
       }
       preferences = created;
     } else {
@@ -185,31 +186,30 @@ export async function PUT(request: NextRequest) {
           .single();
         if (updateErr) {
           console.error('[Preferences] Update failed:', updateErr);
-          return NextResponse.json({ error: 'Failed to update preferences' }, { status: 500 });
+          return jsonError('Failed to update preferences', { status: 500 });
         }
         preferences = updated;
       }
     }
 
-    return NextResponse.json({
-      preferences: {
-        timezone: preferences.timezone,
-        dateFormat: preferences.date_format,
-        timeFormat: preferences.time_format,
-        weekStartsOn: preferences.week_starts_on,
-        notificationsEnabled: preferences.notifications_enabled,
-        emailNotifications: preferences.email_notifications,
-        taskReminders: preferences.task_reminders,
-        calendarDefaultView: preferences.calendar_default_view,
-        theme: preferences.theme,
-        language: preferences.language,
-      },
+    const preferencePayload = {
+      timezone: preferences.timezone,
+      dateFormat: preferences.date_format,
+      timeFormat: preferences.time_format,
+      weekStartsOn: preferences.week_starts_on,
+      notificationsEnabled: preferences.notifications_enabled,
+      emailNotifications: preferences.email_notifications,
+      taskReminders: preferences.task_reminders,
+      calendarDefaultView: preferences.calendar_default_view,
+      theme: preferences.theme,
+      language: preferences.language,
+    };
+
+    return jsonSuccess({ preferences: preferencePayload }, {
+      legacy: { preferences: preferencePayload },
     });
   } catch (error) {
     console.error('Error updating preferences:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

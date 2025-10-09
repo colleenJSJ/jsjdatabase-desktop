@@ -308,24 +308,27 @@ export function ContactModal({
             {showRelated && relatedEntities.length > 0 && (
               <div className="space-y-3">
                 <label className={labelClass}>{getLabel(labels, 'relatedToLabel', 'Related To')}</label>
-                <div className="grid grid-cols-1 gap-2 rounded-lg border border-white/10 bg-background-primary/60 p-3">
+                <div className="flex flex-wrap gap-2">
                   {relatedEntities.map(entity => {
-                    const checked = formValues.related_to.includes(entity.id);
+                    const active = formValues.related_to.includes(entity.id);
                     return (
-                      <label key={entity.id} className="flex items-center gap-2 text-sm text-text-primary">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={event => {
-                            const next = event.target.checked
-                              ? [...formValues.related_to, entity.id]
-                              : formValues.related_to.filter(id => id !== entity.id);
-                            setFormValues(prev => ({ ...prev, related_to: next }));
-                          }}
-                          className="h-4 w-4 rounded border-white/20 bg-transparent"
-                        />
+                      <button
+                        key={entity.id}
+                        type="button"
+                        onClick={() => {
+                          const next = active
+                            ? formValues.related_to.filter(id => id !== entity.id)
+                            : [...formValues.related_to, entity.id];
+                          setFormValues(prev => ({ ...prev, related_to: next }));
+                        }}
+                        className={`px-3.5 py-1.5 text-sm rounded-full border transition-colors whitespace-nowrap ${
+                          active
+                            ? 'bg-[#3b4e76] border-[#3b4e76] text-white'
+                            : 'bg-[#2a2a2a] border-neutral-600/60 text-neutral-200 hover:border-[#3b4e76]'
+                        }`}
+                      >
                         {entity.label}
-                      </label>
+                      </button>
                     );
                   })}
                 </div>
@@ -335,24 +338,27 @@ export function ContactModal({
             {showAssigned && assignedOptions.length > 0 && (
               <div className="space-y-3">
                 <label className={labelClass}>{getLabel(labels, 'assignedEntitiesLabel', 'Assigned Entities')}</label>
-                <div className="grid grid-cols-1 gap-2 rounded-lg border border-white/10 bg-background-primary/60 p-3">
+                <div className="flex flex-wrap gap-2">
                   {assignedOptions.map(entity => {
-                    const checked = formValues.assigned_entities.includes(entity.id);
+                    const active = formValues.assigned_entities.includes(entity.id);
                     return (
-                      <label key={entity.id} className="flex items-center gap-2 text-sm text-text-primary">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={event => {
-                            const next = event.target.checked
-                              ? [...formValues.assigned_entities, entity.id]
-                              : formValues.assigned_entities.filter(id => id !== entity.id);
-                            setFormValues(prev => ({ ...prev, assigned_entities: next }));
-                          }}
-                          className="h-4 w-4 rounded border-white/20 bg-transparent"
-                        />
+                      <button
+                        key={entity.id}
+                        type="button"
+                        onClick={() => {
+                          const next = active
+                            ? formValues.assigned_entities.filter(id => id !== entity.id)
+                            : [...formValues.assigned_entities, entity.id];
+                          setFormValues(prev => ({ ...prev, assigned_entities: next }));
+                        }}
+                        className={`px-3.5 py-1.5 text-sm rounded-full border transition-colors whitespace-nowrap ${
+                          active
+                            ? 'bg-[#3b4e76] border-[#3b4e76] text-white'
+                            : 'bg-[#2a2a2a] border-neutral-600/60 text-neutral-200 hover:border-[#3b4e76]'
+                        }`}
+                      >
                         {entity.label}
-                      </label>
+                      </button>
                     );
                   })}
                 </div>

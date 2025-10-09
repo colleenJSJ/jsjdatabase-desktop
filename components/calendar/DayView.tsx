@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { CalendarEvent, CalendarEventCategory } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { Plus } from 'lucide-react';
@@ -23,6 +23,8 @@ interface DayViewProps {
   setShowCreateModal: (show: boolean) => void;
   onEventsChange: () => void;
   onRangeSelect?: (range: { start: Date; end: Date; isAllDay: boolean }) => void;
+  forceOpenEventId?: string;
+  onForceOpenHandled?: () => void;
 }
 
 export function DayView({
@@ -34,15 +36,44 @@ export function DayView({
   setSelectedDate,
   setShowCreateModal,
   onEventsChange,
-  onRangeSelect
+  onRangeSelect,
+  forceOpenEventId,
+  onForceOpenHandled
 }: DayViewProps) {
   const { preferences } = usePreferences();
   const [showEditModal, setShowEditModal] = useState<CalendarEvent | null>(null);
   const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
-  const tooltipPosRef = useRef({ top: 0, left: 0 });
   const rafRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  const updateTooltipPosition = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const tooltipEl = tooltipRef.current;
+    if (!tooltipEl) return;
+
+    const gap = 12;
+    const width = tooltipEl.offsetWidth || 256;
+    const height = tooltipEl.offsetHeight || 150;
+
+    let left = event.clientX + gap;
+    let top = event.clientY + gap;
+
+    if (left + width > window.innerWidth - gap) {
+      left = event.clientX - width - gap;
+    }
+
+    if (top + height > window.innerHeight - gap) {
+      top = event.clientY - height - gap;
+    }
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const el = tooltipRef.current;
+      if (!el) return;
+      el.style.left = `${Math.max(gap, left)}px`;
+      el.style.top = `${Math.max(gap, top)}px`;
+    });
+  }, []);
   
   // Memoized calendar map for fast lookups
   const calById = useMemo(() => {
@@ -50,6 +81,14 @@ export function DayView({
     (googleCalendars || []).forEach((c: any) => m.set(c.google_calendar_id || c.id, c));
     return m;
   }, [googleCalendars]);
+
+  useEffect(() => {
+    if (!forceOpenEventId) return;
+    const event = events.find(ev => ev.id === forceOpenEventId);
+    if (!event) return;
+    setShowEditModal(event);
+    onForceOpenHandled?.();
+  }, [forceOpenEventId, events, onForceOpenHandled]);
 
   // Separate all-day events from timed events
   const allDayEvents = events.filter(event => event.all_day === true);
@@ -59,6 +98,9 @@ export function DayView({
   const dayPositions = useMemo(() => {
     return timedEvents.map(ev => {
       const evTz = getEventTimeZone(ev, googleCalendars, calById);
+      if (!isEventOnDayInViewerTZ(ev.start_time, ev.end_time, evTz, currentDate, preferences.timezone)) {
+        return null;
+      }
       const { startMin, endMin } = getStartEndMinutesOnDayInViewerTZ(ev.start_time, ev.end_time, evTz, currentDate, preferences.timezone);
       if (endMin <= 0 || startMin >= 1440) return null;
       return { ev, startMin: Math.max(0, startMin), endMin: Math.min(1440, endMin) };
@@ -77,6 +119,8 @@ export function DayView({
       return eventStart <= dayEnd && eventEnd >= dayStart;
     });
   };
+
+  const todayAllDayEvents = getTodayAllDayEvents();
 
   const getEventsForHour = (hour: number) => {
     return timedEvents.filter(event => {
@@ -142,35 +186,45 @@ export function DayView({
         <div className="min-w-[600px] h-full flex flex-col">
         
         {/* All-Day Events Section - fixed */}
-        {getTodayAllDayEvents().length > 0 && (
+        {todayAllDayEvents.length > 0 && (
           <div className="border-b border-gray-600 bg-background-primary/30 flex-shrink-0">
-            <div className="flex">
-              {/* Time column header with dual TZ labels */}
-              <div className="p-2 text-[11px] text-text-muted border-r-2 border-gray-600/30 bg-[#30302e] flex items-center justify-between"
-                   style={{ width: LABEL_COL_WIDTH }}>
-                <span>{CR_GMT}</span>
-                <span>{USER_GMT}</span>
+            <div className="grid" style={{ gridTemplateColumns: `${LABEL_COL_WIDTH}px 1fr` }}>
+              <div className="p-2 text-xs text-text-muted text-center border-r-2 border-gray-600/30 bg-[#30302e]">
+                All Day
               </div>
-              
-              {/* All-day events */}
-              <div className="flex-1 p-2 min-h-[40px]">
-                <div className="space-y-1">
-                  {getTodayAllDayEvents().map(event => (
-                    <div
+              <div className="p-2">
+                <div className="flex flex-wrap gap-2">
+                  {todayAllDayEvents.map(event => (
+                    <button
                       key={event.id}
-                      className="text-xs px-2 py-1 rounded cursor-pointer hover:opacity-90 truncate text-white font-medium inline-block mr-2"
+                      className="text-xs px-2 py-1 rounded cursor-pointer hover:opacity-90 truncate text-white font-medium"
                       style={{ backgroundColor: getEventColor(event, googleCalendars) }}
                       onClick={() => setShowEditModal(event)}
+                      onMouseEnter={(e) => {
+                        setHoveredEventId(event.id);
+                        updateTooltipPosition(e);
+                      }}
+                      onMouseMove={updateTooltipPosition}
+                      onMouseLeave={() => setHoveredEventId(prev => (prev === event.id ? null : prev))}
                       title={event.title}
                     >
                       {event.title}
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
             </div>
           </div>
         )}
+
+        {/* Timezone header row */}
+        <div className="grid flex-shrink-0" style={{ gridTemplateColumns: `${LABEL_COL_WIDTH}px 1fr` }}>
+          <div className="p-1 text-[11px] text-text-muted border-b border-gray-600/50 bg-[#30302e] flex items-center justify-between">
+            <span>{CR_GMT}</span>
+            <span>{USER_GMT}</span>
+          </div>
+          <div className="border-b border-gray-600/50" />
+        </div>
 
         {/* Time grid - expandable */}
         <div className="flex-1 min-h-0 overflow-y-auto relative">
@@ -230,8 +284,11 @@ export function DayView({
                       className="absolute left-2 right-2 px-2 text-xs text-white truncate cursor-pointer"
                       style={{ top: `${topPct}%`, height: `${heightPct}%`, backgroundColor: getEventColor(ev, googleCalendars), borderRadius: 4 }}
                       onClick={() => setShowEditModal(ev)}
-                      onMouseEnter={(e) => { setHoveredEventId(ev.id); if (tooltipRef.current) { tooltipRef.current.style.left = `${e.clientX+10}px`; tooltipRef.current.style.top = `${e.clientY+10}px`; } }}
-                      onMouseMove={(e) => { if(!tooltipRef.current)return; const gap=10,w=256,h=tooltipRef.current.offsetHeight||150; let L=e.clientX+gap,T=e.clientY+gap; if(L+w>innerWidth-gap)L=e.clientX-w-gap; if(T+h>innerHeight-gap)T=e.clientY-h-gap; if (rafRef.current) cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(()=>{ if (tooltipRef.current){ tooltipRef.current.style.left = `${L}px`; tooltipRef.current.style.top = `${T}px`; }}); }}
+                      onMouseEnter={(e) => {
+                        setHoveredEventId(ev.id);
+                        updateTooltipPosition(e);
+                      }}
+                      onMouseMove={updateTooltipPosition}
                       onMouseLeave={() => setHoveredEventId(null)}
                     >
                       <div className="truncate font-medium">{ev.title}</div>

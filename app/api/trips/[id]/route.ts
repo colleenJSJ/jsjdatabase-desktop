@@ -1,22 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
-    const { user, supabase } = authResult;
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
+
+    const { supabase } = authResult;
 
     const data = await request.json();
     
@@ -99,21 +100,25 @@ export async function PUT(
 
     if (error) {
       console.error('[Trips API] Failed to update trip:', error);
-      return NextResponse.json(
-        { error: 'Failed to update trip' },
-        { status: 500 }
-      );
+      return jsonError('Failed to update trip', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     // Skip trip_travelers updates - we're using traveler_names field directly now
 
-    return NextResponse.json({ trip });
+    return jsonSuccess({ trip }, {
+      legacy: { trip },
+    });
   } catch (error) {
     console.error('[Trips API] Error updating trip:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }
 
@@ -121,17 +126,17 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
-    const { user, supabase } = authResult;
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
+
+    const { supabase } = authResult;
     
     // First, get the trip to check for associated calendar event
     const { data: trip, error: fetchError } = await supabase
@@ -142,10 +147,10 @@ export async function DELETE(
 
     if (fetchError) {
       console.error('[Trips API] Failed to fetch trip:', fetchError);
-      return NextResponse.json(
-        { error: 'Trip not found' },
-        { status: 404 }
-      );
+      return jsonError('Trip not found', {
+        status: 404,
+        meta: { message: fetchError.message },
+      });
     }
 
     // Delete associated calendar event if exists
@@ -181,18 +186,22 @@ export async function DELETE(
 
     if (error) {
       console.error('[Trips API] Failed to delete trip:', error);
-      return NextResponse.json(
-        { error: 'Failed to delete trip' },
-        { status: 500 }
-      );
+      return jsonError('Failed to delete trip', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ deleted: true }, {
+      legacy: { success: true },
+    });
   } catch (error) {
     console.error('[Trips API] Error deleting trip:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }

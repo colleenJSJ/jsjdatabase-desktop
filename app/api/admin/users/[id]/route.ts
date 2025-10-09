@@ -1,10 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const resolvedParams = await params;
   try {
     const supabase = await createClient();
@@ -13,7 +18,7 @@ export async function PATCH(
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
     if (sessionError || !session) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      return jsonError('Not authenticated', { status: 401, code: 'NOT_AUTHENTICATED' });
     }
 
     // Get the current user's data
@@ -24,7 +29,7 @@ export async function PATCH(
       .single();
     
     if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return jsonError('Unauthorized', { status: 401, code: 'ADMIN_REQUIRED' });
     }
 
     const body = await request.json();
@@ -41,18 +46,19 @@ export async function PATCH(
 
     if (checkError) {
       console.error(`[Admin Users API] User ${resolvedParams.id} not found:`, checkError);
-      return NextResponse.json(
-        { error: 'User not found', details: checkError.message, userId: resolvedParams.id },
-        { status: 404 }
-      );
+      return jsonError('User not found', {
+        status: 404,
+        code: 'USER_NOT_FOUND',
+        meta: { details: checkError.message, userId: resolvedParams.id },
+      });
     }
 
     // Prevent editing other admins (only allow self-edit for admins)
     if (existingUser.role === 'admin' && existingUser.id !== user.id) {
-      return NextResponse.json(
-        { error: 'Cannot edit other admin users' },
-        { status: 403 }
-      );
+      return jsonError('Cannot edit other admin users', {
+        status: 403,
+        code: 'ADMIN_EDIT_FORBIDDEN',
+      });
     }
 
     // Build update object
@@ -79,10 +85,11 @@ export async function PATCH(
         userId: resolvedParams.id,
         attemptedUpdate: { role }
       });
-      return NextResponse.json(
-        { error: 'Failed to update user', details: error.message, code: error.code, hint: error.hint },
-        { status: 500 }
-      );
+      return jsonError('Failed to update user', {
+        status: 500,
+        code: 'USER_UPDATE_FAILED',
+        meta: { details: error.message, dbCode: error.code, hint: error.hint },
+      });
     }
 
     // Update password if provided (requires admin client)
@@ -95,10 +102,11 @@ export async function PATCH(
       
       if (authError) {
         console.error(`[Admin Users API] Error updating password for user ${resolvedParams.id}:`, authError);
-        return NextResponse.json(
-          { error: 'Failed to update password', details: authError.message },
-          { status: 500 }
-        );
+        return jsonError('Failed to update password', {
+          status: 500,
+          code: 'PASSWORD_UPDATE_FAILED',
+          meta: { details: authError.message },
+        });
       }
     }
 
@@ -118,19 +126,21 @@ export async function PATCH(
           .update({ email: existingUser.email })
           .eq('id', resolvedParams.id);
         
-        return NextResponse.json(
-          { error: 'Failed to update email', details: authError.message },
-          { status: 500 }
-        );
+        return jsonError('Failed to update email', {
+          status: 500,
+          code: 'EMAIL_UPDATE_FAILED',
+          meta: { details: authError.message },
+        });
       }
     }
 
-    return NextResponse.json({ user: updatedUser });
+    return jsonSuccess({ user: updatedUser }, { legacy: { user: updatedUser } });
   } catch (error) {
-
-    return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    console.error('[Admin Users API] Unexpected error:', error);
+    return jsonError('Internal server error', {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      meta: { details: error instanceof Error ? error.message : 'Unknown error' },
+    });
   }
 }

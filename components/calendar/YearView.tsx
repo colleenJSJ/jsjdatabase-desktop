@@ -17,6 +17,8 @@ interface YearViewProps {
   onMonthsPerPageChange?: (months: number) => void;
   categories?: Category[];
   onEventsChange?: () => void;
+  forceOpenEventId?: string;
+  onForceOpenHandled?: () => void;
 }
 
 const MONTHS = [
@@ -33,11 +35,21 @@ export function YearView({
   onMonthsPerPageChange,
   categories = [],
   onEventsChange,
+  forceOpenEventId,
+  onForceOpenHandled,
 }: YearViewProps) {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!forceOpenEventId) return;
+    const event = events.find(ev => ev.id === forceOpenEventId);
+    if (!event) return;
+    setSelectedEvent(event);
+    onForceOpenHandled?.();
+  }, [forceOpenEventId, events, onForceOpenHandled]);
   const [visibleCount, setVisibleCount] = useState(Math.max(1, monthsPerPage));
 
   useEffect(() => {

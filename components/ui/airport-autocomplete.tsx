@@ -1,169 +1,232 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { googleMapsLoader } from '@/lib/utils/google-maps-loader';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
+import {
+  createPlacesSessionToken,
+  fetchAutocompleteSuggestions,
+  fetchPlaceDetails,
+  PlaceSuggestion,
+} from '@/lib/utils/places-client';
 
 interface AirportAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  inputProps?: React.InputHTMLAttributes<HTMLInputElement>;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
+
+const DEBOUNCE_MS = 200;
 
 export function AirportAutocomplete({
   value,
   onChange,
-  placeholder = 'Search for airport...',
-  className
+  placeholder = 'Search airports...',
+  className,
+  inputProps,
+  inputRef,
 }: AirportAutocompleteProps) {
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const internalInputRef = useRef<HTMLInputElement>(null);
+  const [inputValue, setInputValue] = useState(value);
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const sessionTokenRef = useRef<string | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const requestIdRef = useRef(0);
+
+  const ensureSessionToken = () => {
+    if (!sessionTokenRef.current) {
+      sessionTokenRef.current = createPlacesSessionToken();
+    }
+    return sessionTokenRef.current;
+  };
+
+  const resetSessionToken = () => {
+    sessionTokenRef.current = createPlacesSessionToken();
+  };
 
   useEffect(() => {
-    // Check if already loaded
-    if (googleMapsLoader.isLoaded()) {
-      setIsLoaded(true);
-      return;
-    }
+    setInputValue(value);
+  }, [value]);
 
-    // Load Google Maps using singleton loader
-    googleMapsLoader.load()
-      .then(() => {
-        console.log('[AirportAutocomplete] Google Maps loaded successfully');
-        setIsLoaded(true);
-      })
-      .catch((err) => {
-        console.error('[AirportAutocomplete] Failed to load Google Maps:', err);
-        setError('Failed to load Google Maps');
-      });
+  const runAutocomplete = useCallback(
+    async (query: string) => {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        setSuggestions([]);
+        setDropdownOpen(false);
+        return;
+      }
+
+      const token = ensureSessionToken();
+      const currentRequestId = ++requestIdRef.current;
+      setIsLoading(true);
+
+      try {
+        const results = await fetchAutocompleteSuggestions({
+          input: trimmed,
+          sessionToken: token,
+          languageCode: 'en',
+          includedPrimaryTypes: ['airport'],
+        });
+        if (requestIdRef.current === currentRequestId) {
+          setSuggestions(results);
+          setDropdownOpen(results.length > 0);
+        }
+      } catch (error) {
+        console.error('[AirportAutocomplete] autocomplete error:', error);
+        if (requestIdRef.current === currentRequestId) {
+          setSuggestions([]);
+          setDropdownOpen(false);
+        }
+      } finally {
+        if (requestIdRef.current === currentRequestId) {
+          setIsLoading(false);
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => runAutocomplete(inputValue), DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [inputValue, runAutocomplete]);
+
+  const closeDropdown = useCallback(() => {
+    setDropdownOpen(false);
+    setSuggestions([]);
   }, []);
 
-  useEffect(() => {
-    if (!isLoaded || !inputRef.current || autocompleteRef.current) return;
-
-    // Double check that google.maps.places is available
-    if (typeof google === 'undefined' || !google.maps || !google.maps.places) {
-      console.warn('[AirportAutocomplete] Google Maps Places API not fully loaded yet');
-      return;
-    }
-
-    try {
-      const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
-        // Use establishment to allow airports and airline counters; filter in selection
-        types: ['establishment'],
-        fields: ['name', 'place_id', 'formatted_address', 'types']
-      });
-
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        if (place && place.name) {
-          const airportCode = extractAirportCode(place.name);
-          const formattedValue = airportCode || place.name;
-          console.log('[AirportAutocomplete] Place selected:', formattedValue);
-          onChange(formattedValue);
-        }
-      });
-
-      autocompleteRef.current = autocomplete;
-      console.log('[AirportAutocomplete] Autocomplete initialized');
-    } catch (err) {
-      console.error('[AirportAutocomplete] Failed to initialize autocomplete:', err);
-      setError('Failed to initialize airport search');
-    }
-  }, [isLoaded, onChange]);
-
-  const extractAirportCode = (placeName: string): string | null => {
-    const match = placeName.match(/\(([A-Z]{3})\)/);
+  const extractAirportCode = (text?: string) => {
+    if (!text) return null;
+    const match = text.match(/\(([A-Z]{3})\)/);
     return match ? match[1] : null;
   };
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Only update if the input is being actively typed
-    // This prevents clearing values when autocomplete isn't ready
-    const newValue = e.target.value;
-    onChange(newValue);
-  }, [onChange]);
+  const handleSelect = useCallback(
+    async (suggestion: PlaceSuggestion) => {
+      const basePrimary = suggestion.primaryText?.trim();
+      const baseSecondary = suggestion.secondaryText?.trim();
+      const baseRaw = suggestion.rawText?.trim();
 
-  // Utility to find first visible Google Places suggestion
-  const getFirstVisiblePacItem = (): HTMLElement | null => {
-    const items = Array.from(document.querySelectorAll<HTMLElement>('.pac-container .pac-item'));
-    for (const el of items) {
-      const style = getComputedStyle(el);
-      const visible = style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
-      if (visible) return el;
-    }
-    return null;
-  };
+      const fallback = basePrimary || baseRaw || baseSecondary || '';
+      let formatted = fallback;
 
-  // Attempt to accept first suggestion; retry briefly if DOM not ready
-  const acceptFirstPrediction = (done: () => void) => {
-    const tryClick = (attempt = 0) => {
-      const firstItem = getFirstVisiblePacItem();
-      if (firstItem) {
-        firstItem.click();
-        // Small delay for Google to populate the input value
-        setTimeout(() => {
-          // Use whatever Google put in the input
-          const committed = inputRef.current?.value || '';
-          if (committed) onChange(committed);
-          done();
-        }, 0);
-      } else if (attempt < 5) {
-        setTimeout(() => tryClick(attempt + 1), 30);
-      } else {
-        done();
+      const applyValue = (value: string) => {
+        const finalValue = value.trim() || fallback;
+        setInputValue(finalValue);
+        onChange(finalValue);
+      };
+
+      applyValue(formatted);
+
+      try {
+        const token = ensureSessionToken();
+        const details = await fetchPlaceDetails({
+          placeId: suggestion.placeId,
+          sessionToken: token,
+        });
+
+        const code =
+          extractAirportCode(basePrimary) ||
+          extractAirportCode(baseRaw) ||
+          extractAirportCode(details.displayName);
+
+        const name = details.displayName?.trim() || baseSecondary || basePrimary || baseRaw;
+
+        const parts = [code, name].filter(Boolean);
+        formatted = parts.length > 0 ? parts.join(' - ') : fallback;
+        applyValue(formatted);
+      } catch (error) {
+        console.error('[AirportAutocomplete] details error:', error);
+      } finally {
+        closeDropdown();
+        resetSessionToken();
       }
-    };
-    tryClick();
+    },
+    [closeDropdown, onChange]
+  );
+
+  const assignInputRef = (node: HTMLInputElement | null) => {
+    internalInputRef.current = node;
+    if (!inputRef) return;
+    if (typeof inputRef === 'function') {
+      inputRef(node);
+    } else {
+      (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node;
+    }
   };
 
-  // Handle Tab/Enter to accept suggestion and move focus
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const isAcceptKey = e.key === 'Tab' && !e.shiftKey || e.key === 'Enter';
-    if (!isAcceptKey) return;
-    e.preventDefault();
-    acceptFirstPrediction(() => {
-      // Blur to close any remaining dropdown
-      inputRef.current?.blur();
-      // Move to next focusable after DOM updates
-      setTimeout(() => {
-        if (!inputRef.current) return;
-        const focusables = Array.from(document.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )).filter(el => !el.hasAttribute('disabled') && el.tabIndex !== -1 && el.offsetParent !== null);
-        const idx = focusables.indexOf(inputRef.current);
-        const next = idx >= 0 && idx + 1 < focusables.length ? focusables[idx + 1] : null;
-        next?.focus();
-      }, 0);
-    });
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setInputValue(newValue);
+    onChange(newValue);
+    ensureSessionToken();
   };
 
-  if (error) {
-    return (
-      <Input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={handleInputChange}
-        placeholder={placeholder}
-        className={className}
-      />
-    );
-  }
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && dropdownOpen && suggestions.length > 0) {
+      event.preventDefault();
+      handleSelect(suggestions[0]);
+    }
+  };
+
+  const handleBlur = () => {
+    window.setTimeout(() => setDropdownOpen(false), 120);
+  };
+
+  const suggestionItems = useMemo(() => {
+    if (!dropdownOpen) return null;
+    if (isLoading) {
+      return <div className="px-3 py-2 text-sm text-gray-400">Searching…</div>;
+    }
+    if (suggestions.length === 0) {
+      return <div className="px-3 py-2 text-sm text-gray-500">No matches</div>;
+    }
+    return suggestions.map((suggestion) => (
+      <button
+        key={suggestion.placeId}
+        type="button"
+        className="w-full px-3 py-2 text-left hover:bg-gray-700/40"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          handleSelect(suggestion);
+        }}
+      >
+        <div className="text-sm text-text-primary">{suggestion.primaryText}</div>
+        {suggestion.secondaryText && (
+          <div className="text-xs text-gray-400">{suggestion.secondaryText}</div>
+        )}
+      </button>
+    ));
+  }, [dropdownOpen, isLoading, suggestions, handleSelect]);
 
   return (
-    <Input
-      ref={inputRef}
-      type="text"
-      value={value}
-      onChange={handleInputChange}
-      onKeyDown={handleKeyDown}
-      placeholder={isLoaded ? placeholder : 'Loading...'}
-      className={className}
-      disabled={!isLoaded}
-    />
+    <div className="relative">
+      <Input
+        ref={assignInputRef}
+        type="text"
+        value={inputValue}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        onFocus={() => suggestions.length > 0 && setDropdownOpen(true)}
+        placeholder={placeholder}
+        className={className}
+        {...inputProps}
+      />
+      {dropdownOpen && (
+        <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-600/30 bg-background-secondary shadow-lg overflow-hidden">
+          {suggestionItems}
+        </div>
+      )}
+    </div>
   );
 }

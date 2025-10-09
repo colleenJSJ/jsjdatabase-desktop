@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { SyncService, getRequestId } from '@/lib/services/sync-service';
 import { buildInternalApiHeaders } from '@/lib/utils/auth-helpers';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -96,6 +97,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const requestId = getRequestId(request.headers);
   
   try {

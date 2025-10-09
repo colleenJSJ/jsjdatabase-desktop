@@ -30,23 +30,32 @@ export function TravelersPicker({
     return (a.display_name || a.name || '').localeCompare(b.display_name || b.name || '');
   });
 
+  const showTitle = Boolean(title?.trim());
+
   return (
-    <div>
-      <div className="text-sm mb-1">{title}</div>
-      <div className="grid grid-cols-2 gap-2 p-2 bg-background-primary rounded border border-gray-600/30">
-        {sorted.map((m: any) => (
-          <label key={m.id} className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={selectedIds.includes(m.id)}
-              onChange={() => {
-                onChange(selectedIds.includes(m.id) ? selectedIds.filter(x => x !== m.id) : [...selectedIds, m.id]);
+    <div className="space-y-2">
+      {showTitle && <div className="text-sm font-medium text-text-primary">{title}</div>}
+      <div className="flex flex-wrap gap-2">
+        {sorted.map((m: any) => {
+          const selected = selectedIds.includes(m.id);
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => {
+                onChange(selected ? selectedIds.filter((x) => x !== m.id) : [...selectedIds, m.id]);
               }}
-            />
-            <span className="text-text-primary">{m.name}</span>
-            {m.type === 'pet' && <span className="text-xs">🐾</span>}
-          </label>
-        ))}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm border transition-colors ${
+                selected
+                  ? 'border-blue-400 bg-blue-500/20 text-blue-200'
+                  : 'border-gray-600/40 bg-background-primary text-text-primary hover:border-gray-500'
+              }`}
+            >
+              <span>{m.name}</span>
+              {m.type === 'pet' && <span className="text-xs">🐾</span>}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

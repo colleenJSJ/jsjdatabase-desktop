@@ -116,7 +116,7 @@ async function fetchWithRetry(
   
   // Store in pending requests for deduplication
   if (dedupe) {
-    pendingRequests.set(cacheKey, fetchPromise);
+    pendingRequests.set(cacheKey, fetchPromise.then((response) => response.clone()));
   }
   
   return fetchPromise;

@@ -3,13 +3,14 @@ import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = (portal: any) => {
+const serializePortal = async (portal: any) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password);
     } catch (error) {
       console.error('[Academic Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -72,8 +73,9 @@ export async function GET(request: NextRequest) {
             return null;
           }
           
+          const serialized = await serializePortal(portal);
           return {
-            ...serializePortal(portal),
+            ...serialized,
             children: childIds
           };
         })
@@ -92,6 +94,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const supabase = await createClient();
     
@@ -126,7 +131,7 @@ export async function POST(request: NextRequest) {
       : null;
 
     // Insert the portal into unified portals table
-    const encryptedPassword = password ? encrypt(password) : null;
+    const encryptedPassword = password ? await encrypt(password) : null;
 
     const { data: portal, error: portalError } = await supabase
       .from('portals')

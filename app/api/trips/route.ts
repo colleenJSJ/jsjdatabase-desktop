@@ -1,22 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { applyPersonFilter } from '@/app/api/_helpers/apply-person-filter';
 import { resolvePersonReferences, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
 import { personService } from '@/lib/services/person.service';
 import { logActivity } from '@/app/api/_helpers/log-activity';
 import { buildTravelVisibilityContext, shouldIncludeTravelRecord } from '@/lib/travel/visibility';
 import { normalizeTravelerIds } from '@/lib/travel/travelers';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function GET(request: NextRequest) {
   try {
     console.log('[Trips API] Starting GET request');
-    
-    const authResult = await getAuthenticatedUser();
-    console.log('[Trips API] Auth result:', authResult);
-    
-    if ('error' in authResult) {
+
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
       console.log('[Trips API] Authentication failed');
-      return authResult.error;
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -56,10 +56,10 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('[Trips API] Database error:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch trips', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch trips', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     const filteredTrips = (trips || []).filter(trip =>
@@ -71,21 +71,28 @@ export async function GET(request: NextRequest) {
     );
 
     console.log('[Trips API] Returning trips:', filteredTrips.length);
-    return NextResponse.json({ trips: filteredTrips });
+    return jsonSuccess({ trips: filteredTrips }, {
+      legacy: { trips: filteredTrips },
+    });
   } catch (error) {
     console.error('[Trips API] Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -194,10 +201,10 @@ export async function POST(request: NextRequest) {
 
     if (tripError) {
       console.error('Trip creation error:', tripError);
-      return NextResponse.json(
-        { error: 'Failed to create trip' },
-        { status: 500 }
-      );
+      return jsonError('Failed to create trip', {
+        status: 500,
+        meta: { message: tripError.message },
+      });
     }
 
     // Skip trip_travelers for now since we're storing names directly in the trips table
@@ -250,12 +257,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ trip });
+    return jsonSuccess({ trip }, {
+      status: 201,
+      legacy: { trip },
+    });
   } catch (error) {
     console.error('[Trips API] Error creating trip:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }

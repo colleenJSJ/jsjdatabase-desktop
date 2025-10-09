@@ -6,12 +6,14 @@ import { DocumentList } from '@/components/documents/document-list';
 import dynamic from 'next/dynamic';
 import PetAppointmentModal from './PetAppointmentModal';
 import { ContactCard } from '@/components/contacts/ContactCard';
+import { ContactDetailModal } from '@/components/contacts/ContactDetailModal';
 import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
 import ViewPetAppointmentModal from './ViewPetAppointmentModal';
 import { useGoogleCalendars } from '@/hooks/useGoogleCalendars';
 import { PawPrint, Stethoscope, Syringe, Scissors, Eye, EyeOff } from 'lucide-react';
 import { PasswordCard } from '@/components/passwords/PasswordCard';
-import { Password } from '@/lib/services/password-service-interface';
+import { PasswordDetailModal } from '@/components/passwords/PasswordDetailModal';
+import type { Password as SupabasePassword } from '@/lib/supabase/types';
 import { getPasswordStrength } from '@/lib/passwords/utils';
 import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
 import { CredentialFormField } from '@/components/credentials/CredentialFormField';
@@ -23,6 +25,8 @@ import type { PortalRecord } from '@/types/portals';
 import type { ContactFormValues, ContactModalFieldVisibilityMap, ContactRecord } from '@/components/contacts/contact-types';
 import { resolveEmails, resolvePhones, resolveAddresses } from '@/components/contacts/contact-utils';
 import ApiClient from '@/lib/api/api-client';
+import { Category } from '@/lib/categories/categories-client';
+import { usePasswordSecurityOptional } from '@/contexts/password-security-context';
 
 type UnknownRecord = Record<string, unknown>;
 type Pet = { id: string; name: string; [key: string]: unknown };
@@ -189,6 +193,10 @@ export default function PetsPageClient() {
   const [showAddPortal, setShowAddPortal] = useState(false);
   const [editingPortal, setEditingPortal] = useState<PortalRecord | null>(null);
   const { calendars: googleCalendars } = useGoogleCalendars();
+  const [viewingContact, setViewingContact] = useState<ContactRecord | null>(null);
+  const [viewingPassword, setViewingPassword] = useState<SupabasePassword | null>(null);
+  const [viewingPortal, setViewingPortal] = useState<PortalRecord | null>(null);
+  const { updateActivity } = usePasswordSecurityOptional();
 
   const portalUsers = useMemo(() => {
     const base = pets.map(pet => ({
@@ -200,6 +208,12 @@ export default function PetsPageClient() {
   }, [pets]);
   const canManagePortals = user?.role === 'admin';
   const canManageContacts = false;
+
+  const openPortalDetail = (password: SupabasePassword, portal: PortalRecord) => {
+    updateActivity();
+    setViewingPortal(portal);
+    setViewingPassword(password);
+  };
 
   const renderContactCard = (contact: ContactRecord) => {
     const relatedPetNames = (contact.pets ?? contact.related_to ?? [])
@@ -219,6 +233,7 @@ export default function PetsPageClient() {
         extraContent={relatedPetNames.length > 0 ? renderContactChips(relatedPetNames) : null}
         showFavoriteToggle={false}
         canManage={canManageContacts}
+        onOpen={() => setViewingContact(contact)}
       />
     );
   };
@@ -249,6 +264,11 @@ export default function PetsPageClient() {
 
   const relatedEntityOptions = useMemo(
     () => pets.map(pet => ({ id: pet.id, label: pet.name || 'Pet' })),
+    [pets]
+  );
+
+  const familyMembersForModal = useMemo(
+    () => pets.map(pet => ({ id: pet.id, name: pet.name || 'Pet' })),
     [pets]
   );
 
@@ -616,9 +636,9 @@ export default function PetsPageClient() {
               {filtered.portals.length === 0 ? (
                 <div className="text-sm text-text-muted">No portals</div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {filtered.portals.map((portal) => {
-                    const portalId = portal.id;
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {filtered.portals.map((portal, index) => {
+                    const portalId = (portal.id as string | undefined) ?? `portal-${index}`;
                     const portalName = (portal.portal_name || portal.provider_name || 'Portal').trim();
                     const portalUrl = portal.portal_url || '';
                     const portalUsername = portal.username || '';
@@ -632,23 +652,28 @@ export default function PetsPageClient() {
                       .map(id => pets.find(p => p.id === id)?.name)
                       .filter((name): name is string => Boolean(name));
 
-                    const passwordRecord: Password = {
-                      id: portalId,
-                      service_name: portalName,
+                    const nowIso = new Date().toISOString();
+                    const passwordId = (portal as any).password_id || portalId;
+                    const sharedWith = uniquePetIds.map(id => String(id));
+                    const passwordRecord: SupabasePassword = {
+                      id: passwordId,
+                      title: portalName,
                       username: portalUsername,
                       password: portalPassword,
                       url: portalUrl || undefined,
-                      category: 'pet-portal',
+                      category: 'pet-portal' as any,
                       notes: notes || undefined,
+                      created_by: portal.created_by || user?.id || 'shared',
+                      created_at: portal.created_at || nowIso,
+                      updated_at: portal.updated_at || nowIso,
                       owner_id: 'shared',
-                      shared_with: uniquePetIds,
-                      is_favorite: false,
-                      is_shared: uniquePetIds.length > 1,
-                      last_changed: new Date(),
-                      strength: undefined,
-                      created_at: new Date(),
-                      updated_at: new Date(),
+                      shared_with: sharedWith,
+                      is_favorite: Boolean((portal as any).is_favorite),
+                      is_shared: sharedWith.length > 1,
+                      last_changed: portal.updated_at || nowIso,
+                      source: 'pets',
                       source_page: 'pets',
+                      source_reference: portal.id ?? null,
                     };
 
                     const extraContent = notes
@@ -672,6 +697,8 @@ export default function PetsPageClient() {
                           setShowAddPortal(true);
                         }}
                         onDelete={() => handleDeletePortal(portal.id as string | undefined)}
+                        onOpen={() => openPortalDetail(passwordRecord, portal)}
+                        variant="compact"
                       />
                     );
                   })}
@@ -768,6 +795,44 @@ export default function PetsPageClient() {
       )}
 
       {/* Modals */}
+      {viewingPassword && viewingPortal && (
+        <PasswordDetailModal
+          password={viewingPassword}
+          categories={[
+            {
+              id: 'pet-portal',
+              name: 'Pet Portal',
+              color: '#f97316',
+              module: 'passwords',
+              created_at: viewingPortal.created_at || new Date().toISOString(),
+              updated_at: viewingPortal.updated_at || new Date().toISOString(),
+              icon: undefined,
+            } as Category,
+          ]}
+          users={portalUsers}
+          familyMembers={familyMembersForModal}
+          canManage={canManagePortals}
+          onClose={() => {
+            setViewingPassword(null);
+            setViewingPortal(null);
+          }}
+          onEdit={() => {
+            setViewingPassword(null);
+            if (viewingPortal) {
+              setEditingPortal(viewingPortal);
+              setShowAddPortal(true);
+            }
+          }}
+          onDelete={async () => {
+            if (viewingPortal?.id) {
+              await handleDeletePortal(viewingPortal.id as string | undefined);
+            }
+            setViewingPassword(null);
+            setViewingPortal(null);
+          }}
+        />
+      )}
+
       {showAddAppointment && (
         <PetAppointmentModal
           pets={pets}
@@ -802,6 +867,20 @@ export default function PetsPageClient() {
             setShowAddContact(false);
             setEditingContact(null);
           }}
+        />
+      )}
+
+      {viewingContact && (
+        <ContactDetailModal
+          contact={viewingContact}
+          familyMembers={familyMembersForModal}
+          canManage={canManageContacts}
+          onClose={() => setViewingContact(null)}
+          onEdit={canManageContacts ? () => {
+            setEditingContact(viewingContact);
+            setShowAddContact(true);
+            setViewingContact(null);
+          } : undefined}
         />
       )}
       {showAddPortal && (

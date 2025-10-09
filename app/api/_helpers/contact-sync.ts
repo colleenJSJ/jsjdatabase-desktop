@@ -66,7 +66,7 @@ export async function syncContactToUnified(contactData: ContactSyncData) {
     const portalPassword = sanitized.portal_password
       ? await (async () => {
           const { encrypt } = await import('@/lib/encryption');
-          return encrypt(sanitized.portal_password as string);
+          return await encrypt(sanitized.portal_password as string);
         })()
       : null;
 

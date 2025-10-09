@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
-import { addCSRFToHeaders } from '@/lib/security/csrf-client';
+import { addCSRFToHeaders, ensureCSRFToken } from '@/lib/security/csrf-client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,6 +21,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      await ensureCSRFToken();
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: addCSRFToHeaders({ 'Content-Type': 'application/json' }),

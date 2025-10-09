@@ -3,13 +3,14 @@ import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
+import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = (portal: any) => {
+const serializePortal = async (portal: any) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password);
     } catch (error) {
       console.error('[Academic Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -58,7 +59,8 @@ export async function GET(
     
     const childIds = children?.map(c => c.child_id) || [];
 
-    return NextResponse.json({ ...serializePortal(portal), children: childIds });
+    const serialized = await serializePortal(portal);
+    return NextResponse.json({ ...serialized, children: childIds });
   } catch (error) {
     console.error('Error in GET /api/academic-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -69,6 +71,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();
@@ -127,7 +132,7 @@ export async function PUT(
     }
 
     if (password !== undefined) {
-      updates.password = password ? encrypt(password) : null;
+      updates.password = password ? await encrypt(password) : null;
     }
 
     if (portalUrl !== undefined) {
@@ -216,7 +221,8 @@ export async function PUT(
       });
     }
 
-    return NextResponse.json({ ...serializePortal(portal), children: normalizedChildIds });
+    const serialized = await serializePortal(portal);
+    return NextResponse.json({ ...serialized, children: normalizedChildIds });
   } catch (error) {
     console.error('Error in PUT /api/academic-portals/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -227,6 +233,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const supabase = await createClient();

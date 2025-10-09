@@ -25,6 +25,8 @@ interface GanttViewProps {
   timeScale?: TimeScale;
   onTimeScaleChange?: (timeScale: TimeScale) => void;
   onDateChange?: (date: Date) => void;
+  forceOpenEventId?: string;
+  onForceOpenHandled?: () => void;
 }
 
 interface EventWithRow extends CalendarEvent {
@@ -39,7 +41,7 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
   return `${hour} ${period}`;
 });
 
-export function GanttView({ events, categories, googleCalendars = [], user, onEventsChange, currentDate: propCurrentDate, timeScale: propTimeScale, onTimeScaleChange, onDateChange }: GanttViewProps) {
+export function GanttView({ events, categories, googleCalendars = [], user, onEventsChange, currentDate: propCurrentDate, timeScale: propTimeScale, onTimeScaleChange, onDateChange, forceOpenEventId, onForceOpenHandled }: GanttViewProps) {
   const [internalTimeScale, setInternalTimeScale] = useState<TimeScale>('week');
   const [internalCurrentDate, setInternalCurrentDate] = useState(new Date());
   const [columnScale, setColumnScale] = useState(1); // Magnification scale
@@ -81,6 +83,14 @@ export function GanttView({ events, categories, googleCalendars = [], user, onEv
   const timelineRef = useRef<HTMLDivElement>(null);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const [currentTimePosition, setCurrentTimePosition] = useState(0);
+
+  useEffect(() => {
+    if (!forceOpenEventId) return;
+    const event = events.find(ev => ev.id === forceOpenEventId);
+    if (!event) return;
+    setEditingEvent(event);
+    onForceOpenHandled?.();
+  }, [forceOpenEventId, events, onForceOpenHandled]);
 
   // Memoized calendar map for fast lookups
   const calById = useMemo(() => {

@@ -9,6 +9,7 @@ import { ContactCard } from '@/components/contacts/ContactCard';
 import { ContactModal as UnifiedContactModal } from '@/components/contacts/ContactModal';
 import type { ContactCardBadge, ContactFormValues, ContactModalFieldVisibilityMap, ContactRecord } from '@/components/contacts/contact-types';
 import { resolveAddresses, resolveEmails, resolvePhones } from '@/components/contacts/contact-utils';
+import { ContactDetailModal } from '@/components/contacts/ContactDetailModal';
 import { TravelSegmentFields } from '@/components/travel/shared/TravelSegmentFields';
 import { TravelersPicker } from '@/components/travel/shared/TravelersPicker';
 import { InvitesCalendarPanel } from '@/components/travel/shared/InvitesCalendarPanel';
@@ -232,6 +233,7 @@ export default function TravelPageClient() {
   const [viewingDetail, setViewingDetail] = useState<any | null>(null);
   const [showUploadDoc, setShowUploadDoc] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [viewingContact, setViewingContact] = useState<ContactRecord | null>(null);
   const [editingContact, setEditingContact] = useState<ContactRecord | null>(null);
   const [savingContact, setSavingContact] = useState(false);
   // Filters (match Tasks page style)
@@ -507,6 +509,7 @@ export default function TravelPageClient() {
         badges={badges}
         showFavoriteToggle={false}
         canManage={false}
+        onOpen={() => setViewingContact(contact)}
       />
     );
   };
@@ -1194,6 +1197,14 @@ export default function TravelPageClient() {
             setShowAddContact(false);
             setEditingContact(null);
           }}
+        />
+      )}
+
+      {viewingContact && (
+        <ContactDetailModal
+          contact={viewingContact}
+          familyMembers={data.family_members}
+          onClose={() => setViewingContact(null)}
         />
       )}
 

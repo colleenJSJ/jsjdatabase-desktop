@@ -21,8 +21,7 @@ import {
 } from '@/components/contacts/contact-utils';
 import { useUser } from '@/contexts/user-context';
 import { createClient } from '@/lib/supabase/client';
-
-import { ViewContactModal } from './ViewContactModal';
+import { ContactDetailModal } from '@/components/contacts/ContactDetailModal';
 
 const DEFAULT_CONTACT_CATEGORIES = ['Health', 'Household', 'Pets', 'Travel', 'J3 Academics', 'Other'];
 
@@ -274,8 +273,10 @@ export default function ContactsPageContent() {
       try {
         const res = await fetch(`/api/contacts/${identifier}`);
         if (res.ok) {
-          const data = await res.json();
-          const contact = toContactRecord(data.contact);
+          const payload = await res.json();
+          if (!payload.success) return;
+
+          const contact = toContactRecord(payload.data?.contact ?? payload.contact);
           setViewingContact(contact);
           setShowModal(false);
         }
@@ -294,11 +295,15 @@ export default function ContactsPageContent() {
   const fetchContacts = async () => {
     try {
       const response = await fetch('/api/contacts');
-      if (response.ok) {
-        const data = await response.json();
-        const normalised = Array.isArray(data.contacts)
-          ? data.contacts.map(toContactRecord)
-          : [];
+      const payload = await response.json();
+
+      if (response.ok && payload.success) {
+        const raw = Array.isArray(payload.data?.contacts)
+          ? payload.data.contacts
+          : Array.isArray(payload.contacts)
+            ? payload.contacts
+            : [];
+        const normalised = raw.map(toContactRecord);
         setContacts(normalised);
       }
     } catch (error) {
@@ -322,12 +327,14 @@ export default function ContactsPageContent() {
   const fetchCategories = async () => {
     try {
       const response = await fetch('/api/contacts/categories');
-      if (response.ok) {
-        const data = await response.json();
-        const list = Array.isArray(data.categories) && data.categories.length > 0
-          ? data.categories
-          : DEFAULT_CONTACT_CATEGORIES;
-        setCategories(list);
+      const payload = await response.json();
+      if (response.ok && payload.success) {
+        const list = Array.isArray(payload.data?.categories)
+          ? payload.data.categories
+          : Array.isArray(payload.categories)
+            ? payload.categories
+            : DEFAULT_CONTACT_CATEGORIES;
+        setCategories(list.length > 0 ? list : DEFAULT_CONTACT_CATEGORIES);
       } else {
         setCategories(DEFAULT_CONTACT_CATEGORIES);
       }
@@ -341,8 +348,11 @@ export default function ContactsPageContent() {
     if (!confirm('Are you sure you want to delete this contact?')) return;
     try {
       const response = await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
-      if (response.ok) {
+      const payload = await response.json();
+      if (response.ok && payload.success) {
         setContacts(prev => prev.filter(contact => contact.id !== id));
+      } else if (!payload.success) {
+        alert(payload.error || 'Failed to delete contact');
       }
     } catch (error) {
       console.error('Failed to delete contact:', error);
@@ -361,9 +371,10 @@ export default function ContactsPageContent() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to save contact' }));
-        alert(error.error || 'Failed to save contact');
+      const result = await response.json().catch(() => ({ success: false, error: 'Failed to save contact' }));
+
+      if (!response.ok || !result.success) {
+        alert(result.error || 'Failed to save contact');
         return;
       }
 
@@ -401,7 +412,7 @@ export default function ContactsPageContent() {
     return badges;
   };
 
-  const renderContactCard = (contact: ContactRecord, layout: 'auto' | 'compact') => {
+  const renderContactCard = (contact: ContactRecord) => {
     const relatedNames = (contact.related_to ?? [])
       .map(getFamilyMemberName)
       .filter(Boolean);
@@ -419,15 +430,16 @@ export default function ContactsPageContent() {
         extraContent={extraContent}
         canManage={canManage}
         actionConfig={{
-          onEdit: canManage ? () => {
-            setEditingContact(contact);
-            setShowModal(true);
-          } : undefined,
+          onEdit: canManage
+            ? () => {
+                setEditingContact(contact);
+                setShowModal(true);
+              }
+            : undefined,
           onDelete: canManage ? () => handleDeleteContact(contact.id) : undefined,
-          onOpenDetails: () => setViewingContact(contact),
         }}
+        onOpen={() => setViewingContact(contact)}
         showFavoriteToggle={false}
-        layout={layout}
       />
     );
   };
@@ -589,7 +601,7 @@ export default function ContactsPageContent() {
         </div>
       ) : viewMode === 'card' ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredContacts.map(contact => renderContactCard(contact, 'auto'))}
+          {filteredContacts.map(contact => renderContactCard(contact))}
         </div>
       ) : (
         <div className="bg-background-secondary border border-gray-600/30 rounded-lg overflow-hidden">
@@ -639,15 +651,20 @@ export default function ContactsPageContent() {
       )}
 
       {viewingContact && (
-        <ViewContactModal
+        <ContactDetailModal
           contact={viewingContact}
           familyMembers={familyMembers}
+          canManage={user?.role === 'admin' || viewingContact.created_by === user?.id}
+          onClose={() => setViewingContact(null)}
           onEdit={() => {
             setEditingContact(viewingContact);
             setShowModal(true);
             setViewingContact(null);
           }}
-          onClose={() => setViewingContact(null)}
+          onDelete={async () => {
+            await handleDeleteContact(viewingContact.id);
+            setViewingContact(null);
+          }}
         />
       )}
     </div>

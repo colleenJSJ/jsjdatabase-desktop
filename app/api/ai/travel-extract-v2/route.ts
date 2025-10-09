@@ -6,13 +6,16 @@ import { generateContentHash } from '@/lib/utils/hash';
 import { getBackblazeService } from '@/lib/backblaze/b2-service';
 import { SCHEMA_VERSION } from '@/lib/ai/schemas';
 import { z } from 'zod';
-import Anthropic from '@anthropic-ai/sdk';
 import { enhancedTravelerMatching } from '@/lib/ai/name-matcher';
 import { processAirportValue } from '@/lib/ai/airport-resolver';
 import { normalizeTravelerNames } from '@/lib/ai/name-normalizer';
+import { getAnthropicService, AnthropicServiceError, type MessagesCreateResponse } from '@/lib/anthropic/anthropic-service';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 // Use Node.js runtime for file processing
 export const runtime = 'nodejs';
+
+const anthropicService = getAnthropicService();
 
 // Rate limiting map (in production, use Redis)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -264,6 +267,9 @@ async function storeDocumentAsync(
 }
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   console.log('[Extract V2] Request received');
   console.log('[Extract V2] Headers:', {
     contentType: request.headers.get('content-type'),
@@ -381,11 +387,6 @@ export async function POST(request: NextRequest) {
       // Process document and extract
       const processedInput = await processDocument(buffer, file.type);
       
-      // Call Claude directly with the processed content
-      const anthropic = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY!,
-      });
-      
       // Build message for Claude
       const systemPrompt = `You are a travel document extraction engine. 
 Output ONLY valid JSON that matches the provided schema. Never include text outside JSON.
@@ -448,20 +449,29 @@ Do NOT include any field if you cannot find its value. Leave it out entirely rat
         messageContent.push(processedInput.content);
       }
       
-      const completion = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        temperature: 0.1,
-        messages: [{
-          role: 'user',
-          content: messageContent
-        }],
-        system: systemPrompt
-      });
+      let completion: MessagesCreateResponse;
+      try {
+        completion = await anthropicService.createMessage({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          temperature: 0.1,
+          messages: [{
+            role: 'user',
+            content: messageContent
+          }],
+          system: systemPrompt
+        });
+      } catch (error) {
+        if (error instanceof AnthropicServiceError) {
+          console.error('[Extract V2] Anthropic service error', error.details);
+          return NextResponse.json({ success: false, error: 'Failed to extract travel details', details: error.details }, { status: error.status || 502 });
+        }
+        throw error;
+      }
       
       // Parse response
-      const responseText = completion.content[0].type === 'text' 
-        ? completion.content[0].text 
+      const responseText = completion.content?.[0]?.type === 'text' 
+        ? completion.content?.[0]?.text ?? ''
         : '';
       
       let extractedData: any;
@@ -547,12 +557,10 @@ Do NOT include any field if you cannot find its value. Leave it out entirely rat
               // Optionally link to trip if tripId provided
               if (tripId) {
                 supabase
-                  .from('travel_documents')
-                  .insert({
-                    trip_id: tripId,
-                    document_id: documentId
-                  })
-                  .then(() => console.log('[Extract V2] Linked to trip:', tripId));
+                  .from('documents')
+                  .update({ trip_id: tripId })
+                  .eq('id', documentId)
+                  .then(() => console.log('[Extract V2] Linked document to trip:', tripId));
               }
             }
           })

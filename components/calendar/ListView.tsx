@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarEvent, CalendarEventCategory } from '@/lib/supabase/types';
 import { Category } from '@/lib/categories/categories-client';
 import { Clock, MapPin, Users, Copy, Edit, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
@@ -17,9 +17,11 @@ interface ListViewProps {
   googleCalendars?: any[];
   user: { role: string } | null;
   onEventsChange: () => void;
+  forceOpenEventId?: string;
+  onForceOpenHandled?: () => void;
 }
 
-export function ListView({ events, categories, googleCalendars = [], user, onEventsChange }: ListViewProps) {
+export function ListView({ events, categories, googleCalendars = [], user, onEventsChange, forceOpenEventId, onForceOpenHandled }: ListViewProps) {
   const { preferences } = usePreferences();
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   // Initialize with today's date expanded
@@ -27,6 +29,14 @@ export function ListView({ events, categories, googleCalendars = [], user, onEve
     const today = new Date().toDateString();
     return new Set([today]);
   });
+
+  useEffect(() => {
+    if (!forceOpenEventId) return;
+    const event = events.find(ev => ev.id === forceOpenEventId);
+    if (!event) return;
+    setEditingEvent(event);
+    onForceOpenHandled?.();
+  }, [forceOpenEventId, events, onForceOpenHandled]);
 
   // Group events by day
   const groupedEvents = events.reduce((groups, event) => {

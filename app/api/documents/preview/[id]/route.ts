@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import B2 from 'backblaze-b2';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { logger } from '@/lib/utils/logger';
+import { getBackblazeService } from '@/lib/backblaze/b2-service';
 
 function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | null): string | null {
+  if (fallbackFileName) {
+    return fallbackFileName;
+  }
   if (fileUrl && fileUrl.includes('/file/')) {
     const afterFile = fileUrl.split('/file/')[1];
     if (afterFile) {
@@ -12,9 +15,6 @@ function deriveFilePath(fileUrl?: string | null, fallbackFileName?: string | nul
         return parts.slice(1).join('/');
       }
     }
-  }
-  if (fallbackFileName) {
-    return fallbackFileName;
   }
   return null;
 }
@@ -29,10 +29,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
     }
 
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
+    const authResult = await requireUser(request);
+    if (authResult instanceof Response) {
       logger.warn(`${requestLabel} denied: unauthenticated request`);
-      return authResult.error;
+      return authResult;
     }
 
     const { supabase, user } = authResult;
@@ -61,39 +61,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unable to resolve document file path' }, { status: 400 });
     }
 
-    const keyId = process.env.BACKBLAZE_KEY_ID;
-    const applicationKey = process.env.BACKBLAZE_APPLICATION_KEY;
-    const bucketId = process.env.BACKBLAZE_BUCKET_ID;
-    const bucketName = process.env.BACKBLAZE_BUCKET_NAME;
-
-    if (!keyId || !applicationKey || !bucketId || !bucketName) {
-      logger.error(`${requestLabel} failed: missing Backblaze configuration`);
-      return NextResponse.json(
-        { error: 'Storage configuration incomplete' },
-        { status: 500 }
-      );
+    const backblazeService = getBackblazeService();
+    let downloadDetails;
+    try {
+      downloadDetails = await backblazeService.getDownloadDetails(resolvedFilePath);
+    } catch (error) {
+      logger.error(`${requestLabel} failed to get download details`, error);
+      return NextResponse.json({ error: 'Failed to load document preview' }, { status: 500 });
     }
 
-    const b2 = new B2({ applicationKeyId: keyId, applicationKey });
-    const authResponse = await b2.authorize();
-
-    const encodedPath = resolvedFilePath
-      .split('/')
-      .map(segment => encodeURIComponent(segment))
-      .join('/');
-
-    const downloadAuth = await b2.getDownloadAuthorization({
-      bucketId,
-      fileNamePrefix: resolvedFilePath,
-      validDurationInSeconds: 3600,
-    });
-
-    const signedUrl = new URL(`${authResponse.data.downloadUrl}/file/${bucketName}/${encodedPath}`);
-    signedUrl.searchParams.set('Authorization', downloadAuth.data.authorizationToken);
+    const signedUrl = new URL(downloadDetails.fileUrl);
+    signedUrl.searchParams.set('Authorization', downloadDetails.downloadAuthorizationToken);
 
     const downloadResponse = await fetch(signedUrl.toString(), {
       headers: {
-        Authorization: authResponse.data.authorizationToken,
+        Authorization: downloadDetails.accountAuthorizationToken,
       },
     });
 

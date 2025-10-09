@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Task, User } from '@/lib/supabase/types';
 import { useUser } from '@/contexts/user-context';
 import { usePersonFilter } from '@/contexts/person-filter-context';
 import { useFamilyMembers } from '@/hooks/use-family-members';
-import { X } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
 import { CategoriesClient, Category } from '@/lib/categories/categories-client';
 import { smartUrlComplete } from '@/lib/utils/url-helper';
 import { addCSRFToHeaders } from '@/lib/security/csrf-client';
+import { DateDisplay } from '@/components/ui/date-display';
+import { TimeInput } from '@/components/ui/time-input';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -21,18 +23,32 @@ interface TaskModalProps {
 export default function TaskModal({ isOpen, onClose, onSave, task = null, users = [] }: TaskModalProps) {
   const { user: currentUser } = useUser();
   const { selectedPersonId } = usePersonFilter();
+  const parseDueDateParts = (value?: string | null) => {
+    if (!value) return { date: '', time: '' };
+    const [datePart, timePartRaw] = value.split('T');
+    let timePart = '';
+    if (timePartRaw) {
+      const sanitized = timePartRaw.replace(/(Z|[+-]\d{2}:?\d{2})$/, '');
+      const match = sanitized.match(/^(\d{2}:\d{2})/);
+      if (match) {
+        timePart = match[1];
+      }
+    }
+    return { date: datePart || '', time: timePart };
+  };
+
+  const initialDueParts = parseDueDateParts(task?.due_date);
+
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [projectId, setProjectId] = useState<string>((task as any)?.project_id || '');
   const [projects, setProjects] = useState<any[]>([]);
   const [category, setCategory] = useState<string>(task?.category || 'personal');
   const [priority, setPriority] = useState<string>(task?.priority || 'medium');
-  const [dueDate, setDueDate] = useState(task?.due_date || '');
+  const [dueDate, setDueDate] = useState(initialDueParts.date);
+  const [dueTime, setDueTime] = useState(initialDueParts.time);
   const [assignedTo, setAssignedTo] = useState<string[]>(task?.assigned_to || []);
   const [isUrgent, setIsUrgent] = useState((task as any)?.is_urgent || false);
-  const [isRecurring, setIsRecurring] = useState(!!(task as any)?.recurrence_pattern);
-  const [recurrencePattern, setRecurrencePattern] = useState((task as any)?.recurrence_pattern || 'weekly');
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState((task as any)?.recurrence_end_date || '');
   const [links, setLinks] = useState<string[]>(task?.links && task.links.length > 0 ? task.links : ['']);
   const [completionRequirement, setCompletionRequirement] = useState((task as any)?.completion_requirement || 'any');
   const [uploadedDocumentIds, setUploadedDocumentIds] = useState<string[]>(task?.document_ids || []);
@@ -43,6 +59,40 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
   const [categories, setCategories] = useState<Category[]>([]);
   const { humanMembers } = useFamilyMembers({ includePets: false });
   const [documentTitle, setDocumentTitle] = useState<string>('');
+  const [showDetails, setShowDetails] = useState(false);
+  const [detailsTouched, setDetailsTouched] = useState(false);
+  const [assigneeError, setAssigneeError] = useState(false);
+
+  const dueDateInputRef = useRef<HTMLInputElement | null>(null);
+
+  const assignableMembers = useMemo(() => {
+    const excludedNames = new Set([
+      'Auggie Johnson',
+      'Blossom Johnson',
+      'Claire Johnson'
+    ]);
+    const preferredOrder = ['John Johnson', 'Susan Johnson', 'Kate McLaren', 'Colleen Russell'];
+
+    const filtered = humanMembers.filter(
+      (member) => !excludedNames.has(member.name) || assignedTo.includes(member.id)
+    );
+
+    return filtered.sort((a, b) => {
+      const indexA = preferredOrder.indexOf(a.name);
+      const indexB = preferredOrder.indexOf(b.name);
+
+      if (indexA === -1 && indexB === -1) {
+        return a.name.localeCompare(b.name);
+      }
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    });
+  }, [humanMembers, assignedTo]);
+
+  const categoryOptions = categories.length > 0 ? categories : [
+    { id: 'default-personal', name: 'Personal', module: 'tasks' as const, color: '#AB9BBF', created_at: '', updated_at: '' }
+  ];
 
   const normalizeCategory = (val: string | null | undefined) => {
     if (!val) return '';
@@ -74,11 +124,9 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
     setCategory('personal');
     setPriority('medium');
     setDueDate('');
+    setDueTime('');
     setAssignedTo([]);
     setIsUrgent(false);
-    setIsRecurring(false);
-    setRecurrencePattern('weekly');
-    setRecurrenceEndDate('');
     setLinks(['']);
     setCompletionRequirement('any');
     setUploadedDocumentIds([]);
@@ -87,6 +135,7 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
     setDocumentAssignedTo([]);
     setPendingFiles([]);
     setDocumentTitle('');
+    setAssigneeError(false);
   };
 
   // Fetch projects and categories on mount
@@ -96,10 +145,29 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
   }, []);
 
   useEffect(() => {
-    if (isOpen && !task && selectedPersonId && selectedPersonId !== 'all') {
-      setAssignedTo([selectedPersonId]);
+    if (!isOpen || task) return;
+
+    if (assignedTo.length > 0) {
+      return;
     }
-  }, [isOpen, task, selectedPersonId]);
+
+    if (selectedPersonId && selectedPersonId !== 'all') {
+      const canAssignSelected = assignableMembers.some((member) => member.id === selectedPersonId);
+      if (canAssignSelected) {
+        setAssignedTo([selectedPersonId]);
+        setAssigneeError(false);
+        return;
+      }
+    }
+
+    if (currentUser?.id) {
+      const canAssignCurrentUser = assignableMembers.some((member) => member.id === currentUser.id);
+      if (canAssignCurrentUser) {
+        setAssignedTo([currentUser.id]);
+        setAssigneeError(false);
+      }
+    }
+  }, [isOpen, task, selectedPersonId, assignableMembers, currentUser?.id, assignedTo.length]);
 
   // Refresh categories when modal is opened to reflect latest admin changes
   useEffect(() => {
@@ -116,15 +184,15 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
       setProjectId((task as any)?.project_id || '');
       setCategory(task.category || 'personal');
       setPriority(task.priority || 'medium');
-      setDueDate(task.due_date || '');
+      const { date, time } = parseDueDateParts(task.due_date || '');
+      setDueDate(date);
+      setDueTime(time);
       setAssignedTo(task.assigned_to || []);
       setIsUrgent((task as any)?.is_urgent || false);
-      setIsRecurring(!!(task as any)?.recurrence_pattern);
-      setRecurrencePattern((task as any)?.recurrence_pattern || 'weekly');
-      setRecurrenceEndDate((task as any)?.recurrence_end_date || '');
       setLinks(task.links && task.links.length > 0 ? task.links : ['']);
       setCompletionRequirement((task as any)?.completion_requirement || 'any');
       setUploadedDocumentIds(task.document_ids || []);
+      setAssigneeError(false);
       // Fetch existing documents
       if (task.document_ids && task.document_ids.length > 0) {
         fetchExistingDocuments(task.document_ids);
@@ -143,6 +211,42 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
       resetForm();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowDetails(false);
+      setDetailsTouched(false);
+      return;
+    }
+
+    if (detailsTouched) {
+      return;
+    }
+
+    const shouldExpand = Boolean(
+      description.trim() ||
+      projectId ||
+      links.some((link) => link.trim().length > 0) ||
+      uploadedDocumentIds.length > 0 ||
+      pendingFiles.length > 0 ||
+      existingDocuments.length > 0 ||
+      documentTitle.trim() ||
+      (task && ((task as any)?.project_id || task.description))
+    );
+
+    setShowDetails(shouldExpand);
+  }, [
+    isOpen,
+    detailsTouched,
+    description,
+    projectId,
+    links,
+    uploadedDocumentIds,
+    pendingFiles.length,
+    existingDocuments.length,
+    documentTitle,
+    task
+  ]);
 
   const fetchProjects = async () => {
     try {
@@ -192,10 +296,11 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
         body: JSON.stringify({ ids: documentIds })
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        setExistingDocuments(data.documents || []);
-      }
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const docs = data?.data?.documents ?? data?.documents ?? [];
+      setExistingDocuments(docs);
     } catch (error) {
       console.error('Failed to fetch existing documents:', error);
     }
@@ -206,6 +311,23 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const toggleAssignee = (memberId: string) => {
+    setAssignedTo((prev) => {
+      const next = prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId];
+      if (next.length > 0) {
+        setAssigneeError(false);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleDetails = () => {
+    setShowDetails((prev) => !prev);
+    setDetailsTouched(true);
   };
 
   const handleRemoveDocument = (documentId: string) => {
@@ -252,13 +374,14 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
         
         if (response.ok) {
           const result = await response.json();
-          if (result.document?.id) {
-            newDocumentIds.push(result.document.id);
+          const uploadedDoc = result?.data?.document ?? result?.document;
+          if (uploadedDoc?.id) {
+            newDocumentIds.push(uploadedDoc.id);
             // Add to existing documents for display
             newExistingDocs.push({
-              ...result.document,
-              size: item.file.size || result.document.file_size,
-              related_to: relatedPeopleIds
+              ...uploadedDoc,
+              size: item.file.size || uploadedDoc.file_size,
+              related_to: relatedPeopleIds,
             });
           }
         } else {
@@ -294,7 +417,7 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
       return;
     }
     if (!assignedTo || assignedTo.length === 0) {
-      alert('Please assign the task to at least one person');
+      setAssigneeError(true);
       return;
     }
     
@@ -310,17 +433,17 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
     // Combine existing and newly uploaded document IDs
     const allDocumentIds = [...uploadedDocumentIds, ...newUploadedIds];
     
+    const dueDateValue = dueDate ? (dueTime ? `${dueDate}T${dueTime}:00` : dueDate) : '';
+
     const taskData = {
       title,
       description,
       category,
       priority,
-      due_date: dueDate,
+      due_date: dueDateValue,
       assigned_to: finalAssignedTo,
       is_urgent: isUrgent,
       status: isDraft ? 'draft' : 'active',
-      recurrence_pattern: isRecurring ? recurrencePattern : null,
-      recurrence_end_date: isRecurring ? recurrenceEndDate : null,
       links: links.filter(l => l).map(l => smartUrlComplete(l)), // Apply URL normalization
       document_ids: allDocumentIds,
       completion_requirement: finalAssignedTo.length > 1 ? completionRequirement : 'any',
@@ -410,334 +533,343 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
             </button>
           </div>
         
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(false); }} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Title *
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                placeholder="e.g., Schedule dentist appointment"
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Description
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                placeholder="Additional details about the task..."
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-            </div>
-
-            {projects.length > 0 && (
+          <form onSubmit={(e) => { e.preventDefault(); handleSave(false); }} className="space-y-6">
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Project
+                <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                  Title *
                 </label>
-                <select
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                  placeholder="e.g., Schedule dentist appointment"
                   className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  <option value="">No project</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Category *
-                </label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={mapToTaskEnum(cat.name)}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Priority *
-                </label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Due Date *
-              </label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center gap-6">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={isUrgent}
-                    onChange={(e) => setIsUrgent(e.target.checked)}
-                    className="rounded border-neutral-600 bg-neutral-700 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="text-sm font-medium text-red-400">Pin as URGENT</span>
-                </label>
-
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={isRecurring}
-                    onChange={(e) => setIsRecurring(e.target.checked)}
-                    className="rounded border-neutral-600 bg-neutral-700 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="text-sm font-medium text-text-primary">Make task recurring</span>
-                </label>
-              </div>
-
-              {isRecurring && (
-                <div className="mt-2 space-y-2">
+              <div className="flex flex-col gap-3 md:grid md:grid-cols-2 md:gap-4">
+                <div>
+                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                    Category *
+                  </label>
                   <select
-                    value={recurrencePattern}
-                    onChange={(e) => setRecurrencePattern(e.target.value)}
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
                     className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
                   >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
+                    {categoryOptions.map((cat) => (
+                      <option key={cat.id} value={mapToTaskEnum(cat.name)}>
+                        {cat.name}
+                      </option>
+                    ))}
                   </select>
-                  
-                  <input
-                    type="date"
-                    placeholder="End date"
-                    value={recurrenceEndDate}
-                    onChange={(e) => setRecurrenceEndDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                </div>
+
+                <div className="w-full">
+                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                    Priority *
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                    >
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setIsUrgent((prev: boolean) => !prev)}
+                      aria-pressed={isUrgent}
+                      className={`px-4 py-2 text-sm font-medium rounded-full border transition-colors ${
+                        isUrgent
+                          ? 'bg-red-500/20 border-red-500 text-red-100'
+                          : 'border-gray-600/40 bg-[#2a2a2a] text-text-primary hover:border-red-400 hover:text-red-200'
+                      }`}
+                    >
+                      Urgent
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                    Due Date *
+                  </label>
+                  <DateDisplay
+                    ref={dueDateInputRef}
+                    label=""
+                    date={dueDate}
+                    onChange={(value) => {
+                      setDueDate(value);
+                      if (!value) setDueTime('');
+                    }}
                   />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                    Due Time
+                  </label>
+                  <TimeInput
+                    className="w-full"
+                    value={dueTime}
+                    onChange={(value) => setDueTime(value)}
+                    disabled={!dueDate}
+                    placeholder="Select time"
+                    onOpenDatePicker={() => {
+                      if (!dueDate) {
+                        dueDateInputRef.current?.focus();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex flex-wrap gap-y-2 gap-x-8">
+                  {assignableMembers.map((member) => {
+                    const isSelected = assignedTo.includes(member.id);
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => toggleAssignee(member.id)}
+                        aria-pressed={isSelected}
+                        className={`px-3.5 py-1.5 text-sm rounded-full border transition-colors whitespace-nowrap ${
+                          isSelected
+                            ? 'bg-[#3b4e76] border-[#3b4e76] text-white'
+                            : assigneeError
+                              ? 'bg-[#2a2a2a] border-red-500/70 text-red-100 hover:border-red-400'
+                              : 'bg-[#2a2a2a] border-gray-600/40 text-text-primary hover:border-[#3b4e76]'
+                        }`}
+                      >
+                        {member.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {assignedTo.length > 1 && (
+                <div>
+                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                    Completion Requirement
+                  </label>
+                  <select
+                    value={completionRequirement}
+                    onChange={(e) => setCompletionRequirement(e.target.value)}
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                  >
+                    <option value="any">Any assignee can complete</option>
+                    <option value="all">All assignees must complete</option>
+                  </select>
                 </div>
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Assign To *
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {humanMembers.map(member => (
-                  <label key={member.id} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={assignedTo.includes(member.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setAssignedTo([...assignedTo, member.id]);
-                        } else {
-                          setAssignedTo(assignedTo.filter(id => id !== member.id));
-                        }
-                      }}
-                      className="rounded border-neutral-600 bg-neutral-700 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="text-sm text-text-primary">{member.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {assignedTo.length > 1 && (
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Completion Requirement
-                </label>
-                <select
-                  value={completionRequirement}
-                  onChange={(e) => setCompletionRequirement(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                >
-                  <option value="any">Any assignee can complete</option>
-                  <option value="all">All assignees must complete</option>
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                Links
-              </label>
-              {links.map((link, index) => (
-                <div key={index} className="mb-2">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={link}
-                      onChange={(e) => {
-                        const newLinks = [...links];
-                        newLinks[index] = e.target.value;
-                        setLinks(newLinks);
-                      }}
-                      placeholder="e.g. drphil.com, www.google.com, or https://..."
-                      className="flex-1 px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setLinks(links.filter((_, i) => i !== index))}
-                      className="p-2 text-text-muted hover:text-text-primary transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {link && !link.startsWith('http') && (
-                    <p className="text-xs text-blue-400 mt-1 ml-1">
-                      Will be saved as: {smartUrlComplete(link)}
-                    </p>
-                  )}
-                </div>
-              ))}
+            <div className="pt-2 border-t border-gray-600/30">
               <button
                 type="button"
-                onClick={() => setLinks([...links, ''])}
-                className="text-sm text-primary-400 hover:text-primary-300 transition-colors"
+                onClick={handleToggleDetails}
+                className="text-sm text-primary-400 hover:text-primary-300 transition-colors flex items-center gap-2"
               >
-                + Add Link
+                {showDetails ? 'Hide additional details' : 'Show additional details'}
+                <ChevronDown className={`h-4 w-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
               </button>
             </div>
 
-            {/* Minimal Document Uploads: Choose files first, then show metadata */}
-            <div className="space-y-3">
-              <div>
-                <input
-                  id="task-file-input"
-                  type="file"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const newItem = {
-                      file,
-                      category: '',
-                      assignedTo: assignedTo.length > 0 ? [...assignedTo] : (currentUser ? [currentUser.id] : []),
-                      title: file.name.replace(/\.[^/.]+$/, '')
-                    };
-                    setPendingFiles([...pendingFiles, newItem]);
-                    e.target.value = '';
-                  }}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="task-file-input"
-                  className="inline-block py-2 px-4 bg-[#3b4e76] hover:bg-[#314060] text-white text-sm font-medium rounded-md cursor-pointer"
-                >
-                  Choose File
-                </label>
-              </div>
+            {showDetails && (
+              <div className="space-y-5">
+                <div>
+                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                    Description
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Additional details about the task..."
+                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                  />
+                </div>
 
-              {pendingFiles.length > 0 && (
-                <div className="space-y-2">
-                  {pendingFiles.map((item, index) => (
-                    <div key={index} className="p-3 bg-background-primary/40 rounded-md border border-gray-600/30">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-blue-400">⬆</span>
-                            <span className="text-sm font-medium truncate">{item.file.name}</span>
-                            <span className="text-xs text-muted-foreground">({formatFileSize(item.file.size)})</span>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                            <div>
-                              <label className="text-xs text-text-muted">Document Title *</label>
-                              <input
-                                type="text"
-                                value={item.title}
-                                onChange={(e) => {
-                                  const next = [...pendingFiles];
-                                  next[index] = { ...next[index], title: e.target.value };
-                                  setPendingFiles(next);
-                                }}
-                                className="mt-1 w-full px-2 py-1.5 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
-                                placeholder="Enter document title"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-text-muted">Document Category *</label>
-                              <select
-                                value={item.category}
-                                onChange={(e) => {
-                                  const next = [...pendingFiles];
-                                  next[index] = { ...next[index], category: e.target.value };
-                                  setPendingFiles(next);
-                                }}
-                                className="mt-1 w-full px-2 py-1.5 bg-background-primary border border-gray-600/30 rounded-md text-text-primary"
-                              >
-                                <option value="">Select a category...</option>
-                                <option value="medical">Medical</option>
-                                <option value="financial">Financial</option>
-                                <option value="legal">Legal</option>
-                                <option value="education">Education</option>
-                                <option value="travel">Travel</option>
-                                <option value="property">Property</option>
-                                <option value="vehicles">Vehicles</option>
-                                <option value="personal">Personal</option>
-                                <option value="work">Work</option>
-                                <option value="photos">Photos</option>
-                                <option value="other">Other</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
+                {projects.length > 0 && (
+                  <div>
+                    <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                      Project
+                    </label>
+                    <select
+                      value={projectId}
+                      onChange={(e) => setProjectId(e.target.value)}
+                      className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                    >
+                      <option value="">No project</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                    Links
+                  </label>
+                  {links.map((link, index) => (
+                    <div key={index} className="mb-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={link}
+                          onChange={(e) => {
+                            const newLinks = [...links];
+                            newLinks[index] = e.target.value;
+                            setLinks(newLinks);
+                          }}
+                          placeholder="e.g. drphil.com, www.google.com, or https://..."
+                          className="flex-1 px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                        />
                         <button
                           type="button"
-                          onClick={() => setPendingFiles(pendingFiles.filter((_, i) => i !== index))}
-                          className="p-1.5 text-text-muted hover:text-text-primary transition-colors"
+                          onClick={() => setLinks(links.filter((_, i) => i !== index))}
+                          className="p-2 text-text-muted hover:text-text-primary transition-colors"
                         >
                           <X className="h-4 w-4" />
                         </button>
                       </div>
+                      {link && !link.startsWith('http') && (
+                        <p className="text-xs text-blue-400 mt-1 ml-1">
+                          Will be saved as: {smartUrlComplete(link)}
+                        </p>
+                      )}
                     </div>
                   ))}
-
-                  {/* Upload happens automatically on Save Task */}
+                  <button
+                    type="button"
+                    onClick={() => setLinks([...links, ''])}
+                    className="text-sm text-primary-400 hover:text-primary-300 transition-colors"
+                  >
+                    + Add Link
+                  </button>
                 </div>
-              )}
-            </div>
 
-            <div className="flex gap-3 pt-4">
+                <div className="space-y-3">
+                  <div>
+                    <input
+                      id="task-file-input"
+                      type="file"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const newItem = {
+                          file,
+                          category: '',
+                          assignedTo: assignedTo.length > 0 ? [...assignedTo] : (currentUser ? [currentUser.id] : []),
+                          title: file.name.replace(/\.[^/.]+$/, '')
+                        };
+                        setPendingFiles([...pendingFiles, newItem]);
+                        e.target.value = '';
+                      }}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="task-file-input"
+                      className="block w-full bg-[#2a2a2a] text-blue-300 text-center text-sm font-medium rounded-full py-2 cursor-pointer hover:bg-blue-400/10 transition-colors"
+                    >
+                      Choose File
+                    </label>
+                  </div>
+
+                  {pendingFiles.length > 0 && (
+                    <div className="space-y-3">
+                      {pendingFiles.map((item, index) => (
+                        <div key={index} className="rounded-lg border border-gray-600/40 bg-background-primary/60 p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-text-muted">⬆</span>
+                                  <span className="text-sm font-medium truncate text-text-primary">{item.file.name}</span>
+                                  <span className="text-xs text-text-muted whitespace-nowrap">({formatFileSize(item.file.size)})</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingFiles(pendingFiles.filter((_, i) => i !== index))}
+                                  className="text-text-muted hover:text-text-primary transition-colors"
+                                  aria-label="Remove file"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">Document Title *</label>
+                                  <input
+                                    type="text"
+                                    value={item.title}
+                                    onChange={(e) => {
+                                      const next = [...pendingFiles];
+                                      next[index] = { ...next[index], title: e.target.value };
+                                      setPendingFiles(next);
+                                    }}
+                                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                                    placeholder="Enter document title"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-text-muted uppercase tracking-wide">Document Category *</label>
+                                  <select
+                                    value={item.category}
+                                    onChange={(e) => {
+                                      const next = [...pendingFiles];
+                                      next[index] = { ...next[index], category: e.target.value };
+                                      setPendingFiles(next);
+                                    }}
+                                    className="w-full px-3 py-2 bg-background-primary border border-gray-600/30 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-gray-700"
+                                  >
+                                    <option value="">Select a category...</option>
+                                    <option value="medical">Medical</option>
+                                    <option value="financial">Financial</option>
+                                    <option value="legal">Legal</option>
+                                    <option value="education">Education</option>
+                                    <option value="travel">Travel</option>
+                                    <option value="property">Property</option>
+                                    <option value="vehicles">Vehicles</option>
+                                    <option value="personal">Personal</option>
+                                    <option value="work">Work</option>
+                                    <option value="photos">Photos</option>
+                                    <option value="other">Other</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Upload happens automatically on Save Task */}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
-                type="submit"
-                disabled={!title.trim()}
-                className="flex-1 py-2 px-4 bg-button-create hover:bg-button-create/90 disabled:bg-gray-700/50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2 px-4 bg-button-delete hover:bg-button-delete/90 text-white font-medium rounded-md transition-colors"
               >
-                {task ? 'Update Task' : 'Save Task'}
+                Cancel
               </button>
               <button
                 type="button"
@@ -747,11 +879,11 @@ export default function TaskModal({ isOpen, onClose, onSave, task = null, users 
                 Save as Draft
               </button>
               <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-2 px-4 bg-button-delete hover:bg-button-delete/90 text-white font-medium rounded-md transition-colors"
+                type="submit"
+                disabled={!title.trim()}
+                className="flex-1 py-2 px-4 bg-button-create hover:bg-button-create/90 disabled:bg-gray-700/50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
               >
-                Cancel
+                {task ? 'Update Task' : 'Save Task'}
               </button>
             </div>
           </form>

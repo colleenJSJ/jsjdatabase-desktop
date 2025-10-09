@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { withCache, invalidateRelatedCache } from '@/lib/utils/cache';
-import { logErrorAndReturn, extractUserId } from '@/lib/utils/error-logger';
+import { extractUserId } from '@/lib/utils/error-logger';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 /**
  * Consolidated Travel Dashboard Endpoint
@@ -16,19 +18,16 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    const supabase = await createClient();
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
-    // Use caching for this expensive operation
+    const { user, supabase } = authResult;
+
     const data = await withCache(
       '/api/travel/dashboard',
       async () => {
-        // Fetch all data in parallel with proper joins
         const [
           tripsResult,
           accommodationsResult,
@@ -38,7 +37,6 @@ export async function GET(request: NextRequest) {
           contactsResult,
           familyMembersResult,
         ] = await Promise.all([
-          // Fetch trips with calendar events and travelers in one query
           supabase
             .from('trips')
             .select(`
@@ -50,7 +48,7 @@ export async function GET(request: NextRequest) {
                 end_time,
                 location
               ),
-              trip_travelers(
+              trip_travelers:trip_travelers(
                 id,
                 family_member_id,
                 family_member:family_members(
@@ -62,91 +60,86 @@ export async function GET(request: NextRequest) {
               )
             `)
             .order('start_date', { ascending: true }),
-          
-          // Fetch accommodations
+
           supabase
             .from('travel_accommodations')
             .select('*')
-            .order('check_in_date', { ascending: true }),
-          
-          // Fetch travel details (order by date/time columns that exist)
+            .order('check_in', { ascending: true }),
+
           supabase
             .from('travel_details')
             .select('*')
             .order('travel_date', { ascending: true })
             .order('departure_time', { ascending: true }),
-          
-          // Fetch travel documents
+
           supabase
-            .from('travel_documents')
+            .from('documents')
             .select('*')
-            .order('expiry_date', { ascending: true }),
-          
-          // Fetch travel preferences
+            .eq('category', 'travel')
+            .eq('uploaded_by', user.id)
+            .order('created_at', { ascending: false }),
+
           supabase
             .from('travel_preferences')
-            .select('*'),
-          
-          // Fetch travel contacts
-          supabase
-            .from('travel_contacts')
             .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+
+          supabase
+            .from('contacts_unified')
+            .select('*')
+            .eq('contact_type', 'travel')
             .order('name', { ascending: true }),
-          
-          // Fetch all family members for selection
+
           supabase
             .from('family_members')
             .select('*')
             .order('name', { ascending: true }),
         ]);
 
-        // Check for errors
         if (tripsResult.error) throw tripsResult.error;
         if (accommodationsResult.error) throw accommodationsResult.error;
         if (detailsResult.error) throw detailsResult.error;
         if (documentsResult.error) throw documentsResult.error;
-        if (preferencesResult.error) throw preferencesResult.error;
         if (contactsResult.error) throw contactsResult.error;
         if (familyMembersResult.error) throw familyMembersResult.error;
+        if (preferencesResult.error && preferencesResult.error.code !== 'PGRST116') {
+          throw preferencesResult.error;
+        }
 
-        // Process trips to match expected format
-        const processedTrips = tripsResult.data?.map(trip => {
-          // Extract travelers from the nested structure
-          const travelers = trip.trip_travelers?.map((tt: any) => ({
-            id: tt.id,
-            family_member_id: tt.family_member_id,
-            family_member: tt.family_member,
-          })) || [];
+        const processedTrips = (tripsResult.data ?? []).map((trip: any) => {
+          const travelers = Array.isArray(trip.trip_travelers)
+            ? trip.trip_travelers.map((tt: any) => ({
+                id: tt.id,
+                family_member_id: tt.family_member_id,
+                family_member: tt.family_member,
+              }))
+            : [];
 
+          const { trip_travelers, ...rest } = trip;
           return {
-            ...trip,
-            travelers, // Frontend expects this format
-            trip_travelers: undefined, // Remove the raw join data
+            ...rest,
+            travelers,
           };
-        }) || [];
+        });
 
-        // Build response in the exact format the frontend expects
         return {
           trips: processedTrips,
-          accommodations: accommodationsResult.data || [],
-          travel_details: detailsResult.data || [],
-          documents: documentsResult.data || [],
-          preferences: preferencesResult.data?.[0] || null, // Single preference object
-          contacts: contactsResult.data || [],
-          family_members: familyMembersResult.data || [],
+          accommodations: accommodationsResult.data ?? [],
+          travel_details: detailsResult.data ?? [],
+          documents: documentsResult.data ?? [],
+          preferences: preferencesResult.data ?? null,
+          contacts: contactsResult.data ?? [],
+          family_members: familyMembersResult.data ?? [],
         };
       },
       { userId: user.id }
     );
 
-    // Return successful response maintaining frontend-expected format
-    return NextResponse.json({
-      success: true,
-      data,
-    });
-
+    return jsonSuccess(data);
   } catch (error: any) {
-    return logErrorAndReturn(error, context, 'Failed to fetch travel dashboard data');
+    console.error('[Travel Dashboard] Failed to build payload', error);
+    return jsonError('Failed to fetch travel dashboard data', { status: 500 });
   }
 }
 
@@ -155,6 +148,9 @@ export async function GET(request: NextRequest) {
  * Call this after any travel-related data changes
  */
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const context = {
     endpoint: '/api/travel/dashboard',
     method: 'POST',
@@ -162,24 +158,21 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const supabase = await createClient();
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authResult = await requireUser(request);
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     // Invalidate travel-related caches
     await invalidateRelatedCache('travel', 'update');
     await invalidateRelatedCache('trips', 'update');
 
-    return NextResponse.json({
-      success: true,
-      message: 'Travel dashboard cache invalidated',
+    return jsonSuccess({ message: 'Travel dashboard cache invalidated' }, {
+      legacy: { success: true, message: 'Travel dashboard cache invalidated' },
     });
 
   } catch (error: any) {
-    return logErrorAndReturn(error, context, 'Failed to invalidate travel cache');
+    console.error('[Travel Dashboard] Failed to invalidate cache', error);
+    return jsonError('Failed to invalidate travel cache', { status: 500 });
   }
 }

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ deviceId: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const resolvedParams = await params;
   try {
     const supabase = await createClient();

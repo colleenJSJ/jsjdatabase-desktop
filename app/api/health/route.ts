@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 
     // Check encryption setup
     try {
-      const encryptionCheck = validateEncryptionSetup();
+      const encryptionCheck = await validateEncryptionSetup();
       health.checks.encryption = {
         status: encryptionCheck.valid ? 'ok' : 'error',
         message: encryptionCheck.error || 'Encryption configured correctly'
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       status: 'ok',
       message: 'Not implemented - would check B2 connection'
     };
-    if (process.env.BACKBLAZE_KEY_ID && process.env.BACKBLAZE_BUCKET_ID) {
+    if (process.env.EDGE_BACKBLAZE_KEY_ID && process.env.EDGE_BACKBLAZE_BUCKET_ID) {
       health.checks.backblaze.status = 'ok';
       health.checks.backblaze.message = 'Environment variables configured';
     } else {
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       'NEXT_PUBLIC_SUPABASE_URL',
       'NEXT_PUBLIC_SUPABASE_ANON_KEY',
       'SUPABASE_SERVICE_ROLE_KEY',
-      'ENCRYPTION_KEY',
+      'EDGE_SERVICE_SECRET',
     ];
 
     const missingEnvVars = requiredEnvVars.filter(key => !process.env[key]);

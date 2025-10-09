@@ -7,9 +7,12 @@ export function detectDevice(userAgent: string): {
   const ua = userAgent.toLowerCase();
   
   // Detect if PWA
+  const navWithStandalone = typeof window !== 'undefined'
+    ? (window.navigator as Navigator & { standalone?: boolean })
+    : undefined;
   const isPWA = typeof window !== 'undefined' && 
     (window.matchMedia('(display-mode: standalone)').matches ||
-     (window.navigator as any).standalone === true);
+     navWithStandalone?.standalone === true);
 
   // Detect mobile
   const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
@@ -59,10 +62,11 @@ export function generateDeviceName(deviceInfo: ReturnType<typeof detectDevice>):
 // Check if the app is installed as PWA
 export function isPWA(): boolean {
   if (typeof window === 'undefined') return false;
+  const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean };
   
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true ||
+    navigatorWithStandalone.standalone === true ||
     document.referrer.includes('android-app://') ||
     window.location.search.includes('mode=standalone')
   );

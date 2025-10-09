@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { upsertGoogleTokens } from '@/lib/google/token-service';
 
 // Debug OAuth credentials
 console.log('[OAuth Debug] Initializing OAuth2 client:');
@@ -108,22 +109,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Store or update OAuth tokens in the correct table
-    console.log('[OAuth Debug] Storing tokens in user_google_tokens table');
-    const { error: tokenError } = await supabase
-      .from('user_google_tokens')
-      .upsert({
-        user_id: user.id,
+    const { error: tokenError } = await upsertGoogleTokens({
+      userId: user.id,
+      payload: {
         access_token: tokens.access_token!,
-        refresh_token: tokens.refresh_token || null,
+        refresh_token: tokens.refresh_token || '',
         expires_at: new Date(tokens.expiry_date!).toISOString(),
-        scope: tokens.scope || null,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id'
-      });
+        scope: tokens.scope ?? null,
+      },
+    });
 
     if (tokenError) {
-      console.error('Error storing OAuth tokens:', tokenError);
+      console.error('Error storing OAuth tokens via Edge Function:', tokenError);
       return NextResponse.redirect(new URL('/calendar?error=token_storage_failed', request.url));
     }
 

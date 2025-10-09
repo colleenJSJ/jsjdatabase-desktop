@@ -122,8 +122,31 @@ export async function GET(request: NextRequest) {
         .limit(limit);
       (dq.data || []).forEach((d: any) => results.push({
         id: d.id, type: 'document', title: d.title || 'Document', subtitle: d.category || d.source_page || '',
-        badge: 'Documents', path: '/documents', score: 0.7
+        badge: 'Documents', path: '/documents', action: { open: 'document', id: d.id }, score: 0.7
       }));
+    } catch {}
+
+    // Passwords
+    try {
+      const pw = await supabase
+        .from('passwords')
+        .select('id,service_name,title,username,url')
+        .or(`service_name.ilike.%${q}%,title.ilike.%${q}%,username.ilike.%${q}%,url.ilike.%${q}%`)
+        .limit(limit);
+      (pw.data || []).forEach((p: any) => {
+        const title = p.service_name || p.title || 'Password';
+        const subtitle = p.username || p.url || '';
+        results.push({
+          id: p.id,
+          type: 'password',
+          title,
+          subtitle,
+          badge: 'Passwords',
+          path: '/passwords',
+          action: { open: 'password', id: p.id },
+          score: 0.95
+        });
+      });
     } catch {}
 
     // Portals

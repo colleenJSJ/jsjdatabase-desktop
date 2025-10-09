@@ -190,8 +190,16 @@ export class TasksService {
     if (task.completed_at !== undefined) updateData.completed_at = task.completed_at;
     if (task.completed_by !== undefined) updateData.completed_by = task.completed_by;
     if (task.link !== undefined) updateData.link = task.link;
-    if (task.document_ids !== undefined) updateData.document_ids = task.document_ids as any;
-    if (task.notes !== undefined) updateData.notes = task.notes as any;
+    if (task.document_ids !== undefined) {
+      updateData.document_ids = task.document_ids ?? null;
+    }
+    if (task.notes !== undefined) {
+      updateData.notes = task.notes
+        ? Array.isArray(task.notes)
+          ? task.notes
+          : [task.notes]
+        : null;
+    }
 
     // Update assigned_to if provided
     if (assignedUserIds !== undefined) {

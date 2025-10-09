@@ -1,7 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const supabase = await createClient();
     
@@ -9,16 +14,13 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return jsonError('Unauthorized', { status: 401 });
     }
 
     const { ids } = await request.json();
     
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json(
-        { error: 'Document IDs are required' },
-        { status: 400 }
-      );
+      return jsonError('Document IDs are required', { status: 400 });
     }
 
     // Fetch documents by IDs
@@ -29,18 +31,13 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Failed to fetch documents by IDs:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch documents' },
-        { status: 500 }
-      );
+      return jsonError('Failed to fetch documents', { status: 500 });
     }
 
-    return NextResponse.json({ documents: documents || [] });
+    const payload = documents || [];
+    return jsonSuccess({ documents: payload }, { legacy: { documents: payload } });
   } catch (error) {
     console.error('Documents by IDs API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', { status: 500 });
   }
 }

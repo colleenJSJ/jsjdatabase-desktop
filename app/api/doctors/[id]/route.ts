@@ -1,19 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getAuthenticatedUser, requireAdmin } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { syncDoctorToContacts, removeUnifiedContact } from '@/app/api/_helpers/contact-sync';
 import { ensurePortalAndPassword } from '@/lib/services/portal-password-sync';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const { user, supabase } = authResult;
@@ -30,7 +34,7 @@ export async function PUT(
         website: data.website || null,
         portal_url: data.portal_url || null,
         portal_username: data.portal_username || null,
-        portal_password: data.portal_password ? encrypt(data.portal_password) : null,
+        portal_password: data.portal_password ? await encrypt(data.portal_password) : null,
         patients: data.patients || [],
         notes: data.notes || null,
         updated_at: new Date().toISOString(),
@@ -40,10 +44,10 @@ export async function PUT(
       .single();
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to update doctor' },
-        { status: 500 }
-      );
+      return jsonError('Failed to update doctor', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     // Sync to unified contacts table
@@ -121,16 +125,19 @@ export async function PUT(
     // Decrypt password before returning
     const decryptedDoctor = {
       ...doctor,
-      portal_password: doctor.portal_password ? decrypt(doctor.portal_password) : null
+      portal_password: doctor.portal_password ? await decrypt(doctor.portal_password) : null,
     };
     
-    return NextResponse.json({ doctor: decryptedDoctor });
+    return jsonSuccess({ doctor: decryptedDoctor }, {
+      legacy: { doctor: decryptedDoctor },
+    });
   } catch (error) {
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }
 
@@ -138,14 +145,17 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await getAuthenticatedUser();
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false, role: 'admin' });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
-    const { user, supabase } = authResult;
+    const { supabase } = authResult;
     
     console.log('[Doctors API DELETE] Starting deletion for doctor:', id);
     
@@ -177,19 +187,22 @@ export async function DELETE(
 
     if (error) {
       console.error('[Doctors API DELETE] Failed to delete doctor:', error);
-      return NextResponse.json(
-        { error: 'Failed to delete doctor' },
-        { status: 500 }
-      );
+      return jsonError('Failed to delete doctor', {
+        status: 500,
+        meta: { message: error.message },
+      });
     }
 
     console.log('[Doctors API DELETE] Successfully deleted doctor and related records');
-    return NextResponse.json({ success: true });
+    return jsonSuccess({ deleted: true }, {
+      legacy: { success: true },
+    });
   } catch (error) {
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return jsonError('Internal server error', {
+      status: 500,
+      meta: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
   }
 }

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logActivity } from '@/app/api/_helpers/log-activity';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function POST(request: NextRequest) {
+  // Login forms originate from our own UI, but unauthenticated users won't
+  // have a CSRF session yet. Skip strict enforcement here to avoid false 403s.
+  const csrfError = await enforceCSRF(request, { skip: true });
+  if (csrfError) return csrfError;
+
   try {
     console.log('[Login API] Starting login process');
     const body = await request.json();

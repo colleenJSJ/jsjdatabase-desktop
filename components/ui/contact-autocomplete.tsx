@@ -12,6 +12,8 @@ interface ContactAutocompleteProps {
   placeholder?: string;
   className?: string;
   filterType?: string; // Filter by contact type (e.g., 'airline', 'driver', etc.)
+  inputProps?: React.InputHTMLAttributes<HTMLInputElement>;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 // Common airlines fallback data
@@ -39,13 +41,25 @@ export function ContactAutocomplete({
   contacts,
   placeholder = 'Type to search...',
   className,
-  filterType
+  filterType,
+  inputProps,
+  inputRef,
 }: ContactAutocompleteProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const internalInputRef = useRef<HTMLInputElement>(null);
+
+  const assignInputRef = (node: HTMLInputElement | null) => {
+    internalInputRef.current = node;
+    if (!inputRef) return;
+    if (typeof inputRef === 'function') {
+      inputRef(node);
+    } else {
+      (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node;
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -89,6 +103,7 @@ export function ContactAutocomplete({
       return prev;
     });
     setIsOpen(filtered.length > 0);
+    setActiveIndex(-1);
   }, [value, filterType, contacts ? contacts.length : 0]);
 
   const handleSelect = (contact: Contact) => {
@@ -104,11 +119,12 @@ export function ContactAutocomplete({
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
-          setActiveIndex(0);
+          setActiveIndex(-1);
         }}
         placeholder={placeholder}
         className={className}
-        ref={inputRef}
+        ref={assignInputRef}
+        {...inputProps}
         onBlur={() => {
           // Close dropdown when tabbing away
           setTimeout(() => setIsOpen(false), 0);
@@ -119,39 +135,33 @@ export function ContactAutocomplete({
           }
         }}
         onKeyDown={(e) => {
-          const isAcceptKey = e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey);
-          // If we have suggestions, accept immediately on Tab/Enter and advance focus
+          const isAcceptKey = e.key === 'Enter';
           if (filteredContacts.length > 0 && isAcceptKey) {
-            e.preventDefault();
-            const idx = activeIndex >= 0 ? activeIndex : 0;
-            handleSelect(filteredContacts[idx]);
-            // Ensure dropdown closes
-            setIsOpen(false);
-            // Move focus to next focusable
-            setTimeout(() => {
-              const node = inputRef.current;
-              node?.blur();
-              if (!node) return;
-              const focusables = Array.from(document.querySelectorAll<HTMLElement>(
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-              )).filter(el => !el.hasAttribute('disabled') && el.tabIndex !== -1 && el.offsetParent !== null);
-              const i = focusables.indexOf(node);
-              const next = i >= 0 && i + 1 < focusables.length ? focusables[i + 1] : null;
-              next?.focus();
-            }, 0);
-            return;
+            const idx = activeIndex >= 0 ? activeIndex : -1;
+            if (idx >= 0) {
+              e.preventDefault();
+              handleSelect(filteredContacts[idx]);
+              setIsOpen(false);
+              return;
+            }
           }
 
           // Navigation inside the open list
           if (isOpen && filteredContacts.length > 0) {
             if (e.key === 'ArrowDown') {
               e.preventDefault();
-              setActiveIndex((prev) => (prev + 1) % filteredContacts.length);
+              setActiveIndex((prev) => {
+                const next = prev + 1;
+                return next >= filteredContacts.length ? 0 : next;
+              });
               return;
             }
             if (e.key === 'ArrowUp') {
               e.preventDefault();
-              setActiveIndex((prev) => (prev - 1 + filteredContacts.length) % filteredContacts.length);
+              setActiveIndex((prev) => {
+                const next = prev - 1;
+                return next < 0 ? filteredContacts.length - 1 : next;
+              });
               return;
             }
             if (e.key === 'Escape') {

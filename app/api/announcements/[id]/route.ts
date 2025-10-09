@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/app/api/_helpers/auth';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function GET(
   request: NextRequest,
@@ -49,9 +50,12 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
-    const authResult = await requireAdmin();
+    const authResult = await requireAdmin(request, { skipCSRF: true });
     
     if ('error' in authResult) {
       return authResult.error;
@@ -104,11 +108,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   console.log('[Announcements API] DELETE request for ID:', id);
   
   try {
-    const authResult = await requireAdmin();
+    const authResult = await requireAdmin(request, { skipCSRF: true });
     
     if ('error' in authResult) {
       return authResult.error;

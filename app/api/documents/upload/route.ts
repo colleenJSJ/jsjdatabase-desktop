@@ -1,12 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getBackblazeService } from '@/lib/backblaze/b2-service';
 import { ActivityLogger } from '@/lib/services/activity-logger';
 import { resolvePersonReferences } from '@/app/api/_helpers/person-resolver';
 import { securityConfig } from '@/lib/config/security';
 import { logger } from '@/lib/utils/logger';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) console.log('[Upload API] Request received');
   
@@ -27,7 +32,7 @@ export async function POST(request: NextRequest) {
     
     if (!session) {
       console.log('[Upload API] No session found');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return jsonError('Unauthorized', { status: 401 });
     }
     
     // Get user from session
@@ -62,17 +67,14 @@ export async function POST(request: NextRequest) {
 
     if (!file || !category) {
       console.error('[Upload API] Missing required fields');
-      return NextResponse.json(
-        { error: 'File and category are required' },
-        { status: 400 }
-      );
+      return jsonError('File and category are required', { status: 400 });
     }
 
     // Server-side upload validation
     try {
       const maxBytes = Math.max(1, securityConfig.MAX_UPLOAD_MB) * 1024 * 1024;
       if (file.size > maxBytes) {
-        return NextResponse.json({ error: `File too large. Max ${securityConfig.MAX_UPLOAD_MB}MB` }, { status: 413 });
+        return jsonError(`File too large. Max ${securityConfig.MAX_UPLOAD_MB}MB`, { status: 413 });
       }
       const allowedTypes = new Set([
         'application/pdf',
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest) {
       const type = (file.type || '').toLowerCase();
       if (type && !allowedTypes.has(type)) {
         logger.warn('[Upload API] Rejected file type:', type);
-        return NextResponse.json({ error: 'Unsupported file type' }, { status: 415 });
+        return jsonError('Unsupported file type', { status: 415 });
       }
     } catch (e) {
       logger.warn('[Upload API] Validation error:', e);
@@ -208,10 +210,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[Upload API] Database insert error:', error);
-      return NextResponse.json(
-        { error: 'Failed to save document', details: error.message },
-        { status: 500 }
-      );
+      return jsonError('Failed to save document', { status: 500, meta: { details: error.message } });
     }
 
     // Log the activity
@@ -227,12 +226,12 @@ export async function POST(request: NextRequest) {
     );
 
     if (!isProd) logger.info('[Upload API] Upload successful:', document.id);
-    return NextResponse.json({ document });
+    return jsonSuccess({ document }, { legacy: { document } });
   } catch (error) {
     console.error('[Upload API] Unexpected error:', error instanceof Error ? error.message : error);
-    return NextResponse.json(
-      { error: 'Failed to upload document', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return jsonError('Failed to upload document', {
+      status: 500,
+      meta: { details: error instanceof Error ? error.message : 'Unknown error' },
+    });
   }
 }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { toInstantFromNaive } from '@/lib/utils/date-utils';
+import { enforceCSRF } from '@/lib/security/csrf';
 
 export async function GET(
   request: NextRequest,
@@ -54,6 +56,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const { id } = await params;
     const supabase = await createClient();
@@ -78,7 +83,7 @@ export async function PUT(
     // Get the existing event to check ownership
     const { data: existingEvent } = await supabase
       .from('calendar_events')
-      .select('created_by, assigned_to')
+      .select('created_by, assigned_to, timezone')
       .eq('id', id)
       .single();
 
@@ -107,17 +112,12 @@ export async function PUT(
     console.log('[Calendar API PUT] Additional attendees:', event.metadata?.additional_attendees);
 
     // Normalize incoming times: strip trailing zone markers and ensure seconds
-    const stripZone = (s: string) => s.replace(/(Z|[+-]\d{2}:?\d{2})$/, '');
     const ensureSeconds = (s: string) => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s) ? `${s}:00` : s);
     if (typeof event.start_time === 'string') {
-      const before = event.start_time;
-      event.start_time = ensureSeconds(stripZone(event.start_time));
-      if (before !== event.start_time) console.log('[Calendar API PUT] Normalized start_time', { before, after: event.start_time });
+      event.start_time = ensureSeconds(event.start_time.trim());
     }
     if (typeof event.end_time === 'string') {
-      const before = event.end_time;
-      event.end_time = ensureSeconds(stripZone(event.end_time));
-      if (before !== event.end_time) console.log('[Calendar API PUT] Normalized end_time', { before, after: event.end_time });
+      event.end_time = ensureSeconds(event.end_time.trim());
     }
 
     // Sanitize and map update payload to avoid non-columns (e.g., send_invites, virtual_link)
@@ -143,6 +143,34 @@ export async function PUT(
       updateData.timezone = (event as any).timezone;
     } else if (event?.metadata && (event.metadata.timezone || (event.metadata as any).departure_timezone)) {
       updateData.timezone = event.metadata.timezone || (event.metadata as any).departure_timezone;
+    }
+
+    const attachOffsetIfNeeded = (value: string | null | undefined, tz: string | undefined, isAllDay: boolean): string | null | undefined => {
+      if (!value || isAllDay) return value;
+      const trimmed = value.trim();
+      if (/(Z|[+-]\d{2}:\d{2})$/i.test(trimmed)) {
+        return trimmed;
+      }
+      if (!tz) return value;
+      try {
+        return toInstantFromNaive(trimmed, tz).toISOString();
+      } catch (err) {
+        console.warn('[Calendar API PUT] Failed to attach timezone offset', { value, tz, err });
+        return value;
+      }
+    };
+
+    const updateTimezone = updateData.timezone
+      || existingEvent?.timezone
+      || event?.metadata?.timezone
+      || (event?.metadata as any)?.departure_timezone
+      || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    if (typeof event.start_time === 'string') {
+      updateData.start_time = attachOffsetIfNeeded(event.start_time, updateTimezone, !!event.all_day);
+    }
+    if (typeof event.end_time === 'string') {
+      updateData.end_time = attachOffsetIfNeeded(event.end_time, updateTimezone, !!event.all_day);
     }
 
     console.log('[Calendar API PUT] Sanitized update keys:', Object.keys(updateData));
@@ -243,6 +271,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
     const { id } = await params;
     const supabase = await createClient();

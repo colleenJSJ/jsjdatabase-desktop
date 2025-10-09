@@ -3,22 +3,13 @@
 import { ReactNode, useMemo, useState } from 'react';
 import {
   Copy,
-  CopyCheck,
-  Edit2,
-  Eye,
-  Globe,
   Mail,
   MapPin,
-  MoreHorizontal,
   Phone,
-  Trash2
+  Star
 } from 'lucide-react';
 import {
-  ACTION_BUTTON_CLASS,
-  CONTACT_CARD_CLASS,
   formatPhoneForHref,
-  formatPortalLabel,
-  formatWebsiteHref,
   renderFavoriteIcon,
   resolveAddresses,
   resolveCategoryVisual,
@@ -59,18 +50,36 @@ type DetailRowProps = {
   value: ReactNode;
   href?: string;
   secondary?: ReactNode;
+  label?: string;
+  onCopy?: () => void;
 };
 
-const DetailRow = ({ icon, value, href, secondary }: DetailRowProps) => {
+const DetailRow = ({ icon, value, href, secondary, label, onCopy }: DetailRowProps) => {
+  const handleCopy = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    onCopy?.();
+  };
+
   const content = (
     <div className="flex items-center gap-2.5">
       <span className="flex h-4 w-4 flex-none items-center justify-center text-[#7A7A78]">
         {icon}
       </span>
       <div className="flex-1 min-w-0">
+        {label ? <div className="text-[11px] uppercase text-text-muted/60 tracking-wide">{label}</div> : null}
         <div className="text-sm leading-snug text-[#C2C0B6] break-words">{value}</div>
         {secondary ? <div className="text-xs text-text-muted/60 mt-0.5">{secondary}</div> : null}
       </div>
+      {onCopy ? (
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="ml-2 flex h-6 w-6 flex-none items-center justify-center rounded-full border border-white/10 bg-black/40 text-text-muted hover:text-white transition-colors"
+          aria-label={`Copy ${label ?? 'value'}`}
+        >
+          <Copy className="h-3 w-3" />
+        </button>
+      ) : null}
     </div>
   );
 
@@ -95,12 +104,12 @@ export function ContactCard({
   assignedToLabel,
   subtitle,
   badges,
-  meta,
+  meta: _meta,
   extraContent,
   footerContent,
   actionConfig,
   showFavoriteToggle = true,
-  layout = 'auto',
+  onOpen,
 }: ContactCardProps) {
   const categoryVisual = useMemo(() => resolveCategoryVisual(contact.category), [contact.category]);
   const emails = useMemo(() => resolveEmails(contact), [contact]);
@@ -112,6 +121,7 @@ export function ContactCard({
   const portalPassword = contact.portal_password;
   const [isFavorite, setIsFavorite] = useState(Boolean(contact.is_favorite));
   const [copied, setCopied] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const secondaryBadges = useMemo(() => {
     if (!Array.isArray(badges)) return [] as ContactCardBadge[];
@@ -147,166 +157,198 @@ export function ContactCard({
     }
   };
 
-  type RowConfig = DetailRowProps & { id: string };
-
-  const detailRows = useMemo<RowConfig[]>(() => {
-    const rows: RowConfig[] = [];
-
-    if (contact.company) {
-      rows.push({ id: 'company', icon: <span className="text-text-muted">🏢</span>, value: <span>{contact.company}</span> });
+  const copyValue = async (value: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(key);
+      setTimeout(() => setCopiedField(prev => (prev === key ? null : prev)), 1500);
+    } catch (error) {
+      console.error('[ContactCard] copy failed', error);
     }
+  };
 
-    if (contact.notes) {
-      rows.push({
-        id: 'notes',
-        icon: <span className="text-text-muted">📝</span>,
-        value: <span className="whitespace-pre-wrap leading-relaxed">{contact.notes}</span>,
-      });
-    }
+  const computeSourceLabel = () => {
+    const rawSource =
+      contact.source_page ||
+      contact.source_type ||
+      (contact as any).source ||
+      null;
 
-    emails.forEach(email => {
-      rows.push({
-        id: 'email-' + email,
-        icon: <Mail className="h-3.5 w-3.5" />,
-        value: <span>{email}</span>,
-        href: 'mailto:' + email,
-      });
-    });
+    if (!rawSource) return null;
+    const normalized = rawSource.toLowerCase();
+    const friendly = (() => {
+      switch (normalized) {
+        case 'health':
+          return 'Health';
+        case 'pets':
+          return 'Pets';
+        case 'travel':
+          return 'Travel';
+        case 'j3-academics':
+        case 'j3_academics':
+          return 'J3 Academics';
+        case 'household':
+          return 'Household';
+        case 'contacts':
+          return 'Manual Contact';
+        default:
+          return rawSource
+            .split(/[-_]/)
+            .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+      }
+    })();
 
-    phones.forEach(phone => {
-      rows.push({
-        id: 'phone-' + phone,
-        icon: <Phone className="h-3.5 w-3.5" />,
-        value: <span>{phone}</span>,
-        href: formatPhoneForHref(phone),
-      });
-    });
+    return friendly ? `From ${friendly}` : null;
+  };
 
-    addresses.forEach(address => {
-      rows.push({
-        id: 'address-' + address,
-        icon: <MapPin className="h-3.5 w-3.5" />,
-        value: <span>{address}</span>,
-        href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`,
-      });
-    });
+  const derivedSourceLabel = computeSourceLabel();
+  const cardClassName = [
+    'group relative overflow-hidden rounded-2xl border border-white/5 bg-[#30302e] p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/10 hover:bg-[#363633] hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]',
+    onOpen ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400/60' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
-    if (website) {
-      rows.push({
-        id: 'website',
-        icon: <Globe className="h-3.5 w-3.5" />,
-        value: <span>{website}</span>,
-        href: formatWebsiteHref(website),
-      });
-    }
-
-    if (portalUrl) {
-      rows.push({
-        id: 'portal',
-        icon: <Globe className="h-3.5 w-3.5" />,
-        value: (
-          <span className="flex items-center gap-2">
-            <span>{formatPortalLabel(portalUrl, portalUsername)}</span>
-            {portalPassword ? (
-              <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-text-muted/70">Password stored</span>
-            ) : null}
-          </span>
-        ),
-        href: formatWebsiteHref(portalUrl),
-      });
-    }
-
-    if (Array.isArray(meta) && meta.length > 0) {
-      rows.push(
-        ...meta.map(item => ({
-          id: 'meta-' + item.key,
-          icon: item.icon ?? <MoreHorizontal className="h-3.5 w-3.5" />,
-          value: <span>{item.value}</span>,
-        }))
-      );
-    }
-
-    return rows;
-  }, [contact.company, contact.notes, emails, phones, addresses, website, portalUrl, portalUsername, portalPassword, meta]);
-
-  const showDetailColumn = layout === 'auto' ? detailRows.length > 0 : true;
+  const primaryEmail = emails[0];
+  const primaryPhone = phones[0];
+  const primaryAddress = addresses[0];
 
   return (
-    <div className={CONTACT_CARD_CLASS}>
-      {/* Header with name and actions */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-lg font-semibold text-white">
+    <div
+      className={cardClassName}
+      onClick={event => {
+        if (event.defaultPrevented) return;
+        onOpen?.();
+      }}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={event => {
+        if (!onOpen) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <div className="relative z-10 flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 space-y-1">
+            <div className="truncate text-sm font-semibold leading-tight text-text-primary">
               {contact.name || 'Untitled Contact'}
-            </h3>
-            {showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function' ? (
-              <button
-                type="button"
-                onClick={handleFavoriteToggle}
-                className="text-text-muted transition hover:text-yellow-300 flex-shrink-0"
-                aria-label={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-              >
-                {renderFavoriteIcon(isFavorite)}
-              </button>
-            ) : null}
+            </div>
+            {derivedSourceLabel && (
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/80">
+                {derivedSourceLabel}
+              </div>
+            )}
+            {assignedToLabel && (
+              <div className="text-xs text-text-muted/80">{assignedToLabel}</div>
+            )}
           </div>
-          <div className="text-xs text-[#7A7A78]">
-            From {categoryVisual.label}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={handleCopyAll} className={ACTION_BUTTON_CLASS} title="Copy contact details">
-            {copied ? <CopyCheck className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
-          </button>
-          {canManage && (
-            <>
-              <button type="button" onClick={actionConfig?.onEdit} className={ACTION_BUTTON_CLASS} title="Edit contact">
-                <Edit2 className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={actionConfig?.onDelete} className={ACTION_BUTTON_CLASS} title="Delete contact">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </>
-          )}
-          {actionConfig?.onOpenDetails ? (
-            <button type="button" onClick={actionConfig.onOpenDetails} className={ACTION_BUTTON_CLASS} title="View details">
-              <Eye className="h-4 w-4" />
+          {showFavoriteToggle && typeof actionConfig?.onToggleFavorite === 'function' ? (
+            <button
+              onClick={event => {
+                event.stopPropagation();
+                handleFavoriteToggle();
+              }}
+              className={`rounded-full p-1 transition-colors ${
+                isFavorite ? 'text-yellow-400' : 'text-text-muted hover:text-yellow-400'
+              }`}
+            >
+              <Star className="h-3.5 w-3.5" fill={isFavorite ? 'currentColor' : 'none'} />
             </button>
           ) : null}
         </div>
-      </div>
 
-      {/* Subtitle if provided */}
-      {subtitle ? <p className="text-sm text-text-muted/75 mb-3">{subtitle}</p> : null}
+        {(secondaryBadges.length > 0 || extraContent) && (
+          <div className="flex flex-wrap items-center gap-1.5 -mb-1">
+            {secondaryBadges.map(badge => (
+              <span
+                key={badge.id}
+                className="inline-flex items-center gap-1 rounded-xl bg-[#262625] px-2.5 py-1 text-xs text-[#C2C0B6]"
+              >
+                {badge.icon}
+                {badge.label}
+              </span>
+            ))}
+            {extraContent}
+          </div>
+        )}
 
-      {/* Tags/badges section */}
-      {(secondaryBadges.length > 0 || extraContent) && (
-        <div className="flex flex-wrap items-center gap-1.5 mb-4">
-          {secondaryBadges.map(badge => (
-            <span
-              key={badge.id}
-              className="inline-flex items-center gap-1 rounded-xl bg-[#262625] px-2.5 py-1 text-xs text-[#C2C0B6]"
+        <div className="space-y-2 rounded-xl border border-white/5 bg-black/25 p-3">
+          {primaryEmail && (
+            <DetailRow
+              icon={<Mail className="h-3.5 w-3.5" />}
+              label="Email"
+              value={<span className="font-mono text-[13px] text-text-primary/90">{primaryEmail}</span>}
+              onCopy={() => copyValue(primaryEmail, 'email-0')}
+              secondary={copiedField === 'email-0' ? <span className="text-emerald-400/80">Copied!</span> : undefined}
+            />
+          )}
+          {primaryPhone && (
+            <DetailRow
+              icon={<Phone className="h-3.5 w-3.5" />}
+              label="Phone"
+              value={<span className="font-mono text-[13px] text-text-primary/90">{primaryPhone}</span>}
+              onCopy={() => copyValue(primaryPhone, 'phone-0')}
+              secondary={copiedField === 'phone-0' ? <span className="text-emerald-400/80">Copied!</span> : undefined}
+            />
+          )}
+          {primaryAddress && (
+            <DetailRow
+              icon={<MapPin className="h-3.5 w-3.5" />}
+              label="Address"
+              value={<span className="text-[13px] text-text-primary/90">{primaryAddress}</span>}
+              onCopy={() => copyValue(primaryAddress, 'address-0')}
+              secondary={copiedField === 'address-0' ? <span className="text-emerald-400/80">Copied!</span> : undefined}
+            />
+          )}
+        </div>
+
+        {footerContent}
+
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
+          {canManage && (
+            <button
+              onClick={event => {
+                event.preventDefault();
+                event.stopPropagation();
+                actionConfig?.onEdit?.();
+              }}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-white/20 hover:bg-white/10 hover:text-text-primary"
             >
-              {badge.icon}
-              {badge.label}
-            </span>
-          ))}
-          {extraContent}
+              Edit
+            </button>
+          )}
+          <button
+            onClick={event => {
+              event.preventDefault();
+              event.stopPropagation();
+              handleCopyAll();
+            }}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              copied
+                ? 'border border-emerald-400/60 bg-emerald-500/10 text-emerald-300'
+                : 'border border-white/10 bg-white/5 text-text-secondary hover:border-white/20 hover:bg-white/10 hover:text-text-primary'
+            }`}
+          >
+            {copied ? 'Copied!' : 'Copy All'}
+          </button>
+          {canManage && (
+            <button
+              onClick={event => {
+                event.preventDefault();
+                event.stopPropagation();
+                actionConfig?.onDelete?.();
+              }}
+              className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:border-red-400 hover:bg-red-500/10"
+            >
+              Delete
+            </button>
+          )}
         </div>
-      )}
-
-      {/* Contact details */}
-      {showDetailColumn ? (
-        <div className="space-y-0">
-          {detailRows.map(row => (
-            <DetailRow key={row.id} icon={row.icon} value={row.value} href={row.href} secondary={row.secondary} />
-          ))}
-        </div>
-      ) : null}
-
-      {footerContent}
+      </div>
     </div>
   );
 }

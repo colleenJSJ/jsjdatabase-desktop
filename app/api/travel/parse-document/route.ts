@@ -1,19 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
+import { NextRequest } from 'next/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { getBackblazeService } from '@/lib/backblaze/b2-service';
 import { ActivityLogger } from '@/lib/services/activity-logger';
+import { getAnthropicService, AnthropicServiceError, type MessagesCreateResponse } from '@/lib/anthropic/anthropic-service';
+import { enforceCSRF } from '@/lib/security/csrf';
+import { jsonError, jsonSuccess } from '@/app/api/_helpers/responses';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const anthropicService = getAnthropicService();
 
 export async function POST(request: NextRequest) {
+  const csrfError = await enforceCSRF(request);
+  if (csrfError) return csrfError;
+
   try {
-    const authResult = await getAuthenticatedUser();
-    
-    if ('error' in authResult) {
-      return authResult.error;
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
 
     const formData = await request.formData();
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
     const travelers = formData.get('travelers') as string; // JSON array of traveler IDs
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return jsonError('No file provided', { status: 400 });
     }
 
     const { user, supabase } = authResult;
@@ -130,42 +132,55 @@ Return a clean JSON object with only the fields you can extract. No markdown or 
     }
 
     // Call Claude API
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType as any,
-                data: base64,
+    let messageResponse: MessagesCreateResponse;
+    try {
+      messageResponse = await anthropicService.createMessage({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType as any,
+                  data: base64,
+                },
               },
-            },
-            {
-              type: 'text',
-              text: prompt,
-            },
-          ],
-        },
-      ],
-    });
+              {
+                type: 'text',
+                text: prompt,
+              },
+            ],
+          },
+        ],
+      });
+    } catch (error) {
+      if (error instanceof AnthropicServiceError) {
+        console.error('[Travel Parse] Anthropic service error', error.details);
+        return jsonError('Failed to extract travel details', {
+          status: error.status || 502,
+          meta: { details: error.details },
+        });
+      }
+      throw error;
+    }
 
     // Parse the response
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const responseText = messageResponse.content?.[0]?.type === 'text'
+      ? (messageResponse.content?.[0]?.text ?? '')
+      : '';
     
     let extractedData;
     try {
       extractedData = JSON.parse(responseText);
     } catch (parseError) {
       // If JSON parsing fails, return the raw text
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Failed to parse extracted data',
-        rawText: responseText 
+      return jsonError('Failed to parse extracted data', {
+        status: 500,
+        meta: { rawText: responseText },
       });
     }
 
@@ -303,16 +318,18 @@ Return a clean JSON object with only the fields you can extract. No markdown or 
       }
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      data: extractedData,
-      document: savedDocument
-    });
+    return jsonSuccess(
+      { data: extractedData, document: savedDocument },
+      {
+        legacy: {
+          success: true,
+          data: extractedData,
+          document: savedDocument,
+        },
+      }
+    );
   } catch (error) {
     console.error('Document parsing error:', error);
-    return NextResponse.json(
-      { error: 'Failed to parse document' },
-      { status: 500 }
-    );
+    return jsonError('Failed to parse document', { status: 500 });
   }
 }
