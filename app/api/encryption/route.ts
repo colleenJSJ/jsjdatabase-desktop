@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { encrypt, decrypt, EncryptionServiceError } from '@/lib/encryption';
 import { enforceCSRF } from '@/lib/security/csrf';
+import { requireUser } from '@/app/api/_helpers/auth';
 
 export async function POST(request: NextRequest) {
   const csrfError = await enforceCSRF(request);
   if (csrfError) return csrfError;
+
+  const authResult = await requireUser(request, { enforceCsrf: false });
+  if (authResult instanceof NextResponse) {
+    return authResult;
+  }
 
   try {
     const body = await request.json().catch(() => ({}));
