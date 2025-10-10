@@ -18,6 +18,7 @@ import {
 } from './contact-utils';
 import { ContactCardBadge, ContactCardProps } from './contact-types';
 import { cn } from '@/lib/utils';
+import { useResolvedPortalPassword } from '@/components/contacts/useResolvedPortalPassword';
 
 const buildBadgeClass = (badge: ContactCardBadge) => {
   switch (badge.tone) {
@@ -119,6 +120,8 @@ export function ContactCard({
   const portalUrl = contact.portal_url;
   const portalUsername = contact.portal_username;
   const portalPassword = contact.portal_password;
+  const resolvedPortalPassword = useResolvedPortalPassword(portalPassword);
+  const portalPasswordDisplay = resolvedPortalPassword || portalPassword || '';
   const [isFavorite, setIsFavorite] = useState(Boolean(contact.is_favorite));
   const [copied, setCopied] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -147,7 +150,9 @@ export function ContactCard({
       if (website) lines.push('Website: ' + website);
       if (portalUrl) lines.push('Portal URL: ' + portalUrl);
       if (portalUsername) lines.push('Portal Username: ' + portalUsername);
-      if (portalPassword) lines.push('Portal Password: ' + portalPassword);
+      if (portalPasswordDisplay) {
+        lines.push('Portal Password: ' + portalPasswordDisplay);
+      }
       if (contact.notes) lines.push('Notes: ' + contact.notes);
       await navigator.clipboard.writeText(lines.join('\n'));
       setCopied(true);

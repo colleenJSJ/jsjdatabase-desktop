@@ -218,6 +218,7 @@ export default function HealthPage() {
   const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [viewingDoctor, setViewingDoctor] = useState<Doctor | null>(null);
+  const [viewingDoctorContact, setViewingDoctorContact] = useState<ContactRecord | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<{ appointment: HealthAppointment; startInEdit: boolean } | null>(null);
   const [portals, setPortals] = useState<MedicalPortal[]>([]);
   const [showPortalModal, setShowPortalModal] = useState(false);
@@ -1011,7 +1012,10 @@ export default function HealthPage() {
                   familyMembers={familyMembers}
                   onEdit={() => setEditingDoctor(doctor)}
                   onDelete={() => handleDeleteDoctor(doctor.id)}
-                  onView={() => setViewingDoctor(doctor)}
+                  onView={(doc, contactRecord) => {
+                    setViewingDoctor(doc);
+                    setViewingDoctorContact(contactRecord);
+                  }}
                   isAdmin={user?.role === 'admin'}
                   portal={matchingPortal}
                 />
@@ -1242,13 +1246,17 @@ export default function HealthPage() {
         />
       )}
 
-      {viewingDoctor && (
+      {viewingDoctor && viewingDoctorContact && (
         <ContactDetailModal
-          contact={doctorToContactRecord(viewingDoctor)}
+          contact={viewingDoctorContact}
           familyMembers={familyMembers}
           canManage={user?.role === 'admin'}
-          onClose={() => setViewingDoctor(null)}
+          onClose={() => {
+            setViewingDoctor(null);
+            setViewingDoctorContact(null);
+          }}
           onEdit={user?.role === 'admin' ? () => {
+            setViewingDoctorContact(null);
             setViewingDoctor(null);
             setEditingDoctor(viewingDoctor);
             setShowDoctorModal(true);
@@ -1256,6 +1264,7 @@ export default function HealthPage() {
           onDelete={user?.role === 'admin' ? async () => {
             const deleted = await handleDeleteDoctor(viewingDoctor.id);
             if (deleted) {
+              setViewingDoctorContact(null);
               setViewingDoctor(null);
             }
           } : undefined}
@@ -1442,7 +1451,7 @@ function DoctorCard({
   familyMembers: FamilyMember[];
   onEdit: () => void;
   onDelete: () => void;
-  onView: () => void;
+  onView: (doctor: Doctor, contact: ContactRecord) => void;
   isAdmin?: boolean;
   portal?: any;
 }) {
@@ -1478,7 +1487,7 @@ function DoctorCard({
         showFavoriteToggle={false}
         canManage={isAdmin}
         actionConfig={isAdmin ? { onEdit, onDelete } : undefined}
-        onOpen={onView}
+        onOpen={() => onView(doctor, contactRecord)}
       />
   );
 }

@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Mail, Phone, MapPin, Globe, Copy, Shield, Building2, UserCircle2 } from 'lucide-react';
 import { PasswordField } from '@/components/passwords/PasswordField';
 import { Modal, ModalBody, ModalCloseButton, ModalFooter, ModalHeader, ModalTitle } from '@/components/ui/modal';
 import type { ContactRecord } from '@/components/contacts/contact-types';
 import { resolveAddresses, resolveEmails, resolvePhones, formatWebsiteHref } from '@/components/contacts/contact-utils';
-import ApiClient from '@/lib/api/api-client';
+import { useResolvedPortalPassword } from '@/components/contacts/useResolvedPortalPassword';
 
 interface FamilyMemberInfo {
   id: string;
@@ -100,49 +100,10 @@ export function ContactDetailModal({
   const addresses = useMemo(() => resolveAddresses(contact), [contact]);
   const sourceLabel = formatSourceLabel(contact.source_page || contact.source_type || null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [resolvedPortalPassword, setResolvedPortalPassword] = useState(contact.portal_password ?? '');
+  const resolvedPortalPassword = useResolvedPortalPassword(contact.portal_password);
+  const portalPasswordDisplay = resolvedPortalPassword || contact.portal_password || '';
   const createdAtValue = contact.created_at || (contact as any).created_at || new Date().toISOString();
   const updatedAtValue = contact.updated_at || (contact as any).updated_at || createdAtValue;
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const maybeDecrypt = async () => {
-      const pwd = contact.portal_password;
-      if (!pwd || typeof pwd !== 'string') {
-        if (isMounted) setResolvedPortalPassword('');
-        return;
-      }
-
-      const looksEncrypted = pwd.includes(':');
-      if (!looksEncrypted) {
-        if (isMounted) setResolvedPortalPassword(pwd);
-        return;
-      }
-
-      try {
-        const response = await ApiClient.post('/api/security/decrypt-portal-password', { ciphertext: pwd });
-        if (!isMounted) return;
-        if (response.success) {
-          console.debug('[ContactDetailModal] decrypted portal password', response.data);
-          const plain = (response.data as any)?.password;
-          setResolvedPortalPassword(typeof plain === 'string' ? plain : pwd);
-        } else {
-          console.warn('[ContactDetailModal] decrypt API returned error', response.error);
-          setResolvedPortalPassword(pwd);
-        }
-      } catch (error) {
-        console.error('[ContactDetailModal] Failed to decrypt portal password', error);
-        if (isMounted) setResolvedPortalPassword(pwd);
-      }
-    };
-
-    maybeDecrypt();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [contact.portal_password]);
 
   const copyValue = async (value: string, key: string) => {
     try {
@@ -265,11 +226,12 @@ export function ContactDetailModal({
                   onCopy={() => copyValue(contact.portal_username!, 'portal-username')}
                 />
               )}
-              {resolvedPortalPassword && (
+              {portalPasswordDisplay && (
                 <DetailRow
                   icon={<Shield className="h-3.5 w-3.5" />}
                   label="Password"
-                  value={<PasswordField password={resolvedPortalPassword} className="text-sm break-all" />}
+                  value={<PasswordField password={portalPasswordDisplay} className="text-sm break-all" />}
+                  onCopy={() => copyValue(portalPasswordDisplay, 'portal-password')}
                 />
               )}
             </div>
@@ -316,7 +278,9 @@ export function ContactDetailModal({
             if (contact.website) lines.push('Website: ' + contact.website);
             if (contact.portal_url) lines.push('Portal URL: ' + contact.portal_url);
             if (contact.portal_username) lines.push('Portal Username: ' + contact.portal_username);
-            if (contact.portal_password) lines.push('Portal Password: ' + contact.portal_password);
+            if (portalPasswordDisplay) {
+              lines.push('Portal Password: ' + portalPasswordDisplay);
+            }
             if (contact.notes) lines.push('Notes: ' + contact.notes);
             navigator.clipboard.writeText(lines.join('\n')).catch(err => console.error('Copy all failed', err));
             setCopiedField('copy-all');

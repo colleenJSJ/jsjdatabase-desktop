@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
+const dotenv = require('dotenv');
 const copyFile = promisify(fs.copyFile);
 const mkdir = promisify(fs.mkdir);
 const stat = promisify(fs.stat);
@@ -43,35 +44,48 @@ exports.default = async function afterPack(context) {
     console.warn('[after-pack] No static build found to copy:', error.message);
   }
 
+  const loadEnvFromFile = (filename) => {
+    const filePath = path.join(packager.projectDir, filename);
+    if (!fs.existsSync(filePath)) {
+      return {};
+    }
+    try {
+      return dotenv.parse(fs.readFileSync(filePath));
+    } catch (error) {
+      console.warn(`[after-pack] Failed to parse ${filename}:`, error.message);
+      return {};
+    }
+  };
+
+  const envFromFiles = {
+    ...loadEnvFromFile('.env.production.local'),
+    ...loadEnvFromFile('.env.local')
+  };
+
+  const getEnvValue = (key) => {
+    const current = process.env[key];
+    if (current !== undefined && current !== null && current !== '') {
+      return current;
+    }
+    return envFromFiles[key];
+  };
+
   const requiredEnvKeys = [
     'NEXT_PUBLIC_SUPABASE_URL',
     'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'BACKBLAZE_KEY_ID',
-    'BACKBLAZE_APPLICATION_KEY',
-    'BACKBLAZE_BUCKET_ID',
-    'BACKBLAZE_BUCKET_NAME',
+    'NEXT_PUBLIC_APP_URL'
   ];
 
   const optionalEnvKeys = [
-    'NEXT_PUBLIC_APP_URL',
-    'ANTHROPIC_API_KEY',
-    'GOOGLE_CLIENT_ID',
-    'GOOGLE_CLIENT_SECRET',
-    'GOOGLE_REDIRECT_URI',
     'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY',
-    'ENCRYPTION_KEY',
-    'ZOOM_ACCOUNT_ID',
-    'ZOOM_CLIENT_ID',
-    'ZOOM_CLIENT_SECRET',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_REDIRECT_URI',
+    'GOOGLE_CLIENT_SECRET',
     'SECURITY_CSRF_ENFORCE',
     'SECURITY_CSRF_ENABLED',
     'SECURITY_MAX_UPLOAD_MB',
-    'GOOGLE_INCLUDE_ALL_FAMILY_WITH_EMAIL',
-    'GOOGLE_SEND_UPDATES',
-    'GOOGLE_NUDGE_AFTER_INSERT',
     'ICS_FALLBACK',
-    'ICS_UID_DOMAIN',
+    'ICS_UID_DOMAIN'
   ];
 
   const envLines = [];
@@ -87,8 +101,8 @@ exports.default = async function afterPack(context) {
     envLines.push(`${key}=${String(value).replace(/\n/g, '\\n')}`);
   };
 
-  requiredEnvKeys.forEach((key) => appendKey(key, process.env[key], true));
-  optionalEnvKeys.forEach((key) => appendKey(key, process.env[key], false));
+  requiredEnvKeys.forEach((key) => appendKey(key, getEnvValue(key), true));
+  optionalEnvKeys.forEach((key) => appendKey(key, getEnvValue(key), false));
 
   try {
     if (envLines.length > 0) {
