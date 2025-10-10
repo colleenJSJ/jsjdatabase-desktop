@@ -219,6 +219,13 @@ function createWindow() {
     title: 'Johnson Family Office'
   })
 
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault()
+    if (!mainWindow?.isDestroyed()) {
+      mainWindow.setTitle('Johnson Family Office')
+    }
+  })
+
   // Start local Next.js server in production
  if (!isDev) {
 
