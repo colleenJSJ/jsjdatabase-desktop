@@ -63,10 +63,20 @@ class EncryptionService {
       throw new Error('Supabase session token is required for encryption service requests');
     }
 
+    const edgeHeaders = createEdgeHeaders({ jwtExpiresIn: '5m', includeAuthorization: false });
+    const apiKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.EDGE_SUPABASE_ANON_KEY;
+
+    if (!apiKey) {
+      throw new Error('Supabase anon key is required for encryption requests');
+    }
+
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-service-secret': this.serviceSecret,
-      ...createEdgeHeaders({ jwtExpiresIn: '5m' }),
+      ...edgeHeaders,
+      Authorization: `Bearer ${apiKey}`,
       'x-client-info': 'encryption-service/1.0',
       'x-session-token': sessionToken,
     };
