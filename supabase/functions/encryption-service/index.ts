@@ -205,7 +205,13 @@ if (denoGlobal?.serve) {
       return authError;
     }
 
-    let body: { action?: string; text?: string; payload?: string };
+    let body: {
+      action?: string;
+      text?: string;
+      payload?: string;
+      payloads?: string[];
+      texts?: string[];
+    };
     try {
       body = await request.json();
     } catch (error) {
@@ -229,6 +235,22 @@ if (denoGlobal?.serve) {
           }
           const decrypted = await decryptText(body.payload);
           return jsonResponse({ plaintext: decrypted });
+        }
+        case 'multi-decrypt': {
+          if (!Array.isArray(body.payloads)) {
+            return jsonResponse({ error: 'payloads array is required for multi-decrypt action' }, { status: 400 });
+          }
+
+          const plaintexts: string[] = [];
+          for (const payload of body.payloads) {
+            if (typeof payload !== 'string') {
+              return jsonResponse({ error: 'All payloads must be strings' }, { status: 400 });
+            }
+            const decrypted = await decryptText(payload);
+            plaintexts.push(decrypted);
+          }
+
+          return jsonResponse({ plaintexts });
         }
         case 'health': {
           const key = await getCryptoKey();

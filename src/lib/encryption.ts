@@ -18,6 +18,8 @@ const FUNCTION_URL = PROJECT_REF
   ? `https://${PROJECT_REF}.functions.supabase.co/encryption-service`
   : null;
 
+const BATCH_DECRYPT_ENABLED = process.env.ENCRYPTION_BATCH_ENABLED === 'true';
+
 class EncryptionServiceError extends Error {
   constructor(message: string, public readonly status: number, public readonly details?: unknown) {
     super(message);
@@ -134,6 +136,23 @@ class EncryptionService {
     return result.plaintext;
   }
 
+  async decryptMany(payloads: string[], options?: EncryptionRequestOptions): Promise<string[]> {
+    if (!Array.isArray(payloads)) {
+      throw new TypeError('decryptMany expects an array of strings');
+    }
+    if (payloads.length === 0) {
+      return [];
+    }
+    const result = await this.callEdge<{ plaintexts: unknown }>({ action: 'multi-decrypt', payloads }, options);
+    if (!Array.isArray(result.plaintexts)) {
+      throw new Error('encryption-service returned invalid plaintexts');
+    }
+    if (result.plaintexts.length !== payloads.length) {
+      throw new Error('encryption-service returned mismatched plaintext count');
+    }
+    return result.plaintexts.map((value) => (typeof value === 'string' ? value : ''));
+  }
+
   async health(options?: EncryptionRequestOptions): Promise<{ valid: boolean; error?: string }> {
     try {
       const response = await this.callEdge<{ valid: boolean }>({ action: 'health' }, options);
@@ -161,6 +180,8 @@ export const encryptionService = {
     getEncryptionService().encrypt(text, options),
   decrypt: async (payload: string, options?: EncryptionRequestOptions) =>
     getEncryptionService().decrypt(payload, options),
+  decryptMany: async (payloads: string[], options?: EncryptionRequestOptions) =>
+    getEncryptionService().decryptMany(payloads, options),
 };
 
 export async function encrypt(text: string, options?: EncryptionRequestOptions): Promise<string> {
@@ -169,6 +190,10 @@ export async function encrypt(text: string, options?: EncryptionRequestOptions):
 
 export async function decrypt(payload: string, options?: EncryptionRequestOptions): Promise<string> {
   return encryptionService.decrypt(payload, options);
+}
+
+export async function decryptMany(payloads: string[], options?: EncryptionRequestOptions): Promise<string[]> {
+  return encryptionService.decryptMany(payloads, options);
 }
 
 export async function validateEncryptionSetup(): Promise<{ valid: boolean; error?: string }> {
@@ -197,3 +222,7 @@ export async function validateEncryptionSetup(): Promise<{ valid: boolean; error
 }
 
 export { EncryptionServiceError };
+
+export function isEncryptionBatchEnabled(): boolean {
+  return BATCH_DECRYPT_ENABLED;
+}
