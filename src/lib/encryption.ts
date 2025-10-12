@@ -66,7 +66,7 @@ class EncryptionService {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-service-secret': this.serviceSecret,
-      ...createEdgeHeaders({ jwtExpiresIn: '5m', includeAuthorization: false }),
+      ...createEdgeHeaders({ jwtExpiresIn: '5m' }),
       'x-client-info': 'encryption-service/1.0',
       'x-session-token': sessionToken,
     };
