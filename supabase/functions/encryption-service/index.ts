@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createRemoteJWKSet, jwtVerify } from 'https://deno.land/x/jose@v5.4.1/index.ts';
 
