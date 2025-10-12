@@ -48,11 +48,13 @@ export function createEdgeHeaders(options?: {
   if (options?.includeApikey !== false) {
     const apiKey =
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      process.env.EDGE_SUPABASE_ANON_KEY ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (apiKey) {
-      headers.apikey = apiKey;
+      process.env.EDGE_SUPABASE_ANON_KEY;
+
+    if (!apiKey) {
+      throw new Error('Supabase anon key is not configured');
     }
+
+    headers.apikey = apiKey;
   }
 
   return headers;
