@@ -27,6 +27,10 @@ async function main() {
   }
 
   let synced = 0;
+  let skippedMissingCredentials = 0;
+  let skippedMissingOwner = 0;
+  let decryptFailures = 0;
+  let unexpectedErrors = 0;
   for (const portal of portals) {
     try {
       const providerType = portal.portal_type as 'medical' | 'pet' | 'academic';
@@ -37,6 +41,7 @@ async function main() {
 
       if (!portal.password || !portalUsername || portal.password.length === 0) {
         console.log(`[Resync] Skipping portal ${portalId} (${portalName}) - missing username/password`);
+        skippedMissingCredentials += 1;
         continue;
       }
 
@@ -45,12 +50,14 @@ async function main() {
         plainPassword = await encryptionService.decrypt(portal.password, { sessionToken });
       } catch (decryptError) {
         console.warn(`[Resync] Failed to decrypt password for portal ${portalId}:`, decryptError);
+        decryptFailures += 1;
         continue;
       }
 
       const ownerAndShared = await resolvePortalUsers(supabase, portal, providerType);
       if (!ownerAndShared.ownerId) {
         console.warn(`[Resync] Skipping portal ${portalId} (${portalName}) - unable to determine owner`);
+        skippedMissingOwner += 1;
         continue;
       }
 
@@ -89,10 +96,28 @@ async function main() {
       synced += 1;
     } catch (portalError) {
       console.error('[Resync] Failed to resync portal', portal?.id, portalError);
+      unexpectedErrors += 1;
     }
   }
 
   console.log(`[Resync] Completed. Resynced ${synced} portal records.`);
+  console.log('[Resync] Summary', {
+    portalsConsidered: portals.length,
+    synced,
+    skippedMissingCredentials,
+    skippedMissingOwner,
+    decryptFailures,
+    unexpectedErrors,
+  });
+
+  if (unexpectedErrors > 0) {
+    process.exitCode = 1;
+  }
+
+  if (synced === 0) {
+    console.error('[Resync] No portals were resynced; exiting with error.');
+    process.exit(2);
+  }
 }
 
 async function obtainSessionToken(): Promise<string> {
