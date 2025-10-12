@@ -1,3 +1,6 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createRemoteJWKSet, jwtVerify } from 'https://deno.land/x/jose@v5.4.1/index.ts';
+
 const JSON_HEADERS = {
   'content-type': 'application/json',
 };
@@ -19,8 +22,18 @@ const denoEnv = denoGlobal?.env;
 
 const EDGE_SECRET = denoEnv?.get('EDGE_SERVICE_SECRET');
 const ENCRYPTION_KEY = denoEnv?.get('ENCRYPTION_KEY');
+const SUPABASE_URL = denoEnv?.get('EDGE_SUPABASE_URL');
+const SUPABASE_ANON_KEY = denoEnv?.get('EDGE_SUPABASE_ANON_KEY') || denoEnv?.get('EDGE_SUPABASE_SERVICE_ROLE_KEY');
 const REQUIRED_HEX_LENGTH = 64; // 32 bytes
 const REQUIRED_KEY_BYTES = 32;
+
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+const JWKS = SUPABASE_URL
+  ? createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`))
+  : null;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -149,24 +162,35 @@ async function decryptText(payload: string): Promise<string> {
   }
 }
 
-function authorizeRequest(request: Request): Response | null {
+async function authorizeRequest(request: Request): Promise<Response | null> {
   const secretHeader = request.headers.get('x-service-secret');
-  const authHeader = request.headers.get('authorization');
 
-  if (EDGE_SECRET && secretHeader === EDGE_SECRET) {
-    return null;
+  if (EDGE_SECRET && secretHeader !== EDGE_SECRET) {
+    console.warn('[encryption-service] Invalid service secret');
+    return jsonResponse({ error: 'invalid_service_secret' }, { status: 401 });
   }
 
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    return null; // Supabase validates the JWT upstream
+  const sessionToken = request.headers.get('x-session-token');
+  if (!sessionToken) {
+    console.warn('[encryption-service] Missing session token');
+    return jsonResponse({ error: 'missing_session_token' }, { status: 401 });
   }
 
-  if (EDGE_SECRET) {
-    return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
+  if (!JWKS || !SUPABASE_URL) {
+    console.error('[encryption-service] JWKS not configured');
+    return jsonResponse({ error: 'server_not_configured' }, { status: 500 });
   }
 
-  // If no EDGE_SECRET configured, allow (useful for local dev)
-  return null;
+  try {
+    const { payload } = await jwtVerify(sessionToken, JWKS, {
+      issuer: `${SUPABASE_URL}/auth/v1`,
+      audience: 'authenticated',
+    });
+    return payload ? null : jsonResponse({ error: 'invalid_session_token' }, { status: 401 });
+  } catch (error) {
+    console.warn('[encryption-service] Session token validation failed', error);
+    return jsonResponse({ error: 'invalid_session_token', message: error instanceof Error ? error.message : String(error) }, { status: 401 });
+  }
 }
 
 if (denoGlobal?.serve) {
@@ -175,7 +199,7 @@ if (denoGlobal?.serve) {
       return jsonResponse({ error: 'Method Not Allowed' }, { status: 405 });
     }
 
-    const authError = authorizeRequest(request);
+    const authError = await authorizeRequest(request);
     if (authError) {
       return authError;
     }

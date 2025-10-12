@@ -14,6 +14,19 @@ import type { Database } from '@/lib/database.types';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 export class SupabasePasswordService implements IPasswordService {
+  constructor(private sessionToken: string | null = null) {}
+
+  setSessionToken(token: string | null) {
+    this.sessionToken = token;
+  }
+
+  private getEncryptionOptions() {
+    if (!this.sessionToken) {
+      console.warn('[SupabasePasswordService] Session token missing when preparing encryption options');
+    }
+    return { sessionToken: this.sessionToken ?? undefined };
+  }
+
   private async getSupabase() {
     // Use regular client to respect RLS policies
     return createClient();
@@ -91,8 +104,9 @@ export class SupabasePasswordService implements IPasswordService {
       throw new Error('User not authenticated');
     }
     
-    const encryptedPassword = await encryptionService.encrypt(data.password);
-    const encryptedNotes = data.notes ? await encryptionService.encrypt(data.notes) : null;
+    const options = this.getEncryptionOptions();
+    const encryptedPassword = await encryptionService.encrypt(data.password, options);
+    const encryptedNotes = data.notes ? await encryptionService.encrypt(data.notes, options) : null;
     
     // Log what fields we're trying to insert
     console.log('[SupabasePasswordService] Preparing to insert password:', {
@@ -198,13 +212,18 @@ export class SupabasePasswordService implements IPasswordService {
     }
     if (data.username !== undefined) updates.username = data.username;
     if (data.password !== undefined) {
-      updates.password = await encryptionService.encrypt(data.password);
+      updates.password = await encryptionService.encrypt(
+        data.password,
+        this.getEncryptionOptions(),
+      );
       updates.last_changed = new Date().toISOString();
     }
     if (data.url !== undefined) updates.url = data.url ? normalizeUrl(data.url) : null;
     if (data.category !== undefined) updates.category = data.category;
     if (data.notes !== undefined) {
-      updates.notes = data.notes ? await encryptionService.encrypt(data.notes) : null;
+      updates.notes = data.notes
+        ? await encryptionService.encrypt(data.notes, this.getEncryptionOptions())
+        : null;
     }
     if (data.tags !== undefined) updates.tags = data.tags;
     if (data.is_favorite !== undefined) updates.is_favorite = data.is_favorite;
@@ -288,16 +307,26 @@ export class SupabasePasswordService implements IPasswordService {
     let decryptedNotes = '';
 
     try {
-      decryptedPassword = row.password ? await encryptionService.decrypt(row.password) : '';
+      decryptedPassword = row.password
+        ? await encryptionService.decrypt(row.password, this.getEncryptionOptions())
+        : '';
     } catch (error) {
       console.error('[SupabasePasswordService] Error decrypting password:', error);
+      if (error && typeof error === 'object' && 'details' in error) {
+        console.error('[SupabasePasswordService] Decrypt password details:', (error as any).details);
+      }
       decryptedPassword = '[Decryption Error]';
     }
 
     try {
-      decryptedNotes = row.notes ? await encryptionService.decrypt(row.notes) : '';
+      decryptedNotes = row.notes
+        ? await encryptionService.decrypt(row.notes, this.getEncryptionOptions())
+        : '';
     } catch (error) {
       console.error('[SupabasePasswordService] Error decrypting notes:', error);
+      if (error && typeof error === 'object' && 'details' in error) {
+        console.error('[SupabasePasswordService] Decrypt notes details:', (error as any).details);
+      }
       decryptedNotes = row.notes || '';
     }
 

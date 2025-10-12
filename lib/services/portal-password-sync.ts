@@ -8,6 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { ActivityLogger } from '@/lib/services/activity-logger';
 import { encryptionService } from '@/lib/encryption';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 
 export interface PortalPasswordSyncConfig {
   providerType: 'medical' | 'pet' | 'academic';  // Valid portal types
@@ -25,6 +26,7 @@ export interface PortalPasswordSyncConfig {
   source?: string; // Source of the data (e.g., 'health', 'pets')
   sourcePage?: string; // Optional source page for display (e.g., 'health', 'pets')
   entityIds?: string[]; // Related family member ids (pets, patients, students)
+  sessionToken?: string | null;
 }
 
 /**
@@ -66,6 +68,8 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
   success: boolean;
   error?: string;
 }> {
+  const sessionToken = config.sessionToken ?? null;
+  setEncryptionSessionToken(sessionToken);
   const supabase = await createClient();
   let serviceSupabase: SupabaseClient | null = null;
   try {
@@ -81,7 +85,7 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
 
     const portalName = (config.portalName ?? config.providerName ?? 'Portal').trim() || config.providerName;
     const encryptedPortalPassword = config.portal_password
-      ? await encryptionService.encrypt(config.portal_password)
+      ? await encryptionService.encrypt(config.portal_password, { sessionToken })
       : null;
 
     const ownerUserId = config.ownerId || config.createdBy;
@@ -251,7 +255,9 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       service_name: portalName,
       title: portalName,
       username: config.portal_username,
-      password: config.portal_password ? await encryptionService.encrypt(config.portal_password) : null,
+      password: config.portal_password
+        ? await encryptionService.encrypt(config.portal_password, { sessionToken })
+        : null,
       url: normalizedUrl,
       website_url: normalizedUrl,
       category: getCategoryForProviderType(config.providerType),
@@ -267,7 +273,9 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
       last_changed: new Date().toISOString()
     };
     if (config.notes !== undefined) {
-      passwordDataBase.notes = config.notes ? await encryptionService.encrypt(config.notes) : null;
+      passwordDataBase.notes = config.notes
+        ? await encryptionService.encrypt(config.notes, { sessionToken })
+        : null;
     }
     
     if (existingPassword) {

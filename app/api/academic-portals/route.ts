@@ -2,15 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { normalizeFamilyMemberId } from '@/lib/constants/family-members';
 import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = async (portal: any) => {
+const serializePortal = async (portal: any, sessionToken: string | null) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = await decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password, { sessionToken });
     } catch (error) {
       console.error('[Academic Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -34,6 +35,10 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const sessionToken = session?.access_token ?? null;
+    setEncryptionSessionToken(sessionToken);
 
     const { searchParams } = new URL(request.url);
     const childId = searchParams.get('childId');
@@ -73,7 +78,7 @@ export async function GET(request: NextRequest) {
             return null;
           }
           
-          const serialized = await serializePortal(portal);
+          const serialized = await serializePortal(portal, sessionToken);
           return {
             ...serialized,
             children: childIds
@@ -105,6 +110,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const sessionToken = session?.access_token ?? null;
+    setEncryptionSessionToken(sessionToken);
+
     const body = await request.json();
     const { children, url, title, username, password, notes } = body;
     const selectedChildIds: string[] = Array.isArray(children)
@@ -131,7 +140,7 @@ export async function POST(request: NextRequest) {
       : null;
 
     // Insert the portal into unified portals table
-    const encryptedPassword = password ? await encrypt(password) : null;
+    const encryptedPassword = password ? await encrypt(password, { sessionToken }) : null;
 
     const { data: portal, error: portalError } = await supabase
       .from('portals')
@@ -225,7 +234,8 @@ export async function POST(request: NextRequest) {
         notes: sanitizedNotes,
         source: 'academic_portal',
         sourcePage: 'j3-academics',
-        entityIds: normalizedChildIds
+        entityIds: normalizedChildIds,
+        sessionToken,
       });
       
       if (!syncResult.success) {
@@ -234,7 +244,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...serializePortal(portal), children: normalizedChildIds });
+    const serializedPortal = await serializePortal(portal, sessionToken);
+    return NextResponse.json({ ...serializedPortal, children: normalizedChildIds });
   } catch (error) {
     console.error('Error in POST /api/academic-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

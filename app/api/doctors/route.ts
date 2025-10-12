@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireUser } from '@/app/api/_helpers/auth';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { syncDoctorToContacts } from '@/app/api/_helpers/contact-sync';
 import { ensurePortalAndPassword } from '@/lib/services/portal-password-sync';
 import { enforceCSRF } from '@/lib/security/csrf';
@@ -16,8 +17,9 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
 
-    const { user, supabase } = authResult;
+    const { user, supabase, sessionToken } = authResult;
     console.log('[Doctors API] Authenticated user:', user.id, user.email);
+    setEncryptionSessionToken(sessionToken ?? null);
     
     const { data: doctors, error } = await supabase
       .from('doctors')
@@ -41,7 +43,9 @@ export async function GET(request: NextRequest) {
         try {
           return {
             ...doctor,
-            portal_password: doctor.portal_password ? await decrypt(doctor.portal_password) : null,
+            portal_password: doctor.portal_password
+              ? await decrypt(doctor.portal_password, { sessionToken })
+              : null,
           };
         } catch (decryptError) {
           console.error('[Doctors API] Error decrypting password for doctor:', doctor.id, decryptError);
@@ -81,8 +85,9 @@ export async function POST(request: NextRequest) {
       return authResult;
     }
 
-    const { user, supabase } = authResult;
+    const { user, supabase, sessionToken } = authResult;
     console.log('[Doctors API POST] Authenticated user:', user.id, user.email);
+    setEncryptionSessionToken(sessionToken ?? null);
     
     const data = await request.json();
     console.log('[Doctors API POST] Request data:', {
@@ -101,7 +106,9 @@ export async function POST(request: NextRequest) {
         website: data.website || null,
         portal_url: data.portal_url || null,
         portal_username: data.portal_username || null,
-        portal_password: data.portal_password ? await encrypt(data.portal_password) : null,
+        portal_password: data.portal_password
+          ? await encrypt(data.portal_password, { sessionToken })
+          : null,
         patients: data.patients || [],
         notes: data.notes || null,
         created_by: user.id,
@@ -177,7 +184,8 @@ export async function POST(request: NextRequest) {
         sharedWith,
         createdBy: user.id,
         notes: `Portal credentials for Dr. ${data.name}`,
-        source: 'medical'
+        source: 'medical',
+        sessionToken,
       });
       
       if (!syncResult.success) {
@@ -194,7 +202,9 @@ export async function POST(request: NextRequest) {
     // Decrypt password before returning
     const decryptedDoctor = {
       ...doctor,
-      portal_password: doctor.portal_password ? await decrypt(doctor.portal_password) : null,
+      portal_password: doctor.portal_password
+        ? await decrypt(doctor.portal_password, { sessionToken })
+        : null,
     };
     
     return jsonSuccess({ doctor: decryptedDoctor }, {

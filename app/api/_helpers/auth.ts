@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { csrfMiddleware } from '@/lib/security/csrf';
 import { jsonError } from '@/app/api/_helpers/responses';
 import type { Database } from '@/lib/database.types';
@@ -15,6 +16,7 @@ export type RequireUserOptions = {
 export type RequireUserResult = {
   user: UserRow;
   supabase: SupabaseClient<Database>;
+  sessionToken: string | null;
 };
 
 /**
@@ -41,6 +43,18 @@ export async function requireUser(
     return jsonError('Unauthorized', { status: 401 });
   }
 
+  const cookieToken = request?.cookies?.get('sb-access-token')?.value
+    ?? request?.cookies?.get('sb:token')?.value
+    ?? request?.cookies?.get('supabase-auth-token')?.value
+    ?? null;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const sessionToken = session?.access_token ?? cookieToken;
+  if (!sessionToken) {
+    console.warn('[requireUser] No session token available');
+  }
+  setEncryptionSessionToken(sessionToken);
+
   const { data: userRow, error: userError } = await supabase
     .from('users')
     .select('*')
@@ -55,7 +69,7 @@ export async function requireUser(
     return jsonError('Forbidden', { status: 403 });
   }
 
-  return { user: userRow, supabase };
+  return { user: userRow, supabase, sessionToken };
 }
 
 interface LegacyAuthOptions {

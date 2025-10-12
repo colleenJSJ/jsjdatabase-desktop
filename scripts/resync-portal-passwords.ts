@@ -6,6 +6,12 @@ import { encryptionService } from '@/lib/encryption';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 async function main() {
+  const sessionToken = process.env.ENCRYPTION_SESSION_TOKEN || null;
+  if (!sessionToken) {
+    console.error('[Resync] Missing ENCRYPTION_SESSION_TOKEN environment variable. Unable to contact encryption-service securely.');
+    process.exit(1);
+  }
+
   const supabase = await createServiceClient();
 
   const { data: portals, error } = await supabase
@@ -39,7 +45,7 @@ async function main() {
 
       let plainPassword: string;
       try {
-        plainPassword = await encryptionService.decrypt(portal.password);
+        plainPassword = await encryptionService.decrypt(portal.password, { sessionToken });
       } catch (decryptError) {
         console.warn(`[Resync] Failed to decrypt password for portal ${portalId}:`, decryptError);
         continue;

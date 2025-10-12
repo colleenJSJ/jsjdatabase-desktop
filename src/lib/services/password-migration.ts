@@ -16,8 +16,8 @@ export interface PasswordExport {
 export class PasswordMigrationService {
   private passwordService: SupabasePasswordService;
 
-  constructor() {
-    this.passwordService = new SupabasePasswordService();
+  constructor(sessionToken: string | null = null) {
+    this.passwordService = new SupabasePasswordService(sessionToken);
   }
 
   /**

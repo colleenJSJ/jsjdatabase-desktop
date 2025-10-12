@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = async (portal: any) => {
+const serializePortal = async (portal: any, sessionToken: string | null) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = await decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password, { sessionToken });
     } catch (error) {
       console.error('[Pet Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -59,7 +60,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    const serialized = await Promise.all((portals || []).map((portal) => serializePortal(portal)));
+    const { data: { session } } = await supabase.auth.getSession();
+    const sessionToken = session?.access_token ?? null;
+    setEncryptionSessionToken(sessionToken);
+
+    const serialized = await Promise.all((portals || []).map((portal) => serializePortal(portal, sessionToken)));
     return NextResponse.json({ portals: serialized });
   } catch (error) {
     return NextResponse.json(
@@ -92,8 +97,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const sessionToken = session?.access_token ?? null;
+    setEncryptionSessionToken(sessionToken);
+
     const normalizedUrl = url ? normalizeUrl(url) : null;
-    const encryptedPassword = password ? await encrypt(password) : null;
+    const encryptedPassword = password ? await encrypt(password, { sessionToken }) : null;
 
     const portalData = {
       portal_type: 'pet',
@@ -171,7 +180,8 @@ export async function POST(request: NextRequest) {
         notes: sanitizedNotes,
         source: 'pet_portal',
         sourcePage: 'pets',
-        entityIds
+        entityIds,
+        sessionToken,
       });
       
       if (!syncResult.success) {
@@ -180,7 +190,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ portal: await serializePortal(portal) });
+    return NextResponse.json({ portal: await serializePortal(portal, sessionToken) });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to create pet portal' },

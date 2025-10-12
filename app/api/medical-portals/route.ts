@@ -3,14 +3,15 @@ import { createClient } from '@/lib/supabase/server';
 import { resolveFamilyMemberToUser, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { decrypt } from '@/lib/encryption';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { enforceCSRF } from '@/lib/security/csrf';
 
-const serializePortal = async (portal: any) => {
+const serializePortal = async (portal: any, sessionToken: string | null) => {
   if (!portal) return portal;
   let decryptedPassword = portal.password;
   if (typeof portal.password === 'string' && portal.password.length > 0) {
     try {
-      decryptedPassword = await decrypt(portal.password);
+      decryptedPassword = await decrypt(portal.password, { sessionToken });
     } catch (error) {
       console.error('[Medical Portals API] Failed to decrypt portal password', {
         portalId: portal.id,
@@ -35,6 +36,10 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const sessionToken = session?.access_token ?? null;
+    setEncryptionSessionToken(sessionToken);
 
     // Get user role
     const { data: userData, error: userError } = await supabase
@@ -91,7 +96,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch portals' }, { status: 500 });
     }
 
-    const serialized = await Promise.all((portals || []).map((portal) => serializePortal(portal)));
+    const serialized = await Promise.all((portals || []).map((portal) => serializePortal(portal, sessionToken)));
     return NextResponse.json({ portals: serialized });
   } catch (error) {
     console.error('Error in GET /api/medical-portals:', error);
@@ -111,6 +116,10 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const sessionToken = session?.access_token ?? null;
+    setEncryptionSessionToken(sessionToken);
 
     // Check if user is admin
     const { data: userData, error: userError } = await supabase
@@ -151,7 +160,7 @@ export async function POST(request: NextRequest) {
     const encryptedPassword = password
       ? await (async () => {
           const { encrypt } = await import('@/lib/encryption');
-          return await encrypt(password);
+          return await encrypt(password, { sessionToken });
         })()
       : null;
 
@@ -235,7 +244,8 @@ export async function POST(request: NextRequest) {
         notes: sanitizedNotes,
         source: 'medical_portal',
         sourcePage: 'health',
-        entityIds: portalPatientIds
+        entityIds: portalPatientIds,
+        sessionToken,
       });
       
       if (!syncResult.success) {
@@ -244,7 +254,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ portal: serializePortal(portal) }, { status: 201 });
+    const serializedPortal = await serializePortal(portal, sessionToken);
+    return NextResponse.json({ portal: serializedPortal }, { status: 201 });
   } catch (error) {
     console.error('Error in POST /api/medical-portals:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

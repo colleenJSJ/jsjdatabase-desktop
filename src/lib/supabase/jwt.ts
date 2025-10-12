@@ -36,11 +36,14 @@ export function createEdgeJwt(expiresIn: ExpiresIn = FIVE_MINUTES) {
 export function createEdgeHeaders(options?: {
   jwtExpiresIn?: ExpiresIn;
   includeApikey?: boolean;
+  includeAuthorization?: boolean;
 }) {
-  const token = createEdgeJwt(options?.jwtExpiresIn);
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-  };
+  const headers: Record<string, string> = {};
+
+  if (options?.includeAuthorization !== false) {
+    const token = createEdgeJwt(options?.jwtExpiresIn);
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   if (options?.includeApikey !== false) {
     const apiKey =

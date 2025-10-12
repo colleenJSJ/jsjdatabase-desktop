@@ -4,9 +4,8 @@ import { SupabasePasswordService } from '@/lib/services/supabase-password-servic
 import { PasswordFilter } from '@/lib/services/password-service-interface';
 import { authenticateRequest } from '@/lib/utils/auth-middleware';
 import { resolveFamilyMemberToUser, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { enforceCSRF } from '@/lib/security/csrf';
-
-const passwordService = new SupabasePasswordService();
 
 export async function GET(request: NextRequest) {
   console.log('[API/passwords] GET request received');
@@ -14,7 +13,11 @@ export async function GET(request: NextRequest) {
   try {
     // Use the new auth middleware
     const auth = await authenticateRequest(request, false, { skipCSRF: true });
-    console.log('[API/passwords] Auth result:', { authenticated: auth.authenticated, userId: auth.user?.id });
+    console.log('[API/passwords] Auth result:', {
+      authenticated: auth.authenticated,
+      userId: auth.user?.id,
+      hasSessionToken: Boolean(auth.sessionToken),
+    });
     
     if (!auth.authenticated) {
       console.log('[API/passwords] Authentication failed, returning:', auth.error);
@@ -22,6 +25,8 @@ export async function GET(request: NextRequest) {
     }
     
     const user = auth.user!;
+    setEncryptionSessionToken(auth.sessionToken ?? null);
+    setEncryptionSessionToken(auth.sessionToken ?? null);
 
     const searchParams = request.nextUrl.searchParams;
     const filter: PasswordFilter = {};
@@ -63,6 +68,7 @@ export async function GET(request: NextRequest) {
       filter.strength = searchParams.get('strength') as any;
     }
 
+    const passwordService = new SupabasePasswordService(auth.sessionToken ?? null);
     const passwords = await passwordService.getPasswords(user.id, filter);
     console.log('[API/passwords] Found', passwords.length, 'passwords for user', user.id);
 
@@ -137,6 +143,7 @@ export async function POST(request: NextRequest) {
       notes: passwordData.notes ? '[REDACTED]' : null
     });
 
+    const passwordService = new SupabasePasswordService(auth.sessionToken ?? null);
     const newPassword = await passwordService.createPassword(passwordData);
 
     return NextResponse.json(newPassword, { status: 201 });

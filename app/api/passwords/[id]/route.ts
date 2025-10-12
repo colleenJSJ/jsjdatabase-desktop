@@ -3,8 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { SupabasePasswordService } from '@/lib/services/supabase-password-service';
 import { deletePortalById } from '@/lib/services/portal-password-sync';
 import { enforceCSRF } from '@/lib/security/csrf';
-
-const passwordService = new SupabasePasswordService();
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 
 export async function GET(
   request: NextRequest,
@@ -14,11 +13,14 @@ export async function GET(
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
     
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    setEncryptionSessionToken(session?.access_token ?? null);
+    const passwordService = new SupabasePasswordService(session?.access_token ?? null);
     const password = await passwordService.getPassword(id, user.id);
     
     return NextResponse.json(password);
@@ -42,6 +44,7 @@ export async function PUT(
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
     
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -65,6 +68,8 @@ export async function PUT(
     if (body.is_shared !== undefined) updateData.is_shared = body.is_shared;
     if (body.shared_with !== undefined) updateData.shared_with = body.shared_with;
 
+    setEncryptionSessionToken(session?.access_token ?? null);
+    const passwordService = new SupabasePasswordService(session?.access_token ?? null);
     const updatedPassword = await passwordService.updatePassword(id, user.id, updateData);
 
     return NextResponse.json(updatedPassword);
@@ -88,6 +93,7 @@ export async function DELETE(
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
     
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -100,6 +106,8 @@ export async function DELETE(
       .eq('id', id)
       .maybeSingle();
 
+    setEncryptionSessionToken(session?.access_token ?? null);
+    const passwordService = new SupabasePasswordService(session?.access_token ?? null);
     await passwordService.deletePassword(id, user.id);
 
     if (existingPassword?.source_reference) {

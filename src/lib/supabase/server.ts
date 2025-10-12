@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 
 // One-time warning for missing environment variables
 let hasWarnedAboutEnv = false;
@@ -22,6 +23,15 @@ export async function createClient() {
 
   try {
     const cookieStore = await cookies();
+
+    const accessToken =
+      cookieStore.get('sb-access-token')?.value ||
+      cookieStore.get('sb:token')?.value ||
+      null;
+
+    if (accessToken) {
+      setEncryptionSessionToken(accessToken);
+    }
 
     return createServerClient(
       supabaseUrl,

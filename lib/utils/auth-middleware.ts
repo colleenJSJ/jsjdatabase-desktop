@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { csrfMiddleware } from '@/lib/security/csrf';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { User } from '@supabase/supabase-js';
 
 export interface AuthUser {
@@ -17,6 +18,7 @@ export interface AuthUser {
 export interface AuthResult {
   authenticated: boolean;
   user?: AuthUser;
+  sessionToken?: string | null;
   error?: string;
   response?: NextResponse;
 }
@@ -61,6 +63,18 @@ export async function authenticateRequest(
       };
     }
 
+    const cookieToken = request.cookies.get('sb-access-token')?.value
+      ?? request.cookies.get('sb:token')?.value
+      ?? request.cookies.get('supabase-auth-token')?.value
+      ?? null;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const sessionToken = session?.access_token ?? cookieToken;
+    if (!sessionToken) {
+      console.warn('[Auth Middleware] No session token available');
+    }
+    setEncryptionSessionToken(sessionToken ?? null);
+
     // Get full user data from the users table
     const { data: userData, error: userError } = await supabase
       .from('users')
@@ -88,6 +102,7 @@ export async function authenticateRequest(
     // Return authenticated user
     return {
       authenticated: true,
+      sessionToken,
       user: {
         id: userData.id,
         email: userData.email,

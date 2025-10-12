@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { PasswordMigrationService } from '@/lib/services/password-migration';
-
-const migrationService = new PasswordMigrationService();
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
     
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -29,6 +29,9 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       console.error('Failed to log export activity:', error);
     }
+
+    setEncryptionSessionToken(session?.access_token ?? null);
+    const migrationService = new PasswordMigrationService(session?.access_token ?? null);
 
     if (format === 'csv') {
       const csv = await migrationService.exportToCSV(user.id);

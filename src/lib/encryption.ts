@@ -1,4 +1,5 @@
 import { createEdgeHeaders } from '@/lib/supabase/jwt';
+import { getEncryptionSessionToken } from '@/lib/encryption/context';
 
 const PROJECT_REF = (() => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.EDGE_SUPABASE_URL;
@@ -30,6 +31,10 @@ type EncryptionResponse = {
   valid?: boolean;
 };
 
+export type EncryptionRequestOptions = {
+  sessionToken?: string | null;
+};
+
 class EncryptionService {
   constructor(private readonly serviceSecret: string = process.env.EDGE_SERVICE_SECRET || '') {
     if (!this.serviceSecret) {
@@ -40,7 +45,10 @@ class EncryptionService {
     }
   }
 
-  private async callEdge<TResponse extends EncryptionResponse>(payload: Record<string, unknown>): Promise<TResponse> {
+  private async callEdge<TResponse extends EncryptionResponse>(
+    payload: Record<string, unknown>,
+    options: EncryptionRequestOptions = {},
+  ): Promise<TResponse> {
     if (!FUNCTION_URL) {
       throw new Error('Encryption Edge Function URL is not configured');
     }
@@ -48,12 +56,25 @@ class EncryptionService {
       throw new Error('EDGE_SERVICE_SECRET is not configured');
     }
 
+    const sessionToken = options.sessionToken ?? getEncryptionSessionToken();
+    if (!sessionToken) {
+      throw new Error('Supabase session token is required for encryption service requests');
+    }
+
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-service-secret': this.serviceSecret,
-      ...createEdgeHeaders({ jwtExpiresIn: '5m' }),
+      ...createEdgeHeaders({ jwtExpiresIn: '5m', includeAuthorization: false }),
       'x-client-info': 'encryption-service/1.0',
+      'x-session-token': sessionToken,
     };
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[EncryptionService] Calling edge', {
+        hasSessionToken: Boolean(sessionToken),
+        sessionTokenPreview: sessionToken ? `${sessionToken.slice(0, 10)}...` : null,
+      });
+    }
 
     const response = await fetch(FUNCTION_URL, {
       method: 'POST',
@@ -70,6 +91,10 @@ class EncryptionService {
       } catch {
         // keep raw text
       }
+      console.warn('[EncryptionService] Edge call failed', {
+        status: response.status,
+        parsed,
+      });
       throw new EncryptionServiceError('encryption-service error', response.status, parsed);
     }
 
@@ -81,37 +106,37 @@ class EncryptionService {
     }
   }
 
-  async encrypt(text: string): Promise<string> {
+  async encrypt(text: string, options?: EncryptionRequestOptions): Promise<string> {
     if (typeof text !== 'string') {
       throw new TypeError('encrypt expects a string');
     }
     if (text.length === 0) {
       return '';
     }
-    const result = await this.callEdge<{ ciphertext: string }>({ action: 'encrypt', text });
+    const result = await this.callEdge<{ ciphertext: string }>({ action: 'encrypt', text }, options);
     if (!result.ciphertext) {
       throw new Error('encryption-service returned no ciphertext');
     }
     return result.ciphertext;
   }
 
-  async decrypt(payload: string): Promise<string> {
+  async decrypt(payload: string, options?: EncryptionRequestOptions): Promise<string> {
     if (typeof payload !== 'string') {
       throw new TypeError('decrypt expects a string');
     }
     if (payload.length === 0) {
       return '';
     }
-    const result = await this.callEdge<{ plaintext: string }>({ action: 'decrypt', payload });
+    const result = await this.callEdge<{ plaintext: string }>({ action: 'decrypt', payload }, options);
     if (typeof result.plaintext !== 'string') {
       throw new Error('encryption-service returned no plaintext');
     }
     return result.plaintext;
   }
 
-  async health(): Promise<{ valid: boolean; error?: string }> {
+  async health(options?: EncryptionRequestOptions): Promise<{ valid: boolean; error?: string }> {
     try {
-      const response = await this.callEdge<{ valid: boolean }>({ action: 'health' });
+      const response = await this.callEdge<{ valid: boolean }>({ action: 'health' }, options);
       if (!response.valid) {
         return { valid: false, error: 'Encryption health check failed' };
       }
@@ -132,29 +157,33 @@ const getEncryptionService = () => {
 };
 
 export const encryptionService = {
-  encrypt: async (text: string) => getEncryptionService().encrypt(text),
-  decrypt: async (payload: string) => getEncryptionService().decrypt(payload),
+  encrypt: async (text: string, options?: EncryptionRequestOptions) =>
+    getEncryptionService().encrypt(text, options),
+  decrypt: async (payload: string, options?: EncryptionRequestOptions) =>
+    getEncryptionService().decrypt(payload, options),
 };
 
-export async function encrypt(text: string): Promise<string> {
-  return encryptionService.encrypt(text);
+export async function encrypt(text: string, options?: EncryptionRequestOptions): Promise<string> {
+  return encryptionService.encrypt(text, options);
 }
 
-export async function decrypt(payload: string): Promise<string> {
-  return encryptionService.decrypt(payload);
+export async function decrypt(payload: string, options?: EncryptionRequestOptions): Promise<string> {
+  return encryptionService.decrypt(payload, options);
 }
 
 export async function validateEncryptionSetup(): Promise<{ valid: boolean; error?: string }> {
   const service = getEncryptionService();
-  const health = await service.health();
+  const sessionToken =
+    getEncryptionSessionToken() ?? process.env.ENCRYPTION_HEALTH_SESSION_TOKEN ?? null;
+  const health = await service.health({ sessionToken });
   if (!health.valid) {
     return health;
   }
 
   try {
     const testString = 'test_encryption_validation';
-    const encrypted = await service.encrypt(testString);
-    const decrypted = await service.decrypt(encrypted);
+    const encrypted = await service.encrypt(testString, { sessionToken });
+    const decrypted = await service.decrypt(encrypted, { sessionToken });
     if (decrypted !== testString) {
       return { valid: false, error: 'Encryption/decryption test failed' };
     }
