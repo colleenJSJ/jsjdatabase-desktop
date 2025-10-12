@@ -26,7 +26,6 @@ export async function GET(request: NextRequest) {
     
     const user = auth.user!;
     setEncryptionSessionToken(auth.sessionToken ?? null);
-    setEncryptionSessionToken(auth.sessionToken ?? null);
 
     const searchParams = request.nextUrl.searchParams;
     const filter: PasswordFilter = {};
