@@ -69,10 +69,10 @@ class EncryptionService {
       'x-session-token': sessionToken,
     };
 
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.ENCRYPTION_DEBUG === 'true') {
       console.debug('[EncryptionService] Calling edge', {
         hasSessionToken: Boolean(sessionToken),
-        sessionTokenPreview: sessionToken ? `${sessionToken.slice(0, 10)}...` : null,
+        action: payload.action,
       });
     }
 
