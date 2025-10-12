@@ -6,10 +6,14 @@ type ExpiresIn = SignOptions['expiresIn'];
 const FIVE_MINUTES: ExpiresIn = 5 * 60; // seconds
 
 export function createEdgeJwt(expiresIn: ExpiresIn = FIVE_MINUTES) {
-  const secret = process.env.SUPABASE_JWT_SECRET;
-  if (!secret) {
+  const rawSecret = process.env.SUPABASE_JWT_SECRET;
+  if (!rawSecret) {
     throw new Error('SUPABASE_JWT_SECRET is not configured');
   }
+
+  // Handle secrets stored with literal \n sequences so they can be used as PEMs.
+  const secret = rawSecret.includes('\\n') ? rawSecret.replace(/\\n/g, '\n') : rawSecret;
+  const isPemKey = /-----BEGIN [A-Z ]+KEY-----/.test(secret);
 
   const payload = {
     aud: 'authenticated',
@@ -18,9 +22,13 @@ export function createEdgeJwt(expiresIn: ExpiresIn = FIVE_MINUTES) {
   } satisfies jwt.JwtPayload;
 
   const options: SignOptions = {
-    algorithm: 'HS256',
+    algorithm: isPemKey ? 'ES256' : 'HS256',
     expiresIn,
   };
+
+  if (isPemKey && process.env.SUPABASE_JWT_KEY_ID) {
+    options.keyid = process.env.SUPABASE_JWT_KEY_ID;
+  }
 
   return jwt.sign(payload, secret, options);
 }
