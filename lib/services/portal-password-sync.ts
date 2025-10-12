@@ -27,6 +27,7 @@ export interface PortalPasswordSyncConfig {
   sourcePage?: string; // Optional source page for display (e.g., 'health', 'pets')
   entityIds?: string[]; // Related family member ids (pets, patients, students)
   sessionToken?: string | null;
+  allowServiceClientFallback?: boolean;
 }
 
 /**
@@ -70,12 +71,27 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
 }> {
   const sessionToken = config.sessionToken ?? null;
   setEncryptionSessionToken(sessionToken);
-  const supabase = await createClient();
+  let supabase: SupabaseClient;
   let serviceSupabase: SupabaseClient | null = null;
+
   try {
-    serviceSupabase = await createServiceClient();
-  } catch (serviceError) {
-    console.warn('[Portal-Password Sync] Service client unavailable; falling back to user client for password sync', serviceError);
+    supabase = await createClient();
+  } catch (primaryError) {
+    if (config.allowServiceClientFallback) {
+      console.warn('[Portal-Password Sync] Failed to create request-scoped Supabase client, falling back to service client', primaryError);
+      supabase = await createServiceClient();
+      serviceSupabase = supabase;
+    } else {
+      throw primaryError;
+    }
+  }
+
+  if (!serviceSupabase) {
+    try {
+      serviceSupabase = await createServiceClient();
+    } catch (serviceError) {
+      console.warn('[Portal-Password Sync] Service client unavailable; continuing with primary client only', serviceError);
+    }
   }
   
   try {

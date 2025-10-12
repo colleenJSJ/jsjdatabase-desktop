@@ -1,16 +1,13 @@
 import 'dotenv/config';
 
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createServiceClient } from '@/lib/supabase/server';
 import { ensurePortalAndPassword } from '@/lib/services/portal-password-sync';
 import { encryptionService } from '@/lib/encryption';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 async function main() {
-  const sessionToken = process.env.ENCRYPTION_SESSION_TOKEN || null;
-  if (!sessionToken) {
-    console.error('[Resync] Missing ENCRYPTION_SESSION_TOKEN environment variable. Unable to contact encryption-service securely.');
-    process.exit(1);
-  }
+  const sessionToken = await obtainSessionToken();
 
   const supabase = await createServiceClient();
 
@@ -85,6 +82,8 @@ async function main() {
         source: `${providerType}_portal`,
         sourcePage: mapSourcePage(providerType),
         entityIds,
+        sessionToken,
+        allowServiceClientFallback: true,
       });
 
       synced += 1;
@@ -94,6 +93,48 @@ async function main() {
   }
 
   console.log(`[Resync] Completed. Resynced ${synced} portal records.`);
+}
+
+async function obtainSessionToken(): Promise<string> {
+  const legacyToken = process.env.ENCRYPTION_SESSION_TOKEN;
+  if (legacyToken) {
+    console.warn('[Resync] Using legacy ENCRYPTION_SESSION_TOKEN environment variable; consider rotating to the automation credentials flow.');
+    return legacyToken;
+  }
+
+  const automationEmail = process.env.PORTAL_RESYNC_EMAIL;
+  const automationPassword = process.env.PORTAL_RESYNC_PASSWORD;
+
+  if (!automationEmail || !automationPassword) {
+    console.error('[Resync] Missing PORTAL_RESYNC_EMAIL or PORTAL_RESYNC_PASSWORD. Add automation user credentials to Bitwarden and regenerate env files.');
+    process.exit(1);
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !anonKey) {
+    console.error('[Resync] NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are required to generate a session token.');
+    process.exit(1);
+  }
+
+  const supabase = createSupabaseClient(supabaseUrl, anonKey, {
+    auth: {
+      persistSession: false,
+    },
+  });
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: automationEmail,
+    password: automationPassword,
+  });
+
+  if (error || !data.session?.access_token) {
+    console.error('[Resync] Failed to obtain automation session token:', error?.message ?? 'No session returned');
+    process.exit(1);
+  }
+
+  return data.session.access_token;
 }
 
 function mapSourcePage(providerType: 'medical' | 'pet' | 'academic'): string {
