@@ -55,7 +55,11 @@ export class SupabasePasswordService implements IPasswordService {
         query = query.eq('is_favorite', filter.is_favorite);
       }
       if (filter.search) {
-        query = query.or(`service_name.ilike.%${filter.search}%,username.ilike.%${filter.search}%,url.ilike.%${filter.search}%`);
+        const sanitizedSearch = filter.search.replace(/[%_,]/g, '').trim();
+        if (sanitizedSearch.length > 0) {
+          const pattern = `%${sanitizedSearch}%`;
+          query = query.or(`service_name.ilike.${pattern},username.ilike.${pattern},url.ilike.${pattern}`);
+        }
       }
     }
 
