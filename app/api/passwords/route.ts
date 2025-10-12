@@ -137,10 +137,11 @@ export async function POST(request: NextRequest) {
       shared_with: sharedWith
     };
     
-    console.log('[API/passwords] Creating password with data:', {
-      ...passwordData,
-      password: '[REDACTED]',
-      notes: passwordData.notes ? '[REDACTED]' : null
+    console.log('[API/passwords] Creating password', {
+      serviceName: passwordData.service_name,
+      hasUsername: Boolean(passwordData.username),
+      isShared: passwordData.is_shared,
+      tagCount: passwordData.tags?.length ?? 0,
     });
 
     const passwordService = new SupabasePasswordService(auth.sessionToken ?? null);
