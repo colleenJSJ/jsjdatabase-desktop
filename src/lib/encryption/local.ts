@@ -4,25 +4,12 @@ const REQUIRED_KEY_BYTES = 32;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-type NodeCompatibleUint8Array = Uint8Array & { buffer: ArrayBufferLike };
-
-function toBufferSource(value: Uint8Array | ArrayBufferLike): ArrayBuffer | ArrayBufferView {
+function toBufferSource(value: Uint8Array | ArrayBufferLike): ArrayBufferView {
   if (value instanceof Uint8Array) {
-    const nodeValue = value as Partial<NodeCompatibleUint8Array>;
-    if (nodeValue.buffer instanceof ArrayBuffer) {
-      return nodeValue.buffer;
-    }
-    if (nodeValue.buffer) {
-      return nodeValue.buffer;
-    }
-    return value.buffer;
-  }
-
-  if (value instanceof ArrayBuffer) {
     return value;
   }
 
-  return value;
+  return new Uint8Array(value);
 }
 
 let cachedKey: CryptoKey | null = null;
@@ -71,11 +58,9 @@ async function getCryptoKey(): Promise<CryptoKey> {
     throw new Error(`ENCRYPTION_KEY must decode to ${REQUIRED_KEY_BYTES} bytes`);
   }
 
-  const bufferSource = toBufferSource(rawKey);
-
   cachedKey = await crypto.subtle.importKey(
     'raw',
-    bufferSource,
+    toBufferSource(rawKey),
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt'],
