@@ -7,7 +7,12 @@ import { encryptionService } from '@/lib/encryption';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 async function main() {
-  const sessionToken = await obtainSessionToken();
+  const useEdgeEncryption = process.env.ENCRYPTION_USE_EDGE !== 'false';
+  if (!useEdgeEncryption) {
+    console.log('[Resync] Running with local encryption; Supabase session token not required.');
+  }
+
+  const sessionToken = useEdgeEncryption ? await obtainSessionToken() : null;
 
   const supabase = await createServiceClient();
 
@@ -47,7 +52,8 @@ async function main() {
 
       let plainPassword: string;
       try {
-        plainPassword = await encryptionService.decrypt(portal.password, { sessionToken });
+        const decryptOptions = sessionToken ? { sessionToken } : undefined;
+        plainPassword = await encryptionService.decrypt(portal.password, decryptOptions);
       } catch (decryptError) {
         console.warn(`[Resync] Failed to decrypt password for portal ${portalId}:`, decryptError);
         decryptFailures += 1;
@@ -89,7 +95,7 @@ async function main() {
         source: `${providerType}_portal`,
         sourcePage: mapSourcePage(providerType),
         entityIds,
-        sessionToken,
+        sessionToken: sessionToken ?? undefined,
         allowServiceClientFallback: true,
       });
 

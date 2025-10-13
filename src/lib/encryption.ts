@@ -1,5 +1,6 @@
-import { createEdgeHeaders } from '@/lib/supabase/jwt';
 import { getEncryptionSessionToken } from '@/lib/encryption/context';
+import { decryptText as decryptLocalText, encryptText as encryptLocalText, healthCheck as localHealthCheck } from '@/lib/encryption/local';
+import { createEdgeHeaders } from '@/lib/supabase/jwt';
 
 const PROJECT_REF = (() => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.EDGE_SUPABASE_URL;
@@ -19,6 +20,7 @@ const FUNCTION_URL = PROJECT_REF
   : null;
 
 const BATCH_DECRYPT_ENABLED = process.env.ENCRYPTION_BATCH_ENABLED === 'true';
+const USE_EDGE_ENCRYPTION = process.env.ENCRYPTION_USE_EDGE !== 'false';
 
 class EncryptionServiceError extends Error {
   constructor(message: string, public readonly status: number, public readonly details?: unknown) {
@@ -47,6 +49,14 @@ class EncryptionService {
     }
   }
 
+  private getSessionToken(options?: EncryptionRequestOptions): string | null {
+    const sessionToken = options?.sessionToken ?? getEncryptionSessionToken();
+    if (USE_EDGE_ENCRYPTION && !sessionToken) {
+      throw new Error('Supabase session token is required for encryption service requests');
+    }
+    return sessionToken ?? null;
+  }
+
   private async callEdge<TResponse extends EncryptionResponse>(
     payload: Record<string, unknown>,
     options: EncryptionRequestOptions = {},
@@ -58,25 +68,29 @@ class EncryptionService {
       throw new Error('EDGE_SERVICE_SECRET is not configured');
     }
 
-    const sessionToken = options.sessionToken ?? getEncryptionSessionToken();
+    const sessionToken = this.getSessionToken(options);
     if (!sessionToken) {
       throw new Error('Supabase session token is required for encryption service requests');
     }
 
-    const edgeHeaders = createEdgeHeaders({ jwtExpiresIn: '5m', includeAuthorization: false });
-    const apiKey =
+    const edgeHeaders = createEdgeHeaders({ jwtExpiresIn: '5m' });
+    const serviceKey =
+      process.env.EDGE_SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const anonKey =
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      process.env.EDGE_SUPABASE_ANON_KEY;
+      process.env.EDGE_SUPABASE_ANON_KEY ||
+      serviceKey;
 
-    if (!apiKey) {
-      throw new Error('Supabase anon key is required for encryption requests');
+    if (!serviceKey) {
+      throw new Error('Supabase service role key is required for encryption requests');
     }
 
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-service-secret': this.serviceSecret,
       ...edgeHeaders,
-      Authorization: `Bearer ${apiKey}`,
+      apikey: anonKey ?? serviceKey,
       'x-client-info': 'encryption-service/1.0',
       'x-session-token': sessionToken,
     };
@@ -84,6 +98,8 @@ class EncryptionService {
     if (process.env.ENCRYPTION_DEBUG === 'true') {
       console.debug('[EncryptionService] Calling edge', {
         hasSessionToken: Boolean(sessionToken),
+        sessionTokenPreview: sessionToken ? `${sessionToken.slice(0, 16)}...` : null,
+        sessionTokenLength: sessionToken?.length ?? 0,
         action: payload.action,
       });
     }
@@ -125,6 +141,11 @@ class EncryptionService {
     if (text.length === 0) {
       return '';
     }
+
+    if (!USE_EDGE_ENCRYPTION) {
+      return encryptLocalText(text);
+    }
+
     const result = await this.callEdge<{ ciphertext: string }>({ action: 'encrypt', text }, options);
     if (!result.ciphertext) {
       throw new Error('encryption-service returned no ciphertext');
@@ -139,6 +160,11 @@ class EncryptionService {
     if (payload.length === 0) {
       return '';
     }
+
+    if (!USE_EDGE_ENCRYPTION) {
+      return decryptLocalText(payload);
+    }
+
     const result = await this.callEdge<{ plaintext: string }>({ action: 'decrypt', payload }, options);
     if (typeof result.plaintext !== 'string') {
       throw new Error('encryption-service returned no plaintext');
@@ -153,6 +179,16 @@ class EncryptionService {
     if (payloads.length === 0) {
       return [];
     }
+
+    if (!USE_EDGE_ENCRYPTION) {
+      for (const payload of payloads) {
+        if (typeof payload !== 'string') {
+          throw new TypeError('decryptMany expects an array of strings');
+        }
+      }
+      return Promise.all(payloads.map((value) => decryptLocalText(value)));
+    }
+
     const result = await this.callEdge<{ plaintexts: unknown }>({ action: 'multi-decrypt', payloads }, options);
     if (!Array.isArray(result.plaintexts)) {
       throw new Error('encryption-service returned invalid plaintexts');
@@ -164,6 +200,11 @@ class EncryptionService {
   }
 
   async health(options?: EncryptionRequestOptions): Promise<{ valid: boolean; error?: string }> {
+    if (!USE_EDGE_ENCRYPTION) {
+      const isValid = await localHealthCheck();
+      return isValid ? { valid: true } : { valid: false, error: 'Local encryption health check failed' };
+    }
+
     try {
       const response = await this.callEdge<{ valid: boolean }>({ action: 'health' }, options);
       if (!response.valid) {
