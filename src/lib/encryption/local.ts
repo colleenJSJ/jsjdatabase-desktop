@@ -4,12 +4,25 @@ const REQUIRED_KEY_BYTES = 32;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function toBufferSource(value: Uint8Array | ArrayBufferLike): ArrayBufferView {
-  if (value instanceof Uint8Array) {
+function toArrayBuffer(value: Uint8Array | ArrayBufferLike): ArrayBuffer {
+  if (value instanceof ArrayBuffer) {
     return value;
   }
 
-  return new Uint8Array(value);
+  if (value instanceof Uint8Array) {
+    if (value.byteOffset === 0 && value.byteLength === value.buffer.byteLength && value.buffer instanceof ArrayBuffer) {
+      return value.buffer;
+    }
+
+    const copy = new Uint8Array(value.byteLength);
+    copy.set(value);
+    return copy.buffer;
+  }
+
+  const view = new Uint8Array(value);
+  const copy = new Uint8Array(view.length);
+  copy.set(view);
+  return copy.buffer;
 }
 
 let cachedKey: CryptoKey | null = null;
@@ -60,7 +73,7 @@ async function getCryptoKey(): Promise<CryptoKey> {
 
   cachedKey = await crypto.subtle.importKey(
     'raw',
-    toBufferSource(rawKey),
+    toArrayBuffer(rawKey),
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt'],
