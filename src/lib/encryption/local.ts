@@ -4,25 +4,25 @@ const REQUIRED_KEY_BYTES = 32;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function toArrayBuffer(value: Uint8Array | ArrayBufferLike): ArrayBuffer {
-  if (value instanceof ArrayBuffer) {
-    return value;
-  }
-
+function ensureUint8Array(value: Uint8Array | ArrayBufferLike): Uint8Array<ArrayBuffer> {
   if (value instanceof Uint8Array) {
-    if (value.byteOffset === 0 && value.byteLength === value.buffer.byteLength && value.buffer instanceof ArrayBuffer) {
-      return value.buffer;
+    if (value.buffer instanceof ArrayBuffer && value.byteOffset === 0 && value.byteLength === value.buffer.byteLength) {
+      return value as Uint8Array<ArrayBuffer>;
     }
 
     const copy = new Uint8Array(value.byteLength);
     copy.set(value);
-    return copy.buffer;
+    return copy as Uint8Array<ArrayBuffer>;
   }
 
   const view = new Uint8Array(value);
-  const copy = new Uint8Array(view.length);
+  const copy = new Uint8Array(view.byteLength);
   copy.set(view);
-  return copy.buffer;
+  return copy as Uint8Array<ArrayBuffer>;
+}
+
+function toArrayBuffer(value: Uint8Array | ArrayBufferLike): ArrayBuffer {
+  return ensureUint8Array(value).buffer;
 }
 
 let cachedKey: CryptoKey | null = null;
@@ -66,14 +66,14 @@ async function getCryptoKey(): Promise<CryptoKey> {
     return cachedKey;
   }
 
-  const rawKey = hexToUint8Array(getRawEncryptionKey());
+  const rawKey = ensureUint8Array(hexToUint8Array(getRawEncryptionKey()));
   if (rawKey.length !== REQUIRED_KEY_BYTES) {
     throw new Error(`ENCRYPTION_KEY must decode to ${REQUIRED_KEY_BYTES} bytes`);
   }
 
   cachedKey = await crypto.subtle.importKey(
     'raw',
-    toArrayBuffer(rawKey),
+    rawKey,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt'],
@@ -92,16 +92,16 @@ export async function encryptText(plainText: string): Promise<string> {
   }
 
   const key = await getCryptoKey();
-  const iv = crypto.getRandomValues(new Uint8Array(16));
-  const encoded = encoder.encode(plainText);
+  const iv = ensureUint8Array(crypto.getRandomValues(new Uint8Array(16)));
+  const encoded = ensureUint8Array(encoder.encode(plainText));
 
   const encryptedBuffer = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: toArrayBuffer(iv) },
     key,
-    encoded,
+    toArrayBuffer(encoded),
   );
 
-  const encryptedBytes = new Uint8Array(encryptedBuffer);
+  const encryptedBytes = ensureUint8Array(new Uint8Array(encryptedBuffer));
   if (encryptedBytes.length <= 16) {
     throw new Error('Encrypted payload too short to contain auth tag');
   }
@@ -144,18 +144,18 @@ export async function decryptText(payload: string): Promise<string> {
 
   try {
     const key = await getCryptoKey();
-    const iv = hexToUint8Array(ivHex);
-    const authTag = hexToUint8Array(authTagHex);
-    const cipherBytes = hexToUint8Array(cipherHex);
+    const iv = ensureUint8Array(hexToUint8Array(ivHex));
+    const authTag = ensureUint8Array(hexToUint8Array(authTagHex));
+    const cipherBytes = ensureUint8Array(hexToUint8Array(cipherHex));
 
-    const combined = new Uint8Array(cipherBytes.length + authTag.length);
+    const combined = ensureUint8Array(new Uint8Array(cipherBytes.length + authTag.length));
     combined.set(cipherBytes);
     combined.set(authTag, cipherBytes.length);
 
     const decryptedBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
+      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
       key,
-      combined,
+      toArrayBuffer(combined),
     );
 
     return decoder.decode(decryptedBuffer);
