@@ -32,6 +32,7 @@ class EncryptionServiceError extends Error {
 type EncryptionResponse = {
   ciphertext?: string;
   plaintext?: string;
+  plaintexts?: unknown;
   valid?: boolean;
 };
 
