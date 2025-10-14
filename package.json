@@ -1,6 +1,6 @@
 {
   "name": "johnson-database-v1",
-  "version": "0.1.56",
+  "version": "0.1.69",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -96,7 +96,7 @@
   },
   "build": {
     "appId": "com.familyoffice.desktop",
-    "productName": "JSJ Database",
+    "productName": "Johnson Family Office",
     "asar": true,
     "afterSign": "scripts/notarize.js",
     "afterPack": "scripts/after-pack.js",
@@ -117,11 +117,10 @@
       "category": "public.app-category.productivity",
       "icon": "JSJ_ICON.icns",
       "extendInfo": {
-        "CFBundleName": "JSJ Database",
-        "CFBundleDisplayName": "JSJ Database"
+        "CFBundleName": "Johnson Family Office",
+        "CFBundleDisplayName": "Johnson Family Office"
       },
       "hardenedRuntime": true,
-      "gatekeeperAssess": false,
       "entitlements": "electron/resources/entitlements.mac.plist",
       "entitlementsInherit": "electron/resources/entitlements.mac.plist",
       "target": [

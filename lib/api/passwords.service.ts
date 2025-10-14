@@ -35,6 +35,8 @@ export interface UpdatePasswordData extends Partial<CreatePasswordData> {
 export interface PasswordsResponse {
   passwords: Password[];
   total: number;
+  page?: number;
+  limit?: number;
 }
 
 class PasswordsService {

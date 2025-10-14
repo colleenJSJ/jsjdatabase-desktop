@@ -1,32 +1,156 @@
 import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
-import { encryptionService } from '@/lib/encryption';
+import { encryptionService, decryptMany, isEncryptionBatchEnabled } from '@/lib/encryption';
 import { normalizeUrl } from '@/lib/utils/url-helper';
-import { 
-  IPasswordService, 
-  Password, 
-  PasswordInput, 
-  PasswordUpdate, 
+import {
+  IPasswordService,
+  Password,
+  PasswordInput,
+  PasswordUpdate,
   PasswordFilter,
-  PasswordStrength 
+  PasswordStrength,
+  PasswordListResult,
 } from './password-service-interface';
 import type { Database } from '@/lib/database.types';
 import type { PostgrestError } from '@supabase/supabase-js';
 
+type BatchDecryptionCache = {
+  passwords: Map<string, string>;
+  notes: Map<string, string>;
+};
+
+const PASSWORD_SELECT_COLUMNS = [
+  'id',
+  'service_name',
+  'username',
+  'password',
+  'notes',
+  'category',
+  'tags',
+  'owner_id',
+  'is_favorite',
+  'is_shared',
+  'last_changed',
+  'created_at',
+  'updated_at',
+  'url',
+  'website_url',
+  'source',
+  'source_reference',
+].join(', ');
+
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 500;
+
 export class SupabasePasswordService implements IPasswordService {
+  constructor(private sessionToken: string | null = null) {}
+
+  setSessionToken(token: string | null) {
+    this.sessionToken = token;
+  }
+
+  private getEncryptionOptions() {
+    if (!this.sessionToken) {
+      console.warn('[SupabasePasswordService] Session token missing when preparing encryption options');
+    }
+    return { sessionToken: this.sessionToken ?? undefined };
+  }
+
   private async getSupabase() {
     // Use regular client to respect RLS policies
     return createClient();
   }
 
-  async getPasswords(userId: string, filter?: PasswordFilter): Promise<Password[]> {
+  private resolvePagination(filter?: PasswordFilter) {
+    const limitValue = filter?.limit ?? DEFAULT_PAGE_SIZE;
+    const limit = Math.min(Math.max(limitValue, 1), MAX_PAGE_SIZE);
+
+    if (typeof filter?.offset === 'number' && filter.offset >= 0) {
+      const offset = filter.offset;
+      const pageFromOffset = Math.floor(offset / limit) + 1;
+      return { limit, offset, page: pageFromOffset };
+    }
+
+    const pageValue = filter?.page ?? 1;
+    const page = Math.max(pageValue, 1);
+    const offset = (page - 1) * limit;
+    return { limit, offset, page };
+  }
+
+  private async prepareBatchDecryption(
+    rows: Database['public']['Tables']['passwords']['Row'][],
+  ): Promise<BatchDecryptionCache | null> {
+    if (!rows.length || !isEncryptionBatchEnabled()) {
+      return null;
+    }
+
+    const options = this.getEncryptionOptions();
+    const passwordItems = rows
+      .filter((row) => typeof row.password === 'string' && row.password.length > 0)
+      .map((row) => ({ id: row.id, payload: row.password as string }));
+
+    const noteItems = rows
+      .filter((row) => typeof row.notes === 'string' && row.notes.length > 0)
+      .map((row) => ({ id: row.id, payload: row.notes as string }));
+
+    if (passwordItems.length === 0 && noteItems.length === 0) {
+      return null;
+    }
+
+    try {
+      const cache: BatchDecryptionCache = {
+        passwords: new Map<string, string>(),
+        notes: new Map<string, string>(),
+      };
+
+      if (passwordItems.length > 0) {
+        const decryptedPasswords = await decryptMany(
+          passwordItems.map((item) => item.payload),
+          options,
+        );
+
+        if (decryptedPasswords.length !== passwordItems.length) {
+          throw new Error('Password batch decrypt length mismatch');
+        }
+
+        passwordItems.forEach((item, index) => {
+          cache.passwords.set(item.id, decryptedPasswords[index] ?? '');
+        });
+      }
+
+      if (noteItems.length > 0) {
+        const decryptedNotes = await decryptMany(
+          noteItems.map((item) => item.payload),
+          options,
+        );
+
+        if (decryptedNotes.length !== noteItems.length) {
+          throw new Error('Notes batch decrypt length mismatch');
+        }
+
+        noteItems.forEach((item, index) => {
+          cache.notes.set(item.id, decryptedNotes[index] ?? '');
+        });
+      }
+
+      return cache;
+    } catch (error) {
+      console.warn('[SupabasePasswordService] Batch decrypt failed, falling back to single decrypt', error);
+      return null;
+    }
+  }
+
+  async getPasswords(userId: string, filter?: PasswordFilter): Promise<PasswordListResult> {
     console.log('[SupabasePasswordService] Getting passwords for user:', userId);
     const supabase = await this.getSupabase();
-    
+
+    const { limit, offset, page } = this.resolvePagination(filter);
+
     let query = supabase
       .from('passwords')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select(PASSWORD_SELECT_COLUMNS, { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (filter) {
       if (filter.category) {
@@ -42,26 +166,42 @@ export class SupabasePasswordService implements IPasswordService {
         query = query.eq('is_favorite', filter.is_favorite);
       }
       if (filter.search) {
-        query = query.or(`service_name.ilike.%${filter.search}%,username.ilike.%${filter.search}%,url.ilike.%${filter.search}%`);
+        const sanitizedSearch = filter.search.replace(/[%_,]/g, '').trim();
+        if (sanitizedSearch.length > 0) {
+          const pattern = `%${sanitizedSearch}%`;
+          query = query.or(`service_name.ilike.${pattern},username.ilike.${pattern},url.ilike.${pattern}`);
+        }
       }
     }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('[SupabasePasswordService] Error fetching passwords:', error);
       throw new Error('Failed to fetch passwords');
     }
 
-    console.log('[SupabasePasswordService] Raw passwords from DB:', data?.length || 0);
-    const passwords = await Promise.all((data || []).map((row) => this.mapRowToPassword(row)));
+    const rows = data || [];
+
+    console.log('[SupabasePasswordService] Raw passwords from DB:', rows.length);
+
+    const batchCache = await this.prepareBatchDecryption(rows);
+
+    const passwords = await Promise.all(rows.map((row) => this.mapRowToPassword(row, batchCache)));
     console.log('[SupabasePasswordService] Mapped passwords:', passwords.length);
-    
-    if (filter?.strength) {
-      return passwords.filter(p => p.strength === filter.strength);
-    }
-    
-    return passwords;
+
+    const filteredPasswords = filter?.strength
+      ? passwords.filter((p) => p.strength === filter.strength)
+      : passwords;
+
+    const totalCount = filter?.strength ? filteredPasswords.length : count ?? filteredPasswords.length;
+
+    return {
+      passwords: filteredPasswords,
+      total: totalCount,
+      page,
+      limit,
+    };
   }
 
   async getPassword(id: string, userId: string): Promise<Password> {
@@ -69,7 +209,7 @@ export class SupabasePasswordService implements IPasswordService {
     
     const { data, error } = await supabase
       .from('passwords')
-      .select('*')
+      .select(PASSWORD_SELECT_COLUMNS)
       .eq('id', id)
       .single();
 
@@ -91,8 +231,9 @@ export class SupabasePasswordService implements IPasswordService {
       throw new Error('User not authenticated');
     }
     
-    const encryptedPassword = await encryptionService.encrypt(data.password);
-    const encryptedNotes = data.notes ? await encryptionService.encrypt(data.notes) : null;
+    const options = this.getEncryptionOptions();
+    const encryptedPassword = await encryptionService.encrypt(data.password, options);
+    const encryptedNotes = data.notes ? await encryptionService.encrypt(data.notes, options) : null;
     
     // Log what fields we're trying to insert
     console.log('[SupabasePasswordService] Preparing to insert password:', {
@@ -198,13 +339,18 @@ export class SupabasePasswordService implements IPasswordService {
     }
     if (data.username !== undefined) updates.username = data.username;
     if (data.password !== undefined) {
-      updates.password = await encryptionService.encrypt(data.password);
+      updates.password = await encryptionService.encrypt(
+        data.password,
+        this.getEncryptionOptions(),
+      );
       updates.last_changed = new Date().toISOString();
     }
     if (data.url !== undefined) updates.url = data.url ? normalizeUrl(data.url) : null;
     if (data.category !== undefined) updates.category = data.category;
     if (data.notes !== undefined) {
-      updates.notes = data.notes ? await encryptionService.encrypt(data.notes) : null;
+      updates.notes = data.notes
+        ? await encryptionService.encrypt(data.notes, this.getEncryptionOptions())
+        : null;
     }
     if (data.tags !== undefined) updates.tags = data.tags;
     if (data.is_favorite !== undefined) updates.is_favorite = data.is_favorite;
@@ -244,7 +390,26 @@ export class SupabasePasswordService implements IPasswordService {
   }
 
   async searchPasswords(userId: string, query: string): Promise<Password[]> {
-    return this.getPasswords(userId, { search: query });
+    const { passwords } = await this.getPasswords(userId, { search: query, limit: DEFAULT_PAGE_SIZE });
+    return passwords;
+  }
+
+  async getAllPasswords(userId: string, filter?: PasswordFilter): Promise<Password[]> {
+    const combined: Password[] = [];
+    const { offset: _offset, ...rest } = filter ?? {};
+    const limit = Math.min(rest.limit ?? MAX_PAGE_SIZE, MAX_PAGE_SIZE);
+    let page = Math.max(rest.page ?? 1, 1);
+
+    while (true) {
+      const { passwords, total } = await this.getPasswords(userId, { ...rest, limit, page });
+      combined.push(...passwords);
+      if (combined.length >= total || passwords.length < limit) {
+        break;
+      }
+      page += 1;
+    }
+
+    return combined;
   }
 
   async bulkDelete(ids: string[], userId: string): Promise<void> {
@@ -283,21 +448,42 @@ export class SupabasePasswordService implements IPasswordService {
     return PasswordStrength.EXCELLENT;
   }
 
-  private async mapRowToPassword(row: Database['public']['Tables']['passwords']['Row']): Promise<Password> {
+  private async mapRowToPassword(
+    row: Database['public']['Tables']['passwords']['Row'],
+    batchCache?: BatchDecryptionCache | null,
+  ): Promise<Password> {
     let decryptedPassword = '';
     let decryptedNotes = '';
 
     try {
-      decryptedPassword = row.password ? await encryptionService.decrypt(row.password) : '';
+      if (batchCache?.passwords?.has(row.id)) {
+        decryptedPassword = batchCache.passwords.get(row.id) ?? '';
+      } else {
+        decryptedPassword = row.password
+          ? await encryptionService.decrypt(row.password, this.getEncryptionOptions())
+          : '';
+      }
     } catch (error) {
       console.error('[SupabasePasswordService] Error decrypting password:', error);
+      if (error && typeof error === 'object' && 'details' in error) {
+        console.error('[SupabasePasswordService] Decrypt password details:', (error as any).details);
+      }
       decryptedPassword = '[Decryption Error]';
     }
 
     try {
-      decryptedNotes = row.notes ? await encryptionService.decrypt(row.notes) : '';
+      if (batchCache?.notes?.has(row.id)) {
+        decryptedNotes = batchCache.notes.get(row.id) ?? '';
+      } else {
+        decryptedNotes = row.notes
+          ? await encryptionService.decrypt(row.notes, this.getEncryptionOptions())
+          : '';
+      }
     } catch (error) {
       console.error('[SupabasePasswordService] Error decrypting notes:', error);
+      if (error && typeof error === 'object' && 'details' in error) {
+        console.error('[SupabasePasswordService] Decrypt notes details:', (error as any).details);
+      }
       decryptedNotes = row.notes || '';
     }
 
