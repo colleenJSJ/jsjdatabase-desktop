@@ -310,6 +310,7 @@ function createWindow() {
           })
 
           console.log('[Electron] Next.js server ready on port:', port)
+          process.title = app.getName()
           mainWindow.loadURL(`http://localhost:${port}`)
         } catch (err) {
           console.log('[Electron] Server not ready yet, retrying...')
@@ -401,6 +402,14 @@ app.whenReady().then(() => {
       return
     }
 
+    quittingApp = true
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log('[Electron] Destroying main window before quit')
+      mainWindow.destroy()
+      mainWindow = null
+    }
+
     if (!standaloneServer && !serverShutdownPromise) {
       return
     }
@@ -412,7 +421,6 @@ app.whenReady().then(() => {
         console.error('[Electron] Failed to close server during quit', error)
       })
       .finally(() => {
-        quittingApp = true
         app.quit()
       })
   })
