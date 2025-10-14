@@ -181,7 +181,13 @@ export class SupabasePasswordService implements IPasswordService {
       throw new Error('Failed to fetch passwords');
     }
 
-    const rows = data || [];
+    const rowsSource = (data ?? []) as Array<
+      Database['public']['Tables']['passwords']['Row'] | { error: true }
+    >;
+    const rows = rowsSource.filter(
+      (row): row is Database['public']['Tables']['passwords']['Row'] =>
+        !!row && typeof row === 'object' && 'id' in row && !('error' in row),
+    );
 
     console.log('[SupabasePasswordService] Raw passwords from DB:', rows.length);
 
@@ -213,12 +219,12 @@ export class SupabasePasswordService implements IPasswordService {
       .eq('id', id)
       .single();
 
-    if (error || !data) {
+    if (error || !data || (typeof data === 'object' && 'error' in data)) {
       console.error('[SupabasePasswordService] Error fetching password:', error);
       throw new Error('Password not found');
     }
 
-    return this.mapRowToPassword(data);
+    return this.mapRowToPassword(data as unknown as Database['public']['Tables']['passwords']['Row']);
   }
 
   async createPassword(data: PasswordInput): Promise<Password> {
@@ -305,7 +311,7 @@ export class SupabasePasswordService implements IPasswordService {
       .select()
       .single();
 
-    if (error || !created) {
+    if (error || !created || (typeof created === 'object' && 'error' in created)) {
       console.error('[SupabasePasswordService] Error creating password:', {
         error: error,
         errorMessage: error?.message,
@@ -324,7 +330,7 @@ export class SupabasePasswordService implements IPasswordService {
 
     await this.logActivity(user.id, 'password_created');
 
-    return this.mapRowToPassword(created);
+    return this.mapRowToPassword(created as unknown as Database['public']['Tables']['passwords']['Row']);
   }
 
   async updatePassword(id: string, userId: string, data: PasswordUpdate): Promise<Password> {
@@ -363,14 +369,14 @@ export class SupabasePasswordService implements IPasswordService {
       .select()
       .single();
 
-    if (error || !updated) {
+    if (error || !updated || (typeof updated === 'object' && 'error' in updated)) {
       console.error('[SupabasePasswordService] Error updating password:', error);
       throw new Error('Failed to update password');
     }
 
     await this.logActivity(userId, 'password_updated');
 
-    return this.mapRowToPassword(updated);
+    return this.mapRowToPassword(updated as unknown as Database['public']['Tables']['passwords']['Row']);
   }
 
   async deletePassword(id: string, userId: string): Promise<void> {
