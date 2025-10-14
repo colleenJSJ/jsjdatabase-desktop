@@ -1,6 +1,6 @@
 {
   "name": "johnson-database-v1",
-  "version": "0.1.67",
+  "version": "0.1.68",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -121,7 +121,6 @@
         "CFBundleDisplayName": "Johnson Family Office"
       },
       "hardenedRuntime": true,
-      "gatekeeperAssess": false,
       "entitlements": "electron/resources/entitlements.mac.plist",
       "entitlementsInherit": "electron/resources/entitlements.mac.plist",
       "target": [
