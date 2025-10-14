@@ -66,14 +66,30 @@ export async function GET(request: NextRequest) {
     if (searchParams.get('strength')) {
       filter.strength = searchParams.get('strength') as any;
     }
+    const pageParam = searchParams.get('page');
+    const limitParam = searchParams.get('limit');
+    if (pageParam) {
+      const parsedPage = parseInt(pageParam, 10);
+      if (!Number.isNaN(parsedPage) && parsedPage > 0) {
+        filter.page = parsedPage;
+      }
+    }
+    if (limitParam) {
+      const parsedLimit = parseInt(limitParam, 10);
+      if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
+        filter.limit = parsedLimit;
+      }
+    }
 
     const passwordService = new SupabasePasswordService(auth.sessionToken ?? null);
-    const passwords = await passwordService.getPasswords(user.id, filter);
-    console.log('[API/passwords] Found', passwords.length, 'passwords for user', user.id);
+    const { passwords, total, page, limit } = await passwordService.getPasswords(user.id, filter);
+    console.log('[API/passwords] Found', passwords.length, 'passwords for user', user.id, { page, limit, total });
 
     return NextResponse.json({
       passwords,
-      total: passwords.length,
+      total,
+      page,
+      limit,
       source: 'local'
     });
   } catch (error) {
@@ -97,6 +113,7 @@ export async function POST(request: NextRequest) {
     }
     
     const user = auth.user!;
+    setEncryptionSessionToken(auth.sessionToken ?? null);
 
     const body = await request.json();
     

@@ -63,15 +63,26 @@ export interface PasswordFilter {
   is_favorite?: boolean
   search?: string
   strength?: PasswordStrength
+  page?: number
+  limit?: number
+  offset?: number
+}
+
+export interface PasswordListResult {
+  passwords: Password[]
+  total: number
+  page: number
+  limit: number
 }
 
 export interface IPasswordService {
-  getPasswords(userId: string, filter?: PasswordFilter): Promise<Password[]>
+  getPasswords(userId: string, filter?: PasswordFilter): Promise<PasswordListResult>
   getPassword(id: string, userId: string): Promise<Password>
   createPassword(data: PasswordInput): Promise<Password>
   updatePassword(id: string, userId: string, data: PasswordUpdate): Promise<Password>
   deletePassword(id: string, userId: string): Promise<void>
   searchPasswords(userId: string, query: string): Promise<Password[]>
+  getAllPasswords(userId: string, filter?: PasswordFilter): Promise<Password[]>
   bulkDelete(ids: string[], userId: string): Promise<void>
   calculatePasswordStrength(password: string): PasswordStrength
 }

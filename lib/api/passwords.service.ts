@@ -13,6 +13,9 @@ export interface PasswordFilters {
   is_favorite?: boolean;
   search?: string;
   strength?: 'weak' | 'medium' | 'strong';
+  page?: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CreatePasswordData {
@@ -35,6 +38,8 @@ export interface UpdatePasswordData extends Partial<CreatePasswordData> {
 export interface PasswordsResponse {
   passwords: Password[];
   total: number;
+  page?: number;
+  limit?: number;
 }
 
 class PasswordsService {

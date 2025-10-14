@@ -24,7 +24,7 @@ export class PasswordMigrationService {
    * Export all passwords to JSON format
    */
   async exportToJSON(userId: string): Promise<PasswordExport[]> {
-    const passwords = await this.passwordService.getPasswords(userId);
+    const passwords = await this.passwordService.getAllPasswords(userId);
     
     return passwords.map(password => ({
       service_name: password.service_name,
@@ -43,7 +43,7 @@ export class PasswordMigrationService {
    * Export all passwords to CSV format
    */
   async exportToCSV(userId: string): Promise<string> {
-    const passwords = await this.passwordService.getPasswords(userId);
+    const passwords = await this.passwordService.getAllPasswords(userId);
     
     // CSV header
     const headers = ['Service', 'Username', 'Password', 'URL', 'Category', 'Notes', 'Tags', 'Created', 'Updated'];

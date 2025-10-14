@@ -8,7 +8,8 @@ import {
   PasswordInput, 
   PasswordUpdate, 
   PasswordFilter,
-  PasswordStrength 
+  PasswordStrength, 
+  PasswordListResult 
 } from './password-service-interface';
 import type { Database } from '@/lib/database.types';
 import type { PostgrestError } from '@supabase/supabase-js';
@@ -17,6 +18,29 @@ type BatchDecryptionCache = {
   passwords: Map<string, string>;
   notes: Map<string, string>;
 };
+
+const PASSWORD_SELECT_COLUMNS = [
+  'id',
+  'service_name',
+  'username',
+  'password',
+  'notes',
+  'category',
+  'tags',
+  'owner_id',
+  'is_favorite',
+  'is_shared',
+  'last_changed',
+  'created_at',
+  'updated_at',
+  'url',
+  'website_url',
+  'source',
+  'source_reference',
+].join(', ');
+
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 500;
 
 export class SupabasePasswordService implements IPasswordService {
   constructor(private sessionToken: string | null = null) {}
@@ -35,6 +59,22 @@ export class SupabasePasswordService implements IPasswordService {
   private async getSupabase() {
     // Use regular client to respect RLS policies
     return createClient();
+  }
+
+  private resolvePagination(filter?: PasswordFilter) {
+    const limitValue = filter?.limit ?? DEFAULT_PAGE_SIZE;
+    const limit = Math.min(Math.max(limitValue, 1), MAX_PAGE_SIZE);
+
+    if (typeof filter?.offset === 'number' && filter.offset >= 0) {
+      const offset = filter.offset;
+      const pageFromOffset = Math.floor(offset / limit) + 1;
+      return { limit, offset, page: pageFromOffset };
+    }
+
+    const pageValue = filter?.page ?? 1;
+    const page = Math.max(pageValue, 1);
+    const offset = (page - 1) * limit;
+    return { limit, offset, page };
   }
 
   private async prepareBatchDecryption(
@@ -106,7 +146,7 @@ export class SupabasePasswordService implements IPasswordService {
     
     let query = supabase
       .from('passwords')
-      .select('*')
+      .select(PASSWORD_SELECT_COLUMNS)
       .order('created_at', { ascending: false });
 
     if (filter) {
@@ -340,7 +380,26 @@ export class SupabasePasswordService implements IPasswordService {
   }
 
   async searchPasswords(userId: string, query: string): Promise<Password[]> {
-    return this.getPasswords(userId, { search: query });
+    const { passwords } = await this.getPasswords(userId, { search: query, limit: DEFAULT_PAGE_SIZE });
+    return passwords;
+  }
+
+  async getAllPasswords(userId: string, filter?: PasswordFilter): Promise<Password[]> {
+    const combined: Password[] = [];
+    const { offset: _offset, ...rest } = filter ?? {};
+    const limit = Math.min(rest.limit ?? MAX_PAGE_SIZE, MAX_PAGE_SIZE);
+    let page = Math.max(rest.page ?? 1, 1);
+
+    while (true) {
+      const { passwords, total } = await this.getPasswords(userId, { ...rest, limit, page });
+      combined.push(...passwords);
+      if (combined.length >= total || passwords.length < limit) {
+        break;
+      }
+      page += 1;
+    }
+
+    return combined;
   }
 
   async bulkDelete(ids: string[], userId: string): Promise<void> {
