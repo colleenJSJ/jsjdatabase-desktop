@@ -8,6 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { ActivityLogger } from '@/lib/services/activity-logger';
 import { encryptionService } from '@/lib/encryption';
+import { getEncryptionSessionToken } from '@/lib/encryption/context';
 
 export interface PortalPasswordSyncConfig {
   providerType: 'medical' | 'pet' | 'academic';  // Valid portal types
@@ -57,10 +58,139 @@ function getCategoryForProviderType(providerType: string): string {
   }
 }
 
+const PROJECT_REF = (() => {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.EDGE_SUPABASE_URL;
+  if (!url) return null;
+  try {
+    const host = new URL(url).host;
+    const match = host.match(/^([^.]+)\.supabase\.co$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+})();
+
+const PORTAL_SYNC_FUNCTION_URL = PROJECT_REF
+  ? `https://${PROJECT_REF}.functions.supabase.co/portal-sync`
+  : null;
+
+console.log('[Portal-Password Sync] Derived function URL', {
+  projectRef: PROJECT_REF,
+  functionUrl: PORTAL_SYNC_FUNCTION_URL
+});
+
+async function invokePortalSync<TResponse>(
+  payload: Record<string, unknown>,
+  sessionToken: string
+): Promise<TResponse> {
+  if (!PORTAL_SYNC_FUNCTION_URL) {
+    throw new Error('Portal sync function URL is not configured');
+  }
+
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.EDGE_SUPABASE_ANON_KEY;
+  if (!anonKey) {
+    throw new Error('Supabase anon key is not configured');
+  }
+
+  const response = await fetch(PORTAL_SYNC_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      apikey: anonKey,
+      Authorization: `Bearer ${sessionToken}`,
+      'x-client-info': 'portal-sync-client/1.0'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    let parsed: unknown = text;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // keep raw text
+    }
+    console.error('[Portal-Password Sync] Edge function error', {
+      status: response.status,
+      payload,
+      parsed
+    });
+    throw new Error(
+      typeof (parsed as any)?.error === 'string'
+        ? (parsed as any).error
+        : `portal-sync error (${response.status})`
+    );
+  }
+
+  try {
+    return JSON.parse(text) as TResponse;
+  } catch (error) {
+    console.error('[Portal-Password Sync] Failed to parse edge function response', error, text);
+    throw new Error('Failed to parse portal-sync response');
+  }
+}
+
+function shouldUseEdgePortalSync(explicitSessionToken?: string | null): boolean {
+  const sessionToken = explicitSessionToken ?? getEncryptionSessionToken();
+  const available = Boolean(PORTAL_SYNC_FUNCTION_URL && sessionToken);
+  if (!available) {
+    console.log('[Portal-Password Sync] Edge function unavailable', {
+      hasFunctionUrl: Boolean(PORTAL_SYNC_FUNCTION_URL),
+      functionUrl: PORTAL_SYNC_FUNCTION_URL,
+      hasSessionToken: Boolean(sessionToken)
+    });
+  }
+  return available;
+}
+
 /**
  * Main sync function - ensures portal and password records exist and are linked
  */
-export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig): Promise<{
+type PortalSyncOptions = {
+  sessionToken?: string | null;
+};
+
+export async function ensurePortalAndPassword(
+  config: PortalPasswordSyncConfig,
+  options: PortalSyncOptions = {}
+): Promise<{
+  portal: any;
+  password: any;
+  success: boolean;
+  error?: string;
+}> {
+  const sessionToken = options.sessionToken ?? getEncryptionSessionToken();
+  console.log('[Portal-Password Sync] session token available?', Boolean(sessionToken));
+  if (shouldUseEdgePortalSync(sessionToken) && sessionToken) {
+    try {
+      console.log('[Portal-Password Sync] Invoking portal-sync edge function');
+      return await invokePortalSync<{
+        portal: any;
+        password: any;
+        success: boolean;
+        error?: string;
+      }>({
+        action: 'sync',
+        config
+      }, sessionToken);
+    } catch (error) {
+      console.warn('[Portal-Password Sync] Edge invocation failed, attempting local fallback:', error);
+      // continue to fallback if possible
+    }
+  }
+
+  return ensurePortalAndPasswordLocal(config);
+}
+
+/**
+ * Local implementation retained for scripts or environments with service role access.
+ */
+async function ensurePortalAndPasswordLocal(config: PortalPasswordSyncConfig): Promise<{
   portal: any;
   password: any;
   success: boolean;
@@ -71,9 +201,12 @@ export async function ensurePortalAndPassword(config: PortalPasswordSyncConfig):
   try {
     serviceSupabase = await createServiceClient();
   } catch (serviceError) {
-    console.warn('[Portal-Password Sync] Service client unavailable; falling back to user client for password sync', serviceError);
+    console.warn(
+      '[Portal-Password Sync] Service client unavailable; falling back to user client for password sync',
+      serviceError
+    );
   }
-  
+
   try {
     // 1. Normalize the portal URL and extract domain
     const normalizedUrl = normalizeUrl(config.portal_url);
@@ -636,7 +769,35 @@ export async function deletePortalAndPassword(
   return result;
 }
 
-export async function deletePortalById(portalId: string): Promise<{
+export async function deletePortalById(
+  portalId: string,
+  options: PortalSyncOptions = {}
+): Promise<{
+  deletedPortal: boolean;
+  deletedPasswords: number;
+}> {
+  const sessionToken = options.sessionToken ?? getEncryptionSessionToken();
+  console.log('[Portal-Password Sync] delete session token available?', Boolean(sessionToken));
+  if (shouldUseEdgePortalSync(sessionToken) && sessionToken) {
+    try {
+      console.log('[Portal-Password Sync] Invoking portal-sync edge function for delete');
+      return await invokePortalSync<{
+        deletedPortal: boolean;
+        deletedPasswords: number;
+      }>({
+        action: 'delete_portal',
+        portalId
+      }, sessionToken);
+    } catch (error) {
+      console.warn('[Portal-Password Sync] Edge delete_portal failed, attempting local fallback:', error);
+      // Continue to local fallback
+    }
+  }
+
+  return deletePortalByIdLocal(portalId);
+}
+
+async function deletePortalByIdLocal(portalId: string): Promise<{
   deletedPortal: boolean;
   deletedPasswords: number;
 }> {

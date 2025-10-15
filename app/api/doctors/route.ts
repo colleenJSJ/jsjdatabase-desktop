@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
 
-    const { user, supabase } = authResult;
+    const { user, supabase, sessionToken } = authResult;
     console.log('[Doctors API] Authenticated user:', user.id, user.email);
     
     const { data: doctors, error } = await supabase
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       return authResult;
     }
 
-    const { user, supabase } = authResult;
+    const { user, supabase, sessionToken } = authResult;
     console.log('[Doctors API POST] Authenticated user:', user.id, user.email);
     
     const data = await request.json();
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         createdBy: user.id,
         notes: `Portal credentials for Dr. ${data.name}`,
         source: 'medical'
-      });
+      }, { sessionToken });
       
       if (!syncResult.success) {
         console.error('[Doctors API POST] Portal sync failed:', syncResult.error);

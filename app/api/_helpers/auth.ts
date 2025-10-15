@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { csrfMiddleware } from '@/lib/security/csrf';
 import { jsonError } from '@/app/api/_helpers/responses';
 import type { Database } from '@/lib/database.types';
@@ -15,6 +16,7 @@ export type RequireUserOptions = {
 export type RequireUserResult = {
   user: UserRow;
   supabase: SupabaseClient<Database>;
+  sessionToken: string | null;
 };
 
 /**
@@ -36,9 +38,29 @@ export async function requireUser(
 
   const supabase = await createClient();
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
   if (authError || !user) {
     return jsonError('Unauthorized', { status: 401 });
+  }
+
+  let returnSessionToken: string | null = null;
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const cookieToken = request?.cookies?.get?.('sb-access-token')?.value ?? null;
+    const sessionToken = session?.access_token ?? cookieToken ?? null;
+    setEncryptionSessionToken(sessionToken);
+    returnSessionToken = sessionToken;
+  } catch (error) {
+    console.warn('[requireUser] Failed to resolve session token for encryption context', error);
+    setEncryptionSessionToken(null);
+    returnSessionToken = null;
   }
 
   const { data: userRow, error: userError } = await supabase
@@ -55,7 +77,7 @@ export async function requireUser(
     return jsonError('Forbidden', { status: 403 });
   }
 
-  return { user: userRow, supabase };
+  return { user: userRow, supabase, sessionToken: returnSessionToken };
 }
 
 interface LegacyAuthOptions {

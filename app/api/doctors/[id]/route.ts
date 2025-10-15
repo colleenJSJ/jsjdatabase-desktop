@@ -20,7 +20,7 @@ export async function PUT(
       return authResult;
     }
 
-    const { user, supabase } = authResult;
+    const { user, supabase, sessionToken } = authResult;
     const data = await request.json();
     
     const { data: doctor, error } = await supabase
@@ -109,7 +109,7 @@ export async function PUT(
         createdBy: user.id,
         notes: `Portal credentials for Dr. ${data.name}`,
         source: 'medical'
-      });
+      }, { sessionToken });
       
       if (!syncResult.success) {
         console.error('[Doctors API PUT] Portal sync failed:', syncResult.error);

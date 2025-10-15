@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { resolveFamilyMemberToUser, resolveCurrentUserToFamilyMember } from '@/app/api/_helpers/person-resolver';
 import { normalizeUrl } from '@/lib/utils/url-helper';
 import { decrypt } from '@/lib/encryption';
+import { setEncryptionSessionToken } from '@/lib/encryption/context';
 import { enforceCSRF } from '@/lib/security/csrf';
 
 const serializePortal = async (portal: any) => {
@@ -111,6 +112,13 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const cookieToken = request.cookies.get('sb-access-token')?.value ?? null;
+    const sessionToken = session?.access_token ?? cookieToken ?? null;
+    setEncryptionSessionToken(sessionToken);
 
     // Check if user is admin
     const { data: userData, error: userError } = await supabase
@@ -236,7 +244,7 @@ export async function POST(request: NextRequest) {
         source: 'medical_portal',
         sourcePage: 'health',
         entityIds: portalPatientIds
-      });
+      }, { sessionToken });
       
       if (!syncResult.success) {
         console.error('[Medical Portals API] Failed to sync password:', syncResult.error);
