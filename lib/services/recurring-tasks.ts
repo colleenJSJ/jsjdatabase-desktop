@@ -1,3 +1,5 @@
+import { getEncryptionSessionToken } from '@/lib/encryption/context';
+import { createEdgeHeaders } from '@/lib/supabase/jwt';
 import { createServiceClient } from '@/lib/supabase/server';
 import type { TaskStatus } from '@/lib/supabase/types';
 
@@ -25,6 +27,107 @@ export interface RecurringTask {
   priority?: 'low' | 'medium' | 'high';
   tags?: string[];
   status?: TaskStatus;
+}
+
+const PROJECT_REF = (() => {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.EDGE_SUPABASE_URL;
+  if (!url) return null;
+  try {
+    const host = new URL(url).host;
+    const match = host.match(/^([^.]+)\.supabase\.co$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+})();
+
+const RECURRING_FUNCTION_URL = PROJECT_REF
+  ? `https://${PROJECT_REF}.functions.supabase.co/recurring-tasks`
+  : null;
+
+const EDGE_SERVICE_SECRET = process.env.EDGE_SERVICE_SECRET || '';
+
+const SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.EDGE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  '';
+
+let hasLoggedEdgeConfigWarning = false;
+
+type RecurringEdgeResponse<T> = {
+  ok: boolean;
+  data?: T;
+  error?: string;
+};
+
+async function callRecurringTasksEdge<T>(
+  action: 'process' | 'complete',
+  payload: Record<string, unknown> = {}
+): Promise<RecurringEdgeResponse<T> | null> {
+  if (!RECURRING_FUNCTION_URL || !EDGE_SERVICE_SECRET) {
+    if (!hasLoggedEdgeConfigWarning) {
+      console.warn('[RecurringTaskService] Edge function configuration missing', {
+        hasFunctionUrl: Boolean(RECURRING_FUNCTION_URL),
+        hasServiceSecret: Boolean(EDGE_SERVICE_SECRET)
+      });
+      hasLoggedEdgeConfigWarning = true;
+    }
+    return null;
+  }
+
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'x-service-secret': EDGE_SERVICE_SECRET
+  };
+
+  const sessionToken = getEncryptionSessionToken();
+  if (sessionToken) {
+    headers.Authorization = `Bearer ${sessionToken}`;
+    if (SUPABASE_ANON_KEY) {
+      headers.apikey = SUPABASE_ANON_KEY;
+    }
+  } else {
+    try {
+      Object.assign(headers, createEdgeHeaders());
+    } catch (error) {
+      console.warn('[RecurringTaskService] Failed to create edge headers', error);
+      return null;
+    }
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(RECURRING_FUNCTION_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action, ...payload })
+    });
+  } catch (error) {
+    console.warn('[RecurringTaskService] Edge call failed', error);
+    return null;
+  }
+
+  const text = await response.text();
+  let parsed: RecurringEdgeResponse<T> | null = null;
+  try {
+    parsed = JSON.parse(text) as RecurringEdgeResponse<T>;
+  } catch (error) {
+    console.error('[RecurringTaskService] Failed to parse edge response', error, text);
+    return null;
+  }
+
+  if (!response.ok || !parsed?.ok) {
+    console.warn('[RecurringTaskService] Edge function error', {
+      action,
+      status: response.status,
+      parsed
+    });
+    return null;
+  }
+
+  return parsed;
 }
 
 export class RecurringTaskService {
@@ -138,59 +241,67 @@ export class RecurringTaskService {
    * Process all recurring tasks and generate upcoming instances
    */
   static async processRecurringTasks(): Promise<{ created: number; errors: string[] }> {
+    const edgeResult = await callRecurringTasksEdge<{ created: number; errors: string[] }>('process');
+    if (edgeResult?.ok && edgeResult.data) {
+      return edgeResult.data;
+    }
+
+    if (edgeResult && edgeResult.error) {
+      console.warn('[RecurringTaskService] Edge process failed, falling back to local:', edgeResult.error);
+    }
+
+    return this.processRecurringTasksLocal();
+  }
+
+  private static async processRecurringTasksLocal(): Promise<{ created: number; errors: string[] }> {
     const supabase = await createServiceClient();
     const errors: string[] = [];
     let created = 0;
-    
+
     try {
-      // Get all active recurring tasks
       const { data: recurringTasks, error: fetchError } = await supabase
         .from('tasks')
         .select('*')
         .eq('is_recurring', true)
         .eq('status', 'active');
-      
+
       if (fetchError) {
         errors.push(`Failed to fetch recurring tasks: ${fetchError.message}`);
         return { created, errors };
       }
-      
+
       if (!recurringTasks || recurringTasks.length === 0) {
         return { created, errors };
       }
-      
-      // Generate future instances for each recurring task
+
       for (const task of recurringTasks) {
         try {
-          // Check if instances already exist for the next period
           const tomorrow = new Date();
           tomorrow.setDate(tomorrow.getDate() + 1);
-          
+
           const { data: existingTasks, error: checkError } = await supabase
             .from('tasks')
             .select('id')
             .eq('parent_task_id', task.id)
             .gte('due_date', tomorrow.toISOString())
             .limit(1);
-          
+
           if (checkError) {
             errors.push(`Failed to check existing tasks for ${task.title}: ${checkError.message}`);
             continue;
           }
-          
-          // Skip if future instances already exist
+
           if (existingTasks && existingTasks.length > 0) {
             continue;
           }
-          
-          // Generate new instances
+
           const newTasks = await this.generateRecurringTasks(task);
-          
+
           if (newTasks.length > 0) {
             const { error: insertError } = await supabase
               .from('tasks')
               .insert(newTasks);
-            
+
             if (insertError) {
               errors.push(`Failed to create tasks for ${task.title}: ${insertError.message}`);
             } else {
@@ -204,7 +315,7 @@ export class RecurringTaskService {
     } catch (error) {
       errors.push(`General error: ${error}`);
     }
-    
+
     return { created, errors };
   }
 
@@ -214,61 +325,73 @@ export class RecurringTaskService {
   static async completeRecurringTaskInstance(
     taskId: string
   ): Promise<{ success: boolean; nextTaskId?: string; error?: string }> {
+    const edgeResult = await callRecurringTasksEdge<{ success: boolean; nextTaskId?: string; error?: string }>('complete', { taskId });
+    if (edgeResult?.ok && edgeResult.data) {
+      return edgeResult.data;
+    }
+
+    if (edgeResult && edgeResult.error) {
+      console.warn('[RecurringTaskService] Edge completion failed, falling back to local:', edgeResult.error);
+    }
+
+    return this.completeRecurringTaskInstanceLocal(taskId);
+  }
+
+  private static async completeRecurringTaskInstanceLocal(
+    taskId: string
+  ): Promise<{ success: boolean; nextTaskId?: string; error?: string }> {
     const supabase = await createServiceClient();
-    
+
     try {
-      // Get the task details
       const { data: task, error: fetchError } = await supabase
         .from('tasks')
         .select('*')
         .eq('id', taskId)
         .single();
-      
+
       if (fetchError || !task) {
         return { success: false, error: 'Task not found' };
       }
-      
-      // Mark as complete
+
       const { error: updateError } = await supabase
         .from('tasks')
-        .update({ 
+        .update({
           status: 'completed',
           completed_at: new Date().toISOString()
         })
         .eq('id', taskId);
-      
+
       if (updateError) {
         return { success: false, error: updateError.message };
       }
-      
-      // If this is a child of a recurring task, generate the next instance
+
       if (task.parent_task_id) {
         const { data: parentTask, error: parentError } = await supabase
           .from('tasks')
           .select('*')
           .eq('id', task.parent_task_id)
           .single();
-        
+
         if (!parentError && parentTask && parentTask.is_recurring) {
           const nextTasks = await this.generateRecurringTasks(
             parentTask,
-            new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // Look 60 days ahead
+            new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
           );
-          
+
           if (nextTasks.length > 0) {
             const { data: newTask, error: insertError } = await supabase
               .from('tasks')
               .insert(nextTasks[0])
               .select()
               .single();
-            
+
             if (!insertError && newTask) {
               return { success: true, nextTaskId: newTask.id };
             }
           }
         }
       }
-      
+
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
