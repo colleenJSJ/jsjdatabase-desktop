@@ -26,7 +26,7 @@ export function createEdgeJwt(expiresIn: ExpiresIn = FIVE_MINUTES) {
   const payload: jwt.JwtPayload = {
     aud: 'authenticated',
     role: 'service_role',
-    iss: `${supabaseUrl.replace(/\\/$/, '')}/auth/v1`,
+    iss: `${supabaseUrl.replace(/\/$/, '')}/auth/v1`,
     sub: 'service-role',
   };
 

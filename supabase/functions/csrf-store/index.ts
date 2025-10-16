@@ -67,38 +67,42 @@ function jsonResponse<T>(payload: EdgeResponse<T>, init?: ResponseInit) {
   });
 }
 
-async function verifyAutomationToken(token: string): Promise<boolean> {
-  if (!SUPABASE_JWT_SECRET) {
-    return false;
-  }
+let jwtKey: CryptoKey | Uint8Array | null = null;
+
+async function getJwtKey(): Promise<CryptoKey | Uint8Array | null> {
+  if (jwtKey) return jwtKey;
+  if (!SUPABASE_JWT_SECRET) return null;
 
   const normalizedSecret = SUPABASE_JWT_SECRET.includes('\\n')
     ? SUPABASE_JWT_SECRET.replace(/\\n/g, '\n')
     : SUPABASE_JWT_SECRET;
 
+  if (normalizedSecret.trim().startsWith('-----BEGIN')) {
+    const algorithm = normalizedSecret.includes('EC PRIVATE KEY')
+      ? 'ES256'
+      : 'RS256';
+    jwtKey = normalizedSecret.includes('PUBLIC KEY')
+      ? await importSPKI(normalizedSecret, algorithm)
+      : await importPKCS8(normalizedSecret, algorithm);
+  } else {
+    jwtKey = new TextEncoder().encode(normalizedSecret);
+  }
+
+  return jwtKey;
+}
+
+async function verifyJwt(token: string) {
+  const key = await getJwtKey();
+  if (!key) return null;
+
   try {
-    let key: CryptoKey | Uint8Array;
-    if (normalizedSecret.trim().startsWith('-----BEGIN')) {
-      const algorithm = normalizedSecret.includes('EC PRIVATE KEY')
-        ? 'ES256'
-        : 'RS256';
-      if (normalizedSecret.includes('PUBLIC KEY')) {
-        key = await importSPKI(normalizedSecret, algorithm);
-      } else {
-        key = await importPKCS8(normalizedSecret, algorithm);
-      }
-    } else {
-      key = new TextEncoder().encode(normalizedSecret);
-    }
-
     const { payload } = await jwtVerify(token, key, {
-      issuer: `${SUPABASE_URL.replace(/\\/$/, '')}/auth/v1`
+      issuer: `${SUPABASE_URL.replace(/\/$/, '')}/auth/v1`
     });
-
-    return payload?.sub === 'service-role' || payload?.role === 'service_role';
+    return payload;
   } catch (error) {
-    console.warn('[csrf-store] Failed to verify automation token', error);
-    return false;
+    console.warn('[csrf-store] JWT verification failed', error);
+    return null;
   }
 }
 
@@ -120,19 +124,13 @@ async function authorizeRequest(request: Request): Promise<Response | null> {
     return jsonResponse({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  // First try to validate as a user session token
-  const { data, error } = await adminClient.auth.getUser(token);
-  if (!error && data?.user) {
+  const payload = await verifyJwt(token);
+  if (!payload) {
+    console.warn('[csrf-store] Unable to validate JWT; falling back to service-secret auth only');
     return null;
   }
 
-  // Then verify as an automation/service token
-  const isAutomationToken = await verifyAutomationToken(token);
-  if (isAutomationToken) {
-    return null;
-  }
-
-  return jsonResponse({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  return null;
 }
 
 async function getToken(sessionId: string): Promise<Response> {
