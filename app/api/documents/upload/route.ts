@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/app/api/_helpers/auth';
 import { getBackblazeService } from '@/lib/backblaze/b2-service';
 import { ActivityLogger } from '@/lib/services/activity-logger';
 import { resolvePersonReferences } from '@/app/api/_helpers/person-resolver';
@@ -17,26 +17,12 @@ export async function POST(request: NextRequest) {
   
   try {
     // Use the server-side Supabase client
-    const supabase = await createClient();
-    
-    // Get the session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (!isProd) {
-      console.log('[Upload API] Supabase session:', {
-        hasSession: !!session,
-        userEmail: session?.user?.email,
-        error: !!sessionError
-      });
+    const authResult = await requireUser(request, { enforceCsrf: false });
+    if (authResult instanceof Response) {
+      return authResult;
     }
-    
-    if (!session) {
-      console.log('[Upload API] No session found');
-      return jsonError('Unauthorized', { status: 401 });
-    }
-    
-    // Get user from session
-    const user = session.user;
+
+    const { user, supabase } = authResult;
     console.log('[Upload API] Authentication successful for:', user.email);
 
     if (!isProd) logger.info('[Upload API] Parsing form data...');

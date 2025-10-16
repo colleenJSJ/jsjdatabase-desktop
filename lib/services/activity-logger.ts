@@ -1,4 +1,93 @@
 import { createServiceClient } from '@/lib/supabase/server';
+import { getEncryptionSessionToken } from '@/lib/encryption/context';
+
+const PROJECT_REF = (() => {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.EDGE_SUPABASE_URL;
+  if (!url) return null;
+  try {
+    const host = new URL(url).host;
+    const match = host.match(/^([^.]+)\.supabase\.co$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+})();
+
+const ACTIVITY_FUNCTION_NAME = 'activity-log';
+const ACTIVITY_SERVICE_SECRET = process.env.EDGE_SERVICE_SECRET || '';
+const ACTIVITY_FUNCTION_URL = PROJECT_REF
+  ? `https://${PROJECT_REF}.functions.supabase.co/${ACTIVITY_FUNCTION_NAME}`
+  : null;
+
+type ActivityLogPayload = {
+  userId: string;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  entityName?: string | null;
+  page?: string | null;
+  details?: ActivityLogDetails | Record<string, unknown> | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
+async function invokeEdgeLogger(payload: ActivityLogPayload) {
+  if (!ACTIVITY_SERVICE_SECRET) {
+    throw new Error('EDGE_SERVICE_SECRET is required for activity logging');
+  }
+
+  if (!ACTIVITY_FUNCTION_URL) {
+    throw new Error('Activity log function URL could not be determined');
+  }
+
+  const sessionToken = getEncryptionSessionToken();
+  if (!sessionToken) {
+    throw new Error('Supabase session token is required for activity logging');
+  }
+
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.EDGE_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const edgeHeaders = {
+    Authorization: `Bearer ${sessionToken}`,
+    ...(anonKey ? { apikey: anonKey } : {})
+  };
+  const response = await fetch(ACTIVITY_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...edgeHeaders,
+      'x-service-secret': ACTIVITY_SERVICE_SECRET,
+      'x-client-info': 'activity-logger/1.0'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  let result: { ok?: boolean; error?: string } | null = null;
+  try {
+    result = await response.json();
+  } catch {
+    // ignore parse errors; we'll surface a generic failure below
+  }
+
+  if (!response.ok || !result?.ok) {
+    const message =
+      result?.error ||
+      `Edge function ${ACTIVITY_FUNCTION_NAME} returned ${response.status}`;
+    throw new Error(message);
+  }
+}
+
+function shouldUseEdgeLogger(): boolean {
+  return Boolean(
+    ACTIVITY_SERVICE_SECRET &&
+    ACTIVITY_FUNCTION_URL &&
+    getEncryptionSessionToken()
+  );
+}
 
 export interface ActivityLogDetails {
   // Common fields
@@ -68,40 +157,61 @@ export class ActivityLogger {
   /**
    * Log an activity with detailed context
    */
-  static async log(params: {
-    userId: string;
-    action: string;
-    entityType: string;
-    entityId?: string | null;
-    entityName?: string | null;
-    page?: string;
-    details?: ActivityLogDetails;
-    ipAddress?: string;
-    userAgent?: string;
-  }) {
+  static async log(
+    params: {
+      userId: string;
+      action: string;
+      entityType: string;
+      entityId?: string | null;
+      entityName?: string | null;
+      page?: string;
+      details?: ActivityLogDetails;
+      ipAddress?: string;
+      userAgent?: string;
+    }
+  ) {
+    const payload: ActivityLogPayload = {
+      userId: params.userId,
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId ?? null,
+      entityName: params.entityName ?? null,
+      page: params.page ?? null,
+      details: params.details ?? {},
+      ipAddress: params.ipAddress ?? null,
+      userAgent: params.userAgent ?? null
+    };
+
+    if (shouldUseEdgeLogger()) {
+      try {
+        await invokeEdgeLogger(payload);
+        return;
+      } catch (error) {
+        console.warn('[ActivityLogger] Edge invocation failed, falling back to service client:', error);
+      }
+    }
+
+    const supabase = await createServiceClient();
+
     try {
-      const supabase = await createServiceClient();
-      
-      const { error } = await supabase
-        .from('activity_logs')
-        .insert({
-          user_id: params.userId,
-          action: params.action,
-          entity_type: params.entityType,
-          entity_id: params.entityId || null,
-          entity_name: params.entityName || null,
-          page: params.page || null,
-          details: params.details || {},
-          ip_address: params.ipAddress || null,
-          user_agent: params.userAgent || null,
-          created_at: new Date().toISOString()
-        });
+      const { error } = await supabase.from('activity_logs').insert({
+        user_id: payload.userId,
+        action: payload.action,
+        entity_type: payload.entityType,
+        entity_id: payload.entityId || null,
+        entity_name: payload.entityName || null,
+        page: payload.page || null,
+        details: payload.details || {},
+        ip_address: payload.ipAddress || null,
+        user_agent: payload.userAgent || null,
+        created_at: new Date().toISOString()
+      });
 
       if (error) {
         console.error('Failed to log activity:', error);
       }
     } catch (error) {
-      console.error('Error in ActivityLogger:', error);
+      console.error('Error in ActivityLogger fallback:', error);
     }
   }
 

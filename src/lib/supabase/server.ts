@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 // One-time warning for missing environment variables
@@ -65,18 +66,13 @@ export async function createServiceClient() {
   }
   
   try {
-    return createServerClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        cookies: {
-          getAll() {
-            return [];
-          },
-          setAll() {},
+    return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${serviceRoleKey}`,
         },
-      }
-    );
+      },
+    });
   } catch (error) {
     console.error('[Supabase Service Client] Failed to create client:', error);
     throw new Error('Failed to initialize Supabase service client');

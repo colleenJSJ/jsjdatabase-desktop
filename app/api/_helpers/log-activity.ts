@@ -1,4 +1,5 @@
-import { createServiceClient } from '@/lib/supabase/server';
+import type { ActivityLogDetails } from '@/lib/services/activity-logger';
+import { ActivityLogger } from '@/lib/services/activity-logger';
 
 interface LogActivityParams {
   userId: string;
@@ -26,39 +27,28 @@ export async function logActivity({
   request
 }: LogActivityParams) {
   try {
-    const supabase = await createServiceClient();
-    
-    // Extract IP and user agent from request if provided
     let ipAddress: string | null = null;
     let userAgent: string | null = null;
-    
-    if (request) {
-      // Get IP from headers
-      ipAddress = request.headers.get('x-forwarded-for') || 
-                  request.headers.get('x-real-ip') || 
-                  null;
-      userAgent = request.headers.get('user-agent') || null;
-    }
-    
-    // Insert activity log
-    const { error } = await supabase
-      .from('activity_logs')
-      .insert({
-        user_id: userId,
-        action: action.toLowerCase(),
-        entity_type: entityType.toLowerCase(),
-        entity_id: entityId,
-        entity_name: entityName,
-        page: page,
-        details: details,
-        ip_address: ipAddress,
-        user_agent: userAgent,
-        created_at: new Date().toISOString()
-      });
 
-    if (error) {
-      console.error('[Activity Logger] Failed to log activity:', error);
+    if (request) {
+      ipAddress =
+        request.headers.get('x-forwarded-for') ??
+        request.headers.get('x-real-ip') ??
+        null;
+      userAgent = request.headers.get('user-agent') ?? null;
     }
+
+    await ActivityLogger.log({
+      userId,
+      action: action.toLowerCase(),
+      entityType: entityType.toLowerCase(),
+      entityId,
+      entityName,
+      page,
+      details: details as ActivityLogDetails,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined
+    });
   } catch (error) {
     console.error('[Activity Logger] Error:', error);
     // Don't throw - we don't want logging failures to break the app
