@@ -1,5 +1,10 @@
 // @ts-nocheck
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.3';
+import {
+  importPKCS8,
+  importSPKI,
+  jwtVerify
+} from 'https://esm.sh/jose@5.2.2';
 
 type DenoSupabaseEnv = typeof globalThis & {
   Deno?: {
@@ -20,6 +25,7 @@ const SERVICE_ROLE_KEY =
   denoEnv?.get('SUPABASE_SERVICE_ROLE_KEY') ??
   null;
 const EDGE_SERVICE_SECRET = denoEnv?.get('EDGE_SERVICE_SECRET') ?? null;
+const SUPABASE_JWT_SECRET = denoEnv?.get('SUPABASE_JWT_SECRET') ?? null;
 
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   console.error('[csrf-store] Missing Supabase configuration');
@@ -61,7 +67,42 @@ function jsonResponse<T>(payload: EdgeResponse<T>, init?: ResponseInit) {
   });
 }
 
-function authorizeRequest(request: Request): Response | null {
+async function verifyAutomationToken(token: string): Promise<boolean> {
+  if (!SUPABASE_JWT_SECRET) {
+    return false;
+  }
+
+  const normalizedSecret = SUPABASE_JWT_SECRET.includes('\\n')
+    ? SUPABASE_JWT_SECRET.replace(/\\n/g, '\n')
+    : SUPABASE_JWT_SECRET;
+
+  try {
+    let key: CryptoKey | Uint8Array;
+    if (normalizedSecret.trim().startsWith('-----BEGIN')) {
+      const algorithm = normalizedSecret.includes('EC PRIVATE KEY')
+        ? 'ES256'
+        : 'RS256';
+      if (normalizedSecret.includes('PUBLIC KEY')) {
+        key = await importSPKI(normalizedSecret, algorithm);
+      } else {
+        key = await importPKCS8(normalizedSecret, algorithm);
+      }
+    } else {
+      key = new TextEncoder().encode(normalizedSecret);
+    }
+
+    const { payload } = await jwtVerify(token, key, {
+      issuer: `${SUPABASE_URL.replace(/\\/$/, '')}/auth/v1`
+    });
+
+    return payload?.sub === 'service-role' || payload?.role === 'service_role';
+  } catch (error) {
+    console.warn('[csrf-store] Failed to verify automation token', error);
+    return false;
+  }
+}
+
+async function authorizeRequest(request: Request): Promise<Response | null> {
   if (EDGE_SERVICE_SECRET) {
     const providedSecret = request.headers.get('x-service-secret');
     if (!providedSecret || providedSecret !== EDGE_SERVICE_SECRET) {
@@ -74,7 +115,24 @@ function authorizeRequest(request: Request): Response | null {
     return jsonResponse({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  return null;
+  const token = authHeader.slice('bearer '.length).trim();
+  if (!token) {
+    return jsonResponse({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // First try to validate as a user session token
+  const { data, error } = await adminClient.auth.getUser(token);
+  if (!error && data?.user) {
+    return null;
+  }
+
+  // Then verify as an automation/service token
+  const isAutomationToken = await verifyAutomationToken(token);
+  if (isAutomationToken) {
+    return null;
+  }
+
+  return jsonResponse({ ok: false, error: 'Unauthorized' }, { status: 401 });
 }
 
 async function getToken(sessionId: string): Promise<Response> {
@@ -160,7 +218,7 @@ denoGlobal.Deno.serve(async (request) => {
     return jsonResponse({ ok: false, error: 'Method Not Allowed' }, { status: 405 });
   }
 
-  const authError = authorizeRequest(request);
+  const authError = await authorizeRequest(request);
   if (authError) {
     return authError;
   }
